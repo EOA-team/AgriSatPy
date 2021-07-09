@@ -523,7 +523,7 @@ def scl_10m_resampling(in_dir: str,
     scl_file = get_S2_sclfile(in_dir)
 
     # create subfolder for SCL scenes
-    scl_subdir = os.path.join(out_dir, "SCL_resampled")
+    scl_subdir = os.path.join(out_dir, Settings.SUBDIR_SCL_FILES)
     if not os.path.isdir(scl_subdir):
         os.mkdir(scl_subdir)
         
