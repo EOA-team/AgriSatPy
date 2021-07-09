@@ -8,9 +8,8 @@ Created on Jul 9, 2021
                 It is also possible to resample from a higher to
                 a lower spatial resolution.
 
-                Output:
-                    stacked .geotiff file containing all bands in 10m resolution
-                    SCL resampled to 10m (results stored in subdirectory)
+                The module can handle Sentinel-2 data in L1C and L2A
+                processing level.
 '''
 
 
@@ -35,7 +34,7 @@ logger = Settings.get_logger()
 
 
 # global defintion of spectral bands and their spatial resolution
-s2 = Sentinel2
+s2 = Sentinel2()
 
 
 # %% helper funs
@@ -88,7 +87,8 @@ def get_S2_bandfiles(in_dir: str,
     if is_L2A:
         hires_bands = [x.split('_')[-2] for x in band_dict[highest_resolution]]
     else:
-        hires_bands = [x.split('_')[-1] for x in band_dict[highest_resolution]]
+        hires_bands = [x.split('_')[-1].replace('jp2', '') \
+                        for x in band_dict[highest_resolution]]
     
     # loop over the other resolutions and drop the downsampled high resolution
     # bands and keep only the native bands per resolution
@@ -102,7 +102,8 @@ def get_S2_bandfiles(in_dir: str,
         if is_L2A:
             lowres_bands = [(x.split('_')[-2], x) for x in band_dict[key]]
         else:
-            lowres_bands = [(x.split('_')[-1], x) for x in band_dict[key]]
+            lowres_bands = [(x.split('_')[-1].replace('.jp2', ''), x) \
+                            for x in band_dict[key]]
         lowres_bands2keep = [x[1] for x in lowres_bands if x[0] not in hires_bands]
         native_bands.extend(lowres_bands2keep)
         
@@ -112,7 +113,8 @@ def get_S2_bandfiles(in_dir: str,
     if is_L2A:
         native_band_names = [x.split('_')[-2] for x in native_bands]
     else:
-        native_band_names = [x.split('_')[-1] for x in native_bands]
+        native_band_names = [x.split('_')[-1].replace('.jp2','') \
+                             for x in native_bands]
     native_band_df = pd.DataFrame(native_band_names, columns=['band_name'])
     native_band_df["band_path"] = native_bands
     native_band_df["band_resolution"] = resolution_per_band
@@ -216,6 +218,7 @@ def resample_and_stack_S2(in_dir: str,
                           interpolation: int=Resampling.cubic,
                           masking: bool=False,
                           pixel_division: bool=False,
+                          is_L2A: bool=True,
                           **kwargs
                          ) -> str:
     '''
@@ -250,14 +253,23 @@ def resample_and_stack_S2(in_dir: str,
         This works, however, only if the spatial resolution is increased, e.g.
         from 20 to 10m. The interpolation argument is ignored then.
         Default value is False
+    :param is_L2A:
+        boolean flag indicating if the data is in L2A processing level (Default) or L1C.
+        Depending on the processing level the struture of the .SAFE products containing the
+        satellite data looks slightly different.
     :param kwargs:
         in_file_aoi: file containing the AOI to mask by
+        resolution_selection: list of spatial resolution to process (10, 20, 60m)
     '''
     # read in S2 band and SCL file
-    s2bands = get_S2_bandfiles(in_dir)
+    resolution_selection = kwargs.get('resolution_selection', [10., 20.])
+    s2bands = get_S2_bandfiles(in_dir=in_dir,
+                               is_L2A=is_L2A,
+                               resolution_selection=resolution_selection)
 
     # get 10m TCI file
-    tci_file = get_S2_tci(in_dir)
+    tci_file = get_S2_tci(in_dir=in_dir,
+                          is_L2A=is_L2A)
 
     # If masking is chosen
     if masking:
@@ -313,7 +325,7 @@ def resample_and_stack_S2(in_dir: str,
     # update the out_meta with the desired number of S2 bands
     meta.update(count = s2bands.shape[0])
     meta.update(driver = "GTiff")
-    
+  
     # get S2 UID
     s2_uid = os.path.basename(p=in_dir)
     # keep only Date, Tile, ProcessingLevel & Sensor for the filename_out
@@ -326,7 +338,7 @@ def resample_and_stack_S2(in_dir: str,
     out_file = out_date + "_" + out_tile + "_" + out_level + "_" + \
         out_sensor + "_" + out_method + "_" + out_resolution + ".tiff"
 
-    # create subfolder for rgb preview images
+    # create sub-folder for RGB preview images
     rgb_subdir = os.path.join(out_dir, "rgb_previews")
     if not os.path.isdir(rgb_subdir):
         os.mkdir(rgb_subdir)
@@ -378,7 +390,7 @@ def resample_and_stack_S2(in_dir: str,
                         
                         # use rasterio resampling method
                         if not pixel_division:
-                            # store masked (clipped) raster in a temporary memfile
+                            # store masked (clipped) raster in a temporary 'memfile' (memory file)
                             # https://gis.stackexchange.com/questions/329434/creating-an-in-memory-rasterio-dataset-from-numpy-array
                             with MemoryFile() as memfile:
                                 with memfile.open(**prof) as dataset:
@@ -402,7 +414,7 @@ def resample_and_stack_S2(in_dir: str,
                                 return ''
                             dst.set_band_description(idx+1, s2bands["band_name"].iloc[idx])
                             dst.write(out_array, idx+1)
-                        print("interpolation complete")
+                        logger.info("interpolation complete")
 
         # clip TCI by AOI and write to 8 bit RGB .png
         # read in TCI, clip to AOI and write out as RGB
@@ -431,7 +443,7 @@ def resample_and_stack_S2(in_dir: str,
         with rio.open(os.path.join(out_dir, out_file), "w+", **meta) as dst:
             for idx in range(s2bands.shape[0]):
         
-                print(
+                logger.info(
                     f'Processing band {s2bands["band_name"].iloc[idx]} ({idx+1}/{s2bands.shape[0]})')
                 
                 if s2bands["band_resolution"].iloc[idx] == target_resolution:
@@ -566,3 +578,14 @@ def scl_10m_resampling(in_dir: str,
   
     logger.info(f"file {scl_out_file} written successfully!")
     return scl_out_path
+
+
+if __name__ == '__main__':
+    
+    in_dir = '/home/graflu/public/Evaluation/Projects/KP0022_DeepField/Sentinel-2/S2_L1C_data/CH/CH_2018/PRODUCT/S2A_MSIL1C_20180108T104421_N0206_R008_T31UGP_20180108T124506.SAFE'
+    out_dir = '/mnt/ides/Lukas/03_Debug/Sentinel2/L1C/'
+    is_L2A = False
+    
+    out_file = resample_and_stack_S2(in_dir=in_dir,
+                                     out_dir=out_dir,
+                                     is_L2A=is_L2A)
