@@ -71,9 +71,7 @@ def parse_MTD_TL(in_file: str
     sensing_time_xml = xmldoc.getElementsByTagName('SENSING_TIME')
     sensing_time = sensing_time_xml[0].firstChild.nodeValue
     metadata['SENSING_DATE'] = datetime.strptime(
-        sensing_time.split('T')[0],
-        '%Y-%m-%d'
-        ).date()
+        sensing_time.split('T')[0],'%Y-%m-%d').date()
 
     # number of rows and columns for each resolution -> 10, 20, 60 meters
     nrows_xml = xmldoc.getElementsByTagName('NROWS')
@@ -217,6 +215,9 @@ def parse_MTD_MSI(in_file: str
     sol_irrad_xml = xmldoc.getElementsByTagName('SOLAR_IRRADIANCE')
     for idx, band in enumerate(bands):
         metadata[f'SOLAR_IRRADIANCE_{band}'] = float(sol_irrad_xml[idx].firstChild.nodeValue)
+
+    # S2 tile
+    metadata['TILE'] = metadata['PRODUCT_URI'].split('_')[5]
 
     return metadata
     
