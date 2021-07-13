@@ -21,8 +21,8 @@ from agrisatpy.config import get_settings
 Settings = get_settings()
 
 
-def identify_splitted_scenes(metadata_df: pd.DataFrame,
-                             ) -> pd.DataFrame:
+def identify_split_scenes(metadata_df: pd.DataFrame,
+                         ) -> pd.DataFrame:
     """
     Sentinel-2 records data in so-called datatakes. When a datatake is over and a new
     begins the acquired image data is written to different files (based on the datatake
@@ -115,11 +115,11 @@ def get_blackfill(in_file: str):
 
 
 #TODO: include clipping by AOI logic
-def merge_splitted_scenes(scene_1: str,
-                          scene_2: str,
-                          out_dir: str,
-                          **kwargs
-                          ) -> dict:
+def merge_split_scenes(scene_1: str,
+                       scene_2: str,
+                       out_dir: str,
+                       **kwargs
+                       ) -> dict:
     """
     merges two datasets of the same sensing date and tile split by the datatake beginning/
     end.
