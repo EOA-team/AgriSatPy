@@ -340,6 +340,7 @@ def loop_s2_archive(in_dir: str
         print(f'Extracting metadata of {os.path.basename(s2_scene)} ({idx+1}/{n_scenes})')
         try:
             mtd_scene = parse_s2_scene_metadata(in_dir=s2_scene)
+            mtd_scene['filepath'] = s2_scene
         except Exception as e:
             print(e)
             continue
