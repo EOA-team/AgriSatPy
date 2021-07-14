@@ -166,14 +166,16 @@ def merge_split_scenes(scene_1: str,
                                         out_dir=out_dirs[0],
                                         **kwargs)
     scl_out_1 = scl_10m_resampling(in_dir=scene_1,
-                                   out_dir=out_dirs[0])
+                                   out_dir=out_dirs[0],
+                                   **kwargs)
 
     # second scene
     scene_out_2 = resample_and_stack_S2(in_dir=scene_2,
                                         out_dir=out_dirs[1],
                                         **kwargs)
     scl_out_2 = scl_10m_resampling(in_dir=scene_2,
-                                   out_dir=out_dirs[1])
+                                   out_dir=out_dirs[1],
+                                   **kwargs)
 
     # logic for masked scenes (they are already masked after "resample_and_stack_S2")
     if masking:
