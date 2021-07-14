@@ -118,6 +118,7 @@ def get_blackfill(in_file: str):
 def merge_split_scenes(scene_1: str,
                        scene_2: str,
                        out_dir: str,
+                       is_L2A: bool,
                        **kwargs
                        ) -> dict:
     """
@@ -136,8 +137,11 @@ def merge_split_scenes(scene_1: str,
         .SAFE directory containing the first of two scenes split by the datatake beginning/
         end of Sentinel-2
     :param out_dir:
-        directory where to create a "working_dir" subfolder to save the 
+        directory where to create a "working_dir" sub-directory to save the 
         intermediate products to.
+    :param is_L2A:
+        boolean flag indicating if the data is L2A processing level (Default) or L1C
+        (thus, no SCL file available)
     :param kwargs:
         key word arguments to pass to resample_and_stack_S2 and scl_10m_resampling.
         The out_dir option, however, is ignored
@@ -165,17 +169,23 @@ def merge_split_scenes(scene_1: str,
     scene_out_1 = resample_and_stack_S2(in_dir=scene_1,
                                         out_dir=out_dirs[0],
                                         **kwargs)
-    scl_out_1 = scl_10m_resampling(in_dir=scene_1,
-                                   out_dir=out_dirs[0],
-                                   **kwargs)
+
+    scl_out_1 = ''
+    if is_L2A:
+        scl_out_1 = scl_10m_resampling(in_dir=scene_1,
+                                       out_dir=out_dirs[0],
+                                       **kwargs)
 
     # second scene
     scene_out_2 = resample_and_stack_S2(in_dir=scene_2,
                                         out_dir=out_dirs[1],
                                         **kwargs)
-    scl_out_2 = scl_10m_resampling(in_dir=scene_2,
-                                   out_dir=out_dirs[1],
-                                   **kwargs)
+
+    scl_out_2 = ''
+    if is_L2A:
+        scl_out_2 = scl_10m_resampling(in_dir=scene_2,
+                                       out_dir=out_dirs[1],
+                                       **kwargs)
 
     # logic for masked scenes (they are already masked after "resample_and_stack_S2")
     if masking:
@@ -187,8 +197,10 @@ def merge_split_scenes(scene_1: str,
             if file1_yes:
                 out_file = os.path.basename(scene_out_1)
                 out_file = os.path.join(out_dirs[0], out_file)
-                out_file_scl = os.path.join(out_dirs[0], "SCL_resampled", 
-                                            os.path.basename(scl_out_1))
+                out_file_scl = ''
+                if is_L2A:
+                    out_file_scl = os.path.join(out_dirs[0], "SCL_resampled", 
+                                                os.path.basename(scl_out_1))
                 quicklook = find_rgb_preview(scene_out_1)
                 out_file_rgb = os.path.join(out_dirs[0], "rgb_previews", 
                                             os.path.basename(quicklook))
@@ -199,8 +211,10 @@ def merge_split_scenes(scene_1: str,
             if file2_yes:
                 out_file = os.path.basename(scene_out_2)
                 out_file = os.path.join(out_dirs[1], out_file)
-                out_file_scl = os.path.join(out_dirs[1], "SCL_resampled", 
-                                            os.path.basename(scl_out_2))
+                out_file_scl = ''
+                if is_L2A:
+                    out_file_scl = os.path.join(out_dirs[1], "SCL_resampled", 
+                                                os.path.basename(scl_out_2))
                 quicklook = find_rgb_preview(scene_out_2)
                 out_file_rgb = os.path.join(out_dirs[1], "rgb_previews", 
                                             os.path.basename(quicklook))
@@ -245,13 +259,15 @@ def merge_split_scenes(scene_1: str,
     with rio.open(out_file_rgb, 'w', **meta) as dst:
         dst.write(rgb)              
 
-    # merge SCL scenes
-    meta, scl_data = merge_split_files(in_file_1=scl_out_1,
-                                       in_file_2=scl_out_2,
-                                       is_blackfill=is_blackfill)
-    out_file_scl = os.path.join(working_dir, os.path.basename(scl_out_1))
-    with rio.open(out_file_scl, 'w', **meta) as dst:
-        dst.write(scl_data)
+    # merge SCL scenes (L2A processing level ,only)
+    out_file_scl = ''
+    if is_L2A:
+        meta, scl_data = merge_split_files(in_file_1=scl_out_1,
+                                           in_file_2=scl_out_2,
+                                           is_blackfill=is_blackfill)
+        out_file_scl = os.path.join(working_dir, os.path.basename(scl_out_1))
+        with rio.open(out_file_scl, 'w', **meta) as dst:
+            dst.write(scl_data)
 
     # remove intermediate files (out_dirs)
     for out_dir in out_dirs:
