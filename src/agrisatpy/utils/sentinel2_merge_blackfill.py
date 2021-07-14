@@ -151,9 +151,16 @@ def merge_split_scenes(scene_1: str,
     # directory to avoid to override the output
     out_dirs = [os.path.join(working_dir, '1'), os.path.join(working_dir, '2')]
     for out_dir in out_dirs:
+        if os.path.isdir(out_dir):
+            # for clean "start" of next loop iteration
+            shutil.rmtree(out_dir)
         os.mkdir(out_dir)
+    
+    # kwargs for AOI and masking (if applicable)
+    if 'masking' in kwargs.keys():
+        masking = kwargs.get('masking', bool)
 
-    # do the resampling for the two scenes
+    # do the spatial resampling for the two scenes
     # first scene
     scene_out_1 = resample_and_stack_S2(in_dir=scene_1,
                                         out_dir=out_dirs[0],
@@ -167,6 +174,41 @@ def merge_split_scenes(scene_1: str,
                                         **kwargs)
     scl_out_2 = scl_10m_resampling(in_dir=scene_2,
                                    out_dir=out_dirs[1])
+
+    # logic for masked scenes (they are already masked after "resample_and_stack_S2")
+    if masking:
+        file1_yes = os.path.isfile(scene_out_1)
+        file2_yes = os.path.isfile(scene_out_2)
+        
+        # if 1 scene only has blackfill (e.g. does not exist) keep only this one
+        if (file1_yes and not file2_yes) or (not file1_yes and file2_yes):
+            if file1_yes:
+                out_file = os.path.basename(scene_out_1)
+                out_file = os.path.join(out_dirs[0], out_file)
+                out_file_scl = os.path.join(out_dirs[0], "SCL_resampled", 
+                                            os.path.basename(scl_out_1))
+                quicklook = find_rgb_preview(scene_out_1)
+                out_file_rgb = os.path.join(out_dirs[0], "rgb_previews", 
+                                            os.path.basename(quicklook))
+                return {'bandstack': out_file,
+                        'scl': out_file_scl,
+                        'preview': out_file_rgb}
+            
+            if file2_yes:
+                out_file = os.path.basename(scene_out_2)
+                out_file = os.path.join(out_dirs[1], out_file)
+                out_file_scl = os.path.join(out_dirs[1], "SCL_resampled", 
+                                            os.path.basename(scl_out_2))
+                quicklook = find_rgb_preview(scene_out_2)
+                out_file_rgb = os.path.join(out_dirs[1], "rgb_previews", 
+                                            os.path.basename(quicklook))
+                return {'bandstack': out_file,
+                        'scl': out_file_scl,
+                        'preview': out_file_rgb}
+        
+        # if no scenes exist, just return an empty dict
+        elif (not file1_yes and not file2_yes):
+            return {}
 
     # find blackfilled pixels in the first image file
     is_blackfill = get_blackfill(in_file=scene_out_1)
