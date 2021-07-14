@@ -20,6 +20,13 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
+from agrisatpy.config.sentinel2 import Sentinel2
+from agrisatpy.config import get_settings
+
+S2 = Sentinel2()
+Settings = get_settings()
+logger = Settings.get_logger()
+
 
 class SCL_Classes(object):
     """
@@ -196,16 +203,16 @@ def S2singlebands2table(in_dir: str,
     # ==========================     Check kwargs   ==========================
     # check for user-defined SCL filtration
     # default is: clouds, snow and ice, cloud shadow and nodata classes
-    if not is_L2A: filter_clouds = False  # cloud filtering does not work for L1C level
+    if not is_L2A:
+        filter_clouds = False  # cloud filtering does not work for L1C level
     if filter_clouds:
         scl_2_filterout = kwargs.get('scl_classes', [0, 1, 3, 8, 9, 10, 11])
 
     # check for user-defined nodata values for reflectance and SCL
-    # nodata value for Sentinel-2 reflectance
-    # TODO: check if 64537 is a valid nodata value for reflectance values
-    nodata_refl = kwargs.get('nodata_refl', 64537)
-    # nodata for scene classification
-    nodata_scl = kwargs.get('nodata_scl', 254)
+    # no-data value for Sentinel-2 reflectance
+    nodata_refl = kwargs.get('nodata_refl', S2.NODATA_REFLECTANCE)
+    # no-data for scene classification
+    nodata_scl = kwargs.get('nodata_scl', S2.NODATA_SCL)
 
     bandlist = []
     for filename in jp2_files:
@@ -239,7 +246,7 @@ def S2singlebands2table(in_dir: str,
 
     for feature in bbox_buffered_s2_crs.iterrows():
 
-        print(f"Calculating ID no. {feature[1][id_column]}")
+        logger.info(f"Extracting field parcel with ID {feature[1][id_column]}")
 
     # ========================== Loop over bands! ==========================
         flat_band_rflt_per_ID = []
@@ -261,7 +268,7 @@ def S2singlebands2table(in_dir: str,
                                                             nodata = nodata_refl
                                                             )
                 except Exception as e:
-                    print(f'Couldnot clip feature {feature[1][id_column]}: {e}')
+                    logger.warning(f'Couldnot clip feature {feature[1][id_column]}: {e}')
                     # if the feature could not be clipped (e.g., because it is not located
                     # within the extent of the raster) flag the feature and continue with the next
                     couldnot_clip = True
@@ -440,9 +447,9 @@ def S2bandstack2table(in_file: str,
     # check for user-defined nodata values for reflectance and SCL
     # nodata value for is_sentinel-2 reflectance
     # TODO: check if 64537 is a valid nodata value for reflectance values
-    nodata_refl = kwargs.get('nodata_refl', 64537)
+    nodata_refl = kwargs.get('nodata_refl', S2.NODATA_REFLECTANCE)
     # nodata for scene classification
-    nodata_scl = kwargs.get('nodata_scl', 254)
+    nodata_scl = kwargs.get('nodata_scl', S2.NODATA_SCL)
 
     # read in bandlist
     bandlist = list(bandstack.descriptions)
@@ -471,10 +478,7 @@ def S2bandstack2table(in_file: str,
    
     for feature in bbox_buffered_s2_crs.iterrows():
 
-        print(f"Calculating ID no. {feature[1][id_column]}")
-        
-        if feature[1][id_column] == '30430':
-            print('a')
+        logger.info(f"Extracting field parcel with ID {feature[1][id_column]}")
 
     # ========================== Loop over bands! ==========================
         flat_band_rflt_per_ID = []
@@ -488,7 +492,7 @@ def S2bandstack2table(in_file: str,
                                                     nodata = nodata_refl
                                                     )
         except Exception as e:
-            print(f'Couldnot clip feature {feature[1][id_column]}: {e}')
+            logger.warning(f'Couldnot clip feature {feature[1][id_column]}: {e}')
             # if the feature could not be clipped (e.g., because it is not located
             # within the extent of the raster) flag the feature and continue with the next
             continue
