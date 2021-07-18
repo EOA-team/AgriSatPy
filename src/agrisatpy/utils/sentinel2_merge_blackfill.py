@@ -114,7 +114,6 @@ def get_blackfill(in_file: str):
     return is_blackfill
 
 
-#TODO: include clipping by AOI logic
 def merge_split_scenes(scene_1: str,
                        scene_2: str,
                        out_dir: str,
@@ -161,8 +160,7 @@ def merge_split_scenes(scene_1: str,
         os.mkdir(out_dir)
     
     # kwargs for AOI and masking (if applicable)
-    if 'masking' in kwargs.keys():
-        masking = kwargs.get('masking', bool)
+    masking = kwargs.get('masking', False)
 
     # do the spatial resampling for the two scenes
     # first scene

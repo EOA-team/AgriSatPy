@@ -28,7 +28,7 @@ from rasterio.profiles import Profile
 from agrisatpy.config import get_settings
 
 Settings = get_settings()
-logger = Settings.get_logger()
+logger = Settings.logger
 
 
 def extract_epsg(df: pd.DataFrame,

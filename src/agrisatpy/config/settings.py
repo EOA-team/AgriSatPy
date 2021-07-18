@@ -7,7 +7,7 @@ Created on Jul 8, 2021
 import logging
 from pathlib import Path
 from os.path import join
-from pydantic import BaseModel
+from pydantic.main import BaseModel
 from functools import lru_cache
 
 
@@ -32,12 +32,13 @@ class Settings(BaseModel):
     LOG_FILE: str = join(Path.home(), f'{LOGGER_NAME}.log')
     LOGGING_LEVEL: int = logging.INFO
 
+    logger: logging.Logger = logging.getLogger(LOGGER_NAME)
+
     def get_logger(self):
         """
         returns a logger object with stream and file handler
         """
-        logger: logging.Logger = logging.getLogger(self.LOGGER_NAME)
-        logger.setLevel(self.LOGGING_LEVEL)
+        self.logger.setLevel(self.LOGGING_LEVEL)
         # create file handler which logs even debug messages
         fh: logging.FileHandler = logging.FileHandler(self.LOG_FILE)
         fh.setLevel(self.LOGGING_LEVEL)
@@ -49,9 +50,8 @@ class Settings(BaseModel):
         fh.setFormatter(formatter)
         ch.setFormatter(formatter)
         # add the handlers to the logger
-        logger.addHandler(fh)
-        logger.addHandler(ch)
-        return logger
+        self.logger.addHandler(fh)
+        self.logger.addHandler(ch)
 
     # env files are encoded utf-8, only
     class Config:
@@ -64,4 +64,6 @@ def get_settings():
     """
     loads package settings
     """
-    return Settings()
+    s = Settings()
+    s.get_logger()
+    return s

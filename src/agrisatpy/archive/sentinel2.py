@@ -14,7 +14,7 @@ from agrisatpy.config import Sentinel2
 from agrisatpy.config import get_settings
 
 Settings = get_settings()
-logger = Settings.get_logger()
+logger = Settings.logger
 
 s2 = Sentinel2()
 

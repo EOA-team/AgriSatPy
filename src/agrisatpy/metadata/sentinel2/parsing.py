@@ -21,6 +21,9 @@ from pyproj import Transformer
 from pathlib import Path
 import pandas as pd
 
+from agrisatpy.config import get_settings
+
+logger = get_settings().logger
 
 class UnknownProcessingLevel(Exception):
     pass
@@ -64,7 +67,7 @@ def parse_MTD_TL(in_file: str
         l1c_tile_id = l1c_tile_id.split('.')[0]
         metadata['L1C_TILE_ID'] = l1c_tile_id
     except Exception:
-        print(f'Scene seems to be L1C processing level')
+        logger.info(f'{scene_id} is L1C processing level')
         is_l1c = True
 
     # sensing time (acquisition time)
@@ -342,7 +345,7 @@ def loop_s2_archive(in_dir: str
             mtd_scene = parse_s2_scene_metadata(in_dir=s2_scene)
             mtd_scene['filepath'] = s2_scene
         except Exception as e:
-            print(e)
+            logger.error(f'Extraction of metadata failed {s2_scene}: {e}')
             continue
         metadata_scenes.append(mtd_scene)
 

@@ -27,7 +27,7 @@ from agrisatpy.config import get_settings
 
 S2 = Sentinel2()
 Settings = get_settings()
-logger = Settings.get_logger()
+logger = Settings.logger
 
 
 def S2singlebands2table(in_dir: str,

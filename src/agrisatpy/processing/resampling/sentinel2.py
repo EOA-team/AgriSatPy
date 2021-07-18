@@ -23,7 +23,7 @@ from agrisatpy.utils import identify_split_scenes, merge_split_scenes
 from agrisatpy.config import get_settings
 
 Settings = get_settings()
-logger = Settings.get_logger()
+logger = Settings.logger
 
 
 class ArchiveNotFoundError(Exception):
@@ -112,7 +112,6 @@ def exec_parallel(raw_data_archive: str,
                   date_end: str,
                   n_threads: int,
                   tile: str,
-                  is_mundi: bool=False,
                   **kwargs
                   ) -> None:
     """
@@ -202,6 +201,7 @@ def exec_parallel(raw_data_archive: str,
 
     # merge blackfill scenes (data take issue) if any
     if not meta_blackfill.empty:
+        is_mundi = kwargs.get('is_mundi', False)
         # after regular scene processsing, process the blackfill scenes single-threaded
         for date in meta_blackfill.SENSING_DATE.unique():
             scenes = meta_blackfill[meta_blackfill.SENSING_DATE == date]

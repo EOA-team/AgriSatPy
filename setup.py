@@ -20,7 +20,7 @@ setuptools.setup(
     description = '',
     long_description = long_description,
     long_description_content_type = 'text/markdown',
-    author='Lukas Graf and Gregor Perich (D-USYS, ETH Zurich)',
+    author='Gregor Perich and Lukas Graf (D-USYS, ETH Zurich)',
     author_email ='NA',
     url='NA',
     packages = find_packages(
