@@ -86,3 +86,4 @@ venv/
 # pylint
 .pylint.d
 
+/.pytest_cache/
