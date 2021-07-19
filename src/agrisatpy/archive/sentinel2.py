@@ -12,6 +12,7 @@ from typing import List
 from agrisatpy.config import Sentinel2
 
 from agrisatpy.config import get_settings
+from agrisatpy.utils.decorators import check_processing_level
 
 Settings = get_settings()
 logger = Settings.logger
@@ -23,6 +24,7 @@ class ArchiveCreationError(Exception):
     pass
 
 
+@check_processing_level
 def add_tile2archive(archive_dir: str,
                      processing_level: str,
                      year: int,
@@ -124,36 +126,3 @@ def create_archive_struct(in_dir: str,
                     logger.error(f'Could not create {tile_dir}: {e}')
                     sys.exit()
                 logger.info(f'Created {tile_dir}')
-
-
-if __name__ == '__main__':
-
-    year_selection = [2019, 2020, 2021]
-    processing_levels = ['L1C', 'L2A']
-    tile_selection = ['T31TGM', 'T32TMT']
-    in_dir = '/mnt/ides/Lukas/03_Debug/test_archive'
-
-    create_archive_struct(in_dir,
-                          processing_levels,
-                          tile_selection,
-                          year_selection)
-
-    # add a tile afterwards
-    tile = 'T32TLS'
-    tile_selection.append(tile)
-
-    create_archive_struct(in_dir,
-                          processing_levels,
-                          tile_selection,
-                          year_selection)
-
-    # add a year afterwards
-    year = 2018
-    year_selection.append(year)
-
-    create_archive_struct(in_dir,
-                          processing_levels,
-                          tile_selection,
-                          year_selection)
-
-    

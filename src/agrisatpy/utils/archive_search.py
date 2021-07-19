@@ -11,13 +11,15 @@ from datetime import datetime
 
 from agrisatpy.utils import stack_dataframes
 from agrisatpy.config import get_settings
+from agrisatpy.utils.decorators import check_processing_level
 
 
 Settings = get_settings()
 logger = Settings.logger
 
-
+@check_processing_level
 def search_data(in_dir,
+                processing_level: str,
                 start_date: str,
                 end_date: str,
                 search_pattern: str,
@@ -37,29 +39,34 @@ def search_data(in_dir,
     while SUBDIR_PIXEL_CSVS is a global configuration of the package):
     
     /<in_dir>
-        /<year>
-            /<tile>
-                /SUBDIR_PIXEL_CSVS
+        /<processing_level>
+            /<year>
+                /<tile>
+                    /SUBDIR_PIXEL_CSVS
 
-    For Sentinel-2 this would like:
+    For Sentinel-2 (processing level L2A) this would like:
 
     /in_dir
-        /2020
-            /T31TGM
-                /tables_w_pixelvalues
-            /T32TMT
-                /tables_w_pixelvalues
-            ...
-        /2019
-            /T31TGM
-                /tables_w_pixelvalues
-            /T32TMT
-                /tables_w_pixelvalues
-            ...
+        /L2A
+            /2020
+                /T31TGM
+                    /tables_w_pixelvalues
+                /T32TMT
+                    /tables_w_pixelvalues
+                ...
+        /L2A
+            /2019
+                /T31TGM
+                    /tables_w_pixelvalues
+                /T32TMT
+                    /tables_w_pixelvalues
+                ...
 
     :param in_dir:
         directory where extracted reflectance values are stored in the same structure
         as specified above
+    :param processing_level:
+        processing level of the satellite data. Must be one of 'L1C', 'L2A'
     :param start_date:
         start of the date range for plotting data
     :param end_date:
@@ -96,9 +103,11 @@ def search_data(in_dir,
 
         logger.info(f'Searching for data in {year}')
 
+        expr = processing_level + os.sep + str(year) + os.sep + tile
         in_dir_year = os.path.join(in_dir,
-                                   os.path.join(str(year), os.path.join(
-                                       tile, Settings.SUBDIR_PIXEL_CSVS)))
+                                   os.path.join(
+                                       expr,
+                                       Settings.SUBDIR_PIXEL_CSVS))
 
         if not os.path.isdir(in_dir_year):
             logger.warning(f'No such directory: {in_dir_year}')
