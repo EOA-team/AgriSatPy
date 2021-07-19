@@ -4,6 +4,7 @@ Created on Jul 8, 2021
 @author: graflu
 '''
 
+from typing import List
 import logging
 from pathlib import Path
 from os.path import join
@@ -21,6 +22,10 @@ class Settings(BaseModel):
     SUBDIR_PIXEL_CSVS: str = 'tables_w_pixelvalues'
     SUBDIR_RGB_PREVIEWS: str = 'rgb_previews'
     SUBDIR_SCL_FILES: str = 'scene_classification'
+
+    RESAMPLED_METADATA_FILE: str = 'processed_metadata.csv'
+
+    PROCESSING_LEVELS: List[str] = ['L1C', 'L2A']
     
     # define date format
     DATE_FMT_INPUT: str = '%Y-%m-%d'

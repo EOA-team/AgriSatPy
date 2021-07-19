@@ -222,9 +222,9 @@ def exec_parallel(raw_data_archive: str,
             'Date': pd.to_datetime(date).date(),
             'Tile': meta_blackfill.TILE.iloc[0],
             'Fname_bandstack': os.path.basename(res['bandstack']),
-            'Fname_SCL': os.path.join('SCL_resampled',
+            'Fname_SCL': os.path.join(Settings.SUBDIR_SCL_FILES,
                                       os.path.basename(res['scl'])),
-            'Fname_preview': os.path.join('rgb_preview',
+            'Fname_preview': os.path.join(Settings.SUBDIR_RGB_PREVIEWS,
                                           os.path.basename(res['preview']))
         }
         bandstack_meta = bandstack_meta.append(df_row, ignore_index=True)
@@ -244,26 +244,4 @@ def exec_parallel(raw_data_archive: str,
         shutil.rmtree(os.path.join(target_s2_archive, 'temp_blackfill'))
     
         # write metadata of all stacked files to CSV
-        bandstack_meta.to_csv(os.path.join(target_s2_archive, 'processed_metadata.csv'))
-
-
-if __name__ == '__main__':
-    raw_data_archive = '/home/graflu/public/Evaluation/Projects/KP0022_DeepField/Sentinel-2/S2_L1C_data/ESCH/ESCH_2018/PRODUCT'
-    target_s2_archive = '/mnt/ides/Lukas/03_Debug/test_archive/L1C/2018/T32TMT'
-    date_start = '2018-05-01'
-    date_end = '2018-06-01'
-    tile = 'T32TMT'
-    n_threads = 4
-    options = {'pixel_division': True,
-               'is_L2A': False}
-    
-    exec_parallel(raw_data_archive,
-                  target_s2_archive,
-                  date_start,
-                  date_end,
-                  n_threads,
-                  tile,
-                  **options
-    )
-    
-    
+        bandstack_meta.to_csv(os.path.join(target_s2_archive, Settings.RESAMPLED_METADATA_FILE))
