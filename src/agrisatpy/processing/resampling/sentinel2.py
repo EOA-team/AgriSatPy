@@ -8,6 +8,7 @@ Created on Jul 9, 2021
              -> generation of a RGB preview image per scene
              -> merging of split scenes (due to data take issues)
              -> resampling of SCL data (L2A processing level, only)
+             -> generation of metadata file containing file-paths to the processed data
 '''
 
 import os
@@ -87,16 +88,16 @@ def do_parallel(
                                               out_dir=out_dir,
                                               **kwargs)
 
-        # write to metadata dict
+        # write to metadata dictionary
         innerdict = {
-            "SENSING_DATE":         in_df["SENSING_DATE"].iloc[loopcounter].date(), 
-            "TTILE":                in_df["TILE"].iloc[loopcounter], 
-            "FPATH_BANDSTACK":      os.path.basename(path_bandstack), 
-            "FPATH_SCL":            os.path.join(Settings.SUBDIR_SCL_FILES,
-                                                 os.path.basename(path_sclfile)),
-            "FPATH_RGB_PREVIEW":                 os.path.join(Settings.SUBDIR_RGB_PREVIEWS,
-                                                              os.path.splitext(
-                                                                  os.path.basename(path_bandstack))[0] + '.png')
+            "SENSING_DATE": in_df["SENSING_DATE"].iloc[loopcounter].date(), 
+            "TILE": in_df["TILE"].iloc[loopcounter], 
+            "FPATH_BANDSTACK": os.path.basename(path_bandstack), 
+            "FPATH_SCL": os.path.join(Settings.SUBDIR_SCL_FILES,
+                                os.path.basename(path_sclfile)),
+            "FPATH_RGB_PREVIEW": os.path.join(Settings.SUBDIR_RGB_PREVIEWS,
+                                    os.path.splitext(
+                                        os.path.basename(path_bandstack))[0] + '.png')
         }
 
     except Exception as e:
@@ -115,7 +116,7 @@ def exec_parallel(raw_data_archive: str,
                   **kwargs
                   ) -> None:
     """
-    parallel execution of the Sentinel-2 preprocessing pipeline, including:
+    parallel execution of the Sentinel-2 pre-processing pipeline, including:
     
     -> resampling from 20 to 10m spatial resolution
     -> generation of a RGB preview image per scene
@@ -162,7 +163,9 @@ def exec_parallel(raw_data_archive: str,
     try:
         metadata_file = glob.glob(os.path.join(raw_data_archive, 'metadata*.csv'))[0]
     except Exception as e:
-        raise MetadataNotFoundError(f'Could not find metadata*.csv file in {raw_data_archive}: {e}')
+        raise MetadataNotFoundError(
+            f'Could not find metadata*.csv file in {raw_data_archive}: {e}'
+    )
 
     metadata_full = pd.read_csv(metadata_file)
 
@@ -173,18 +176,25 @@ def exec_parallel(raw_data_archive: str,
     metadata.SENSING_DATE = pd.to_datetime(metadata.SENSING_DATE)
     date_start = datetime.strptime(date_start, '%Y-%m-%d')
     date_end = datetime.strptime(date_end, '%Y-%m-%d')
-    metadata = metadata[pd.to_datetime(metadata.SENSING_DATE).between(date_start, date_end, inclusive=True)]
+    metadata = metadata[pd.to_datetime(metadata.SENSING_DATE).between(date_start,
+                                                                      date_end,
+                                                                      inclusive=True)]
     metadata = metadata.sort_values(by='SENSING_DATE')
 
-    # get "duplicates", i.e, scenes that have the same sensing date because of datastrip beginning/end issue
+    # get "duplicates", i.e, scenes that have the same sensing date because of datastrip
+    # beginning/end issue
     meta_blackfill = identify_split_scenes(metadata_df=metadata)
 
     # exclude these duplicated scenes from the main (parallelized) workflow!
     metadata = metadata[~metadata.PRODUCT_URI.isin(meta_blackfill["PRODUCT_URI"])]
     if meta_blackfill.empty:
-        logger.info(f'Found {metadata.shape[0]} scenes out of which 0 must be merged')
+        logger.info(
+            f'Found {metadata.shape[0]} scenes out of which 0 must be merged'
+        )
     else:
-        logger.info(f'Found {metadata.shape[0]} scenes out of which {meta_blackfill.shape[0]} must be merged')
+        logger.info(
+            f'Found {metadata.shape[0]} scenes out of which {meta_blackfill.shape[0]} must be merged'
+        )
 
     t = time.time()
     result = Parallel(n_jobs = n_threads)(
@@ -194,7 +204,7 @@ def exec_parallel(raw_data_archive: str,
             out_dir=target_s2_archive,
             **kwargs
             ) for idx in range(metadata.shape[0]))
-    print(f'Time difference of {time.time()-t} seconds.')
+    logger.info(f'Time difference of {time.time()-t} seconds.')
 
     # concatenate the metadata of the stacked image files into a pandas dataframe
     bandstack_meta = pd.DataFrame(result)
@@ -219,29 +229,72 @@ def exec_parallel(raw_data_archive: str,
 
         # append blackfill scenes to bandstack_meta
         df_row = {
-            'Date': pd.to_datetime(date).date(),
-            'Tile': meta_blackfill.TILE.iloc[0],
-            'Fname_bandstack': os.path.basename(res['bandstack']),
-            'Fname_SCL': os.path.join(Settings.SUBDIR_SCL_FILES,
-                                      os.path.basename(res['scl'])),
-            'Fname_preview': os.path.join(Settings.SUBDIR_RGB_PREVIEWS,
-                                          os.path.basename(res['preview']))
+            'SENSING_DATE': pd.to_datetime(date).date(),
+            'TILE': meta_blackfill.TILE.iloc[0],
+            'FPATH_BANDSTACK': os.path.basename(
+                res['bandstack']
+            ),
+            'FPATH_SCL': os.path.join(
+                Settings.SUBDIR_SCL_FILES,
+                os.path.basename(res['scl'])
+            ),
+            'FPATH_RGB_PREVIEW': os.path.join(
+                Settings.SUBDIR_RGB_PREVIEWS,
+                os.path.basename(res['preview'])
+            )
         }
-        bandstack_meta = bandstack_meta.append(df_row, ignore_index=True)
+        bandstack_meta = bandstack_meta.append(
+            df_row,
+            ignore_index=True
+        )
         
         # move to target archive
-        shutil.move(res['bandstack'], os.path.join(target_s2_archive,
-                                                   os.path.basename(
-                                                       res['bandstack'])))
-        shutil.move(res['scl'], os.path.join(os.path.join(target_s2_archive,
-                                                          Settings.SUBDIR_SCL_FILES),
-                                             os.path.basename(res['scl'])))
-        shutil.move(res['preview'], os.path.join(os.path.join(target_s2_archive,
-                                                              Settings.SUBDIR_RGB_PREVIEWS),
-                                             os.path.basename(res['preview'])))
+        shutil.move(
+            res['bandstack'],
+            os.path.join(
+                target_s2_archive,
+                os.path.basename(
+                    res['bandstack']
+                )
+            )
+        )
+        shutil.move(
+            res['scl'],
+            os.path.join(
+                os.path.join(
+                    target_s2_archive,
+                    Settings.SUBDIR_SCL_FILES
+                ),
+                os.path.basename(
+                    res['scl']
+                )
+            )
+        )
+        shutil.move(
+            res['preview'],
+            os.path.join(
+                os.path.join(
+                    target_s2_archive,
+                    Settings.SUBDIR_RGB_PREVIEWS
+                ),
+                os.path.basename(
+                    res['preview']
+                )
+            )
+        )
     
         # remove working directory in the end
-        shutil.rmtree(os.path.join(target_s2_archive, 'temp_blackfill'))
+        shutil.rmtree(
+            os.path.join(
+                target_s2_archive,
+                'temp_blackfill'
+            )
+        )
     
         # write metadata of all stacked files to CSV
-        bandstack_meta.to_csv(os.path.join(target_s2_archive, Settings.RESAMPLED_METADATA_FILE))
+        bandstack_meta.to_csv(
+            os.path.join(
+                target_s2_archive,
+                Settings.RESAMPLED_METADATA_FILE
+            )
+        )
