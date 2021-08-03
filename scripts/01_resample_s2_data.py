@@ -7,11 +7,11 @@ from agrisatpy.processing.resampling import exec_parallel
 
 # define a date range
 year = 2020
-date_start = f'{year}-08-01'
-date_end = f'{year}-12-31'
+date_start = f'{year}-08-11'
+date_end = f'{year}-08-18'
 
 # define a Sentinel2 tile
-tile = 'T31TGM'
+tile = 'T32TMT'
 
 # define in and output directory
 # input: directory where the *.SAFE files are located
