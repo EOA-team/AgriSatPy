@@ -85,7 +85,7 @@ def create_processed_metadata(raw_data_archive: str,
             print(e)
             continue
         splitted = fname_bandstack.split('_')
-        fname_scl = f'{splitted[0]}_{splitted[1]}_{splitted[2]}_{splitted[3]}_SCL_{splitted[-1]}'
+        fname_scl = f'{splitted[0]}_{splitted[1]}_{splitted[3]}_SCL_{splitted[-1]}'
         
         metadata.loc[idx,'FPATH_BANDSTACK'] = fname_bandstack
         
@@ -104,12 +104,12 @@ def create_processed_metadata(raw_data_archive: str,
 if __name__ == '__main__':
     
     # define a date range
-    year = 2019
+    year = 2020
     date_start = f'{year}-01-01'
     date_end = f'{year}-12-31'
     
     # define a Sentinel2 tile
-    tile = 'T31TGM'
+    tile = 'T32TMT'
     
     # define in and output directory
     # input: directory where the *.SAFE files are located

@@ -19,9 +19,12 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from agrisatpy.processing.extraction import (
-    get_S2_bandfiles, get_S2_sclfile, buffer_fieldpolygons,
-    DataNotFoundError, compute_parcel_stat)
+from .utils import get_S2_bandfiles
+from .utils import get_S2_sclfile
+from .utils import buffer_fieldpolygons
+from .utils import DataNotFoundError
+from .utils import compute_parcel_stat
+
 from agrisatpy.config.sentinel2 import Sentinel2
 from agrisatpy.config import get_settings
 
@@ -252,12 +255,12 @@ def S2singlebands2table(in_dir: str,
                     flat_scl_class = out_scl.flatten(order='F')
                 
                 # add SCL to ID_df out of rio scope
-                per_ID_df["SCL_class"] = flat_scl_class
+                per_ID_df["scl_class"] = flat_scl_class
 
         # add field ID
         per_ID_df[id_column] = feature[1][id_column]
         # add CRS in form of EPSG code
-        per_ID_df["CRS_epsg"] = bbox_buffered_s2_crs.crs.to_epsg()
+        per_ID_df["epsg"] = bbox_buffered_s2_crs.crs.to_epsg()
         # append to full DF holding all field_IDs
         full_DF.append(per_ID_df)
 
@@ -281,9 +284,9 @@ def S2singlebands2table(in_dir: str,
     # ========= filter out clouds based on SCL ================
     # works for is_L2A data only
     if is_L2A:
-        out_DF = out_DF.loc[out_DF["SCL_class"] != nodata_scl]
+        out_DF = out_DF.loc[out_DF["scl_class"] != nodata_scl]
     if filter_clouds and is_L2A:
-        out_DF = out_DF.loc[~out_DF["SCL_class"].isin(scl_2_filterout)]
+        out_DF = out_DF.loc[~out_DF["scl_class"].isin(scl_2_filterout)]
     
     # Append sensing product_date of S2 image
     # YYYY, MM, DD = 2020, 4, 14  # debug
@@ -379,42 +382,39 @@ def S2bandstack2table(in_file: str,
     except Exception as e:
         raise DataNotFoundError(f'Could not read field parcel geoms: {e}')
 
-    # calculate the buffer
-    bbox_parcels_buffered = buffer_fieldpolygons(in_gdf=bbox_parcels, 
-                                                 buffer=buffer)
-
     # ========================== check CRS ==========================
 
     # get CRS of satellite data by taking the 1st .JP2 file
     sat_crs = bandstack.crs
-    # convert buffered bbox to S2 CRS
-    bbox_buffered_s2_crs = bbox_parcels_buffered.to_crs(sat_crs)
+    # convert bbox to S2 CRS before buffering to be in the correct coordinate system
+    bbox_s2_crs = bbox_parcels.to_crs(sat_crs)
 
-    # assert that the crs of the buffered polygons is the same as of the inputs
-    assert bbox_parcels_buffered.geometry.crs == bbox_parcels.geometry.crs, \
-            'CRS mismatch between buffer and input'
+    # calculate the buffer
+    bbox_parcels_buffered = buffer_fieldpolygons(in_gdf=bbox_s2_crs, 
+                                                 buffer=buffer)
+
 
     # ========================== loop over IDs ==========================
     full_DF = []
     if is_sentinel: parcel_statistics = []  # SCL is available for is_sentinel level, only
    
-    for feature in bbox_buffered_s2_crs.iterrows():
+    for idx in bbox_parcels_buffered.index:
 
-        logger.info(f"Extracting field parcel with ID {feature[1][id_column]}")
+        # unfortunately, geopandas still does not support iterrows() on geometries...
+        shape = bbox_parcels_buffered.loc[[idx]]
+        logger.info(f"Extracting field parcel with ID {shape[id_column]}")
 
     # ========================== Loop over bands! ==========================
         flat_band_rflt_per_ID = []
-        shape = gpd.GeoDataFrame(feature[1]).transpose()
-
         try:
             out_band, out_transform = rio.mask.mask(bandstack,
-                                                    shape["geometry"],
-                                                    crop = True, 
-                                                    all_touched = True, # IMPORTANT!
+                                                    shape.geometry,
+                                                    crop=True, 
+                                                    all_touched=True, # IMPORTANT!
                                                     nodata = nodata_refl
-                                                    )
+            )
         except Exception as e:
-            logger.warning(f'Couldnot clip feature {feature[1][id_column]}: {e}')
+            logger.warning(f'Couldnot clip feature {shape[id_column]}: {e}')
             # if the feature could not be clipped (e.g., because it is not located
             # within the extent of the raster) flag the feature and continue with the next
             continue
@@ -462,32 +462,31 @@ def S2bandstack2table(in_file: str,
         # works only for is_sentinel processing level
         if is_sentinel:
             with rio.open(scl_filepath) as src:
-                shape = gpd.GeoDataFrame(feature[1]).transpose()
-                
                 out_scl, out_transform = rio.mask.mask(src,
-                                                        shape["geometry"],
+                                                        shape.geometry,
                                                         crop=True, 
                                                         all_touched=True,
                                                         nodata=nodata_scl
-                                                        )
+                )
 
                 # compute share of SCL classes for the current polygon
                 stats = compute_parcel_stat(in_array=out_scl,
-                                            nodata_value=nodata_scl)
+                                            nodata_value=nodata_scl
+                )
 
-                stats[id_column] = feature[1][id_column]
+                stats[id_column] = shape[id_column].values[0]
                 parcel_statistics.append(stats)
 
                 # also flatten the SCL values to store them p er pixel
                 flat_scl_class = out_scl.flatten(order='F')
             
             # add SCL to ID_df out of rio scope
-                per_ID_df["SCL_class"] = flat_scl_class
+                per_ID_df["scl_class"] = flat_scl_class
 
         # add field ID
-        per_ID_df[id_column] = feature[1][id_column]
+        per_ID_df[id_column] = shape[id_column].values[0]
         # add CRS in form of EPSG code
-        per_ID_df["CRS_epsg"] = bbox_buffered_s2_crs.crs.to_epsg()
+        per_ID_df["epsg"] = bbox_parcels_buffered.crs.to_epsg()
         # append to full DF holding all field_IDs
         full_DF.append(per_ID_df)
     
@@ -509,9 +508,9 @@ def S2bandstack2table(in_file: str,
     # ========= filter out clouds based on SCL ================
     # works for is_sentinel-2 data only
     if is_sentinel:
-        out_DF = out_DF.loc[out_DF["SCL_class"] != nodata_scl]
+        out_DF = out_DF.loc[out_DF["scl_class"] != nodata_scl]
     if filter_clouds and is_sentinel:
-        out_DF = out_DF.loc[~out_DF["SCL_class"].isin(scl_2_filterout)]
+        out_DF = out_DF.loc[~out_DF["scl_class"].isin(scl_2_filterout)]
     
     # Append sensing product_date of S2 image
     out_DF["date"] = product_date
