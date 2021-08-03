@@ -52,17 +52,17 @@ for tile in tiles:
     metadata = pd.read_csv(Settings.RESAMPLED_METADATA_FILE)
     date_start_dt = datetime.strptime(date_start, Settings.DATE_FMT_INPUT)
     date_end_dt = datetime.strptime(date_end, Settings.DATE_FMT_INPUT)
-    metadata = metadata[pd.to_datetime(metadata.Date).between(date_start_dt,
+    metadata = metadata[pd.to_datetime(metadata.SENSING_DATE).between(date_start_dt,
                                                               date_end_dt,
                                                               inclusive=True)]
-    metadata = metadata.sort_values(by='Date')
+    metadata = metadata.sort_values(by='SENSING_DATE')
 
     # loop over the sensing dates available
     for idx in range(metadata.shape[0]):
         
-        date = metadata.Date.iloc[idx]
-        in_file_scl = metadata.Fname_SCL.iloc[idx]
-        bandstack = metadata.Fname_bandstack.iloc[idx]
+        date = metadata.SENSING_DATE.iloc[idx]
+        in_file_scl = metadata.FPATH_SCL.iloc[idx]
+        bandstack = metadata.FPATH_BANDSTACK.iloc[idx]
 
         # extract the pixel values
         refl, scl_stats = S2bandstack2table(in_file=bandstack,
