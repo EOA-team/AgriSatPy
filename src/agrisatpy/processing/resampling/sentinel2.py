@@ -93,11 +93,17 @@ def do_parallel(
             "SENSING_DATE": in_df["SENSING_DATE"].iloc[loopcounter].date(), 
             "TILE": in_df["TILE"].iloc[loopcounter], 
             "FPATH_BANDSTACK": os.path.basename(path_bandstack), 
-            "FPATH_SCL": os.path.join(Settings.SUBDIR_SCL_FILES,
-                                os.path.basename(path_sclfile)),
-            "FPATH_RGB_PREVIEW": os.path.join(Settings.SUBDIR_RGB_PREVIEWS,
-                                    os.path.splitext(
-                                        os.path.basename(path_bandstack))[0] + '.png')
+            "FPATH_SCL": os.path.join(
+                Settings.SUBDIR_SCL_FILES,
+                os.path.basename(path_sclfile)
+            ),
+            "FPATH_RGB_PREVIEW": os.path.join(
+                Settings.SUBDIR_RGB_PREVIEWS,
+                os.path.splitext(
+                    os.path.basename(path_bandstack))[0] + '.png'
+            ),
+            'PRODUCT_URI': in_df.PRODUCT_URI.iloc[loopcounter],
+            'SCENE_ID': in_df.SCENE_ID.iloc[loopcounter]
         }
 
     except Exception as e:
@@ -154,7 +160,6 @@ def exec_parallel(raw_data_archive: str,
         kwargs to pass to resample_and_stack_S2 and scl_10m_resampling (L2A, only)
     """
     # check the metadata in the raw data archive
-    # TODO: add auto-search for correct subfolder
     if not os.path.isdir(raw_data_archive):
         raise ArchiveNotFoundError(f'No such file or directory: {raw_data_archive}')
 
@@ -170,7 +175,7 @@ def exec_parallel(raw_data_archive: str,
     metadata_full = pd.read_csv(metadata_file)
 
     # filter by S2 tile
-    metadata = metadata_full[metadata_full.TILE == tile]
+    metadata = metadata_full[metadata_full.TILE == tile].copy()
 
     # filter metadata by provided date range and tile
     metadata.SENSING_DATE = pd.to_datetime(metadata.SENSING_DATE)
@@ -241,12 +246,14 @@ def exec_parallel(raw_data_archive: str,
             'FPATH_RGB_PREVIEW': os.path.join(
                 Settings.SUBDIR_RGB_PREVIEWS,
                 os.path.basename(res['preview'])
-            )
+            ),
+            'PRODUCT_URI': meta_blackfill.PRODUCT_URI.iloc[0],
+            'SCENE_ID': meta_blackfill.SCENE_ID.iloc[0]
         }
-        bandstack_meta = bandstack_meta.append(
-            df_row,
-            ignore_index=True
-        )
+        # bandstack_meta = bandstack_meta.append(
+        #     df_row,
+        #     ignore_index=True
+        # )
         
         # move to target archive
         shutil.move(
