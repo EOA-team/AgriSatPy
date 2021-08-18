@@ -4,3 +4,5 @@ numpy
 pydantic
 pyproj
 rasterio
+pytest
+sphinx
