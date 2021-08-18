@@ -26,7 +26,7 @@ setuptools.setup(
     packages = find_packages(
         where = 'src'
     ),
-    package_dir={'':'src'},
+    package_dir={'':'source'},
     include_package_data=True,
     package_data={'': []},
     classifiers = [
