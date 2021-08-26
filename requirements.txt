@@ -4,3 +4,6 @@ numpy
 pydantic
 pyproj
 rasterio
+pytest
+sphinx
+sphinx_rtd_theme

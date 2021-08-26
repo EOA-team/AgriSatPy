@@ -79,10 +79,10 @@ def buffer_fieldpolygons(in_gdf: gpd.GeoDataFrame,
     '''
     buffered = in_gdf.copy()
     # resolution is set to 16 to obtain high-quality edge regions
-    buffered['geometry'] = buffered['geometry'].buffer(buffer,resolution=16)
+    buffered.geometry = buffered.geometry.buffer(buffer,resolution=16)
     
     # omit empty geometries after buffering
-    buffered = buffered[~buffered["geometry"].is_empty]
+    buffered = buffered[~buffered.geometry.is_empty]
 
     # in case of inward buffering it might happen that single field polygons
     # are split into multipolygons that are too small for further processing

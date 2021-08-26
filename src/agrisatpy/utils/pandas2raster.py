@@ -294,4 +294,3 @@ def pandas2raster(in_df: pd.DataFrame,
         except Exception as e:
             logger.error(f'Failed to write {out_file_polygon}: {e}')
             sys.exit()
-
