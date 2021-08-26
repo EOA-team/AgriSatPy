@@ -3,7 +3,9 @@ image: python:3.8-slim
 pages:
   script:
   - pip install -r requirements.txt
-  - ./docs/make html
+  - cd ./docs
+  - make html
+  - cd ..
   - mv ./docs/_build/html public
   artifacts:
     paths:
