@@ -7,3 +7,5 @@ rasterio
 pytest
 sphinx
 sphinx_rtd_theme
+matplotlib
+lxml
