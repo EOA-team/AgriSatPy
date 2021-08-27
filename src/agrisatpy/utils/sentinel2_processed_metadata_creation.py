@@ -12,8 +12,12 @@ from datetime import datetime
 import pandas as pd
 
 from agrisatpy.config import get_settings
-from agrisatpy.processing.resampling.sentinel2 import ArchiveNotFoundError
-from agrisatpy.processing.resampling.sentinel2 import MetadataNotFoundError
+
+class ArchiveNotFoundError(Exception):
+    pass
+
+class MetadataNotFoundError(Exception):
+    pass
 
 Settings = get_settings()
 
