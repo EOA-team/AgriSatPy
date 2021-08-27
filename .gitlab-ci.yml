@@ -3,6 +3,9 @@ image: python:3.8-slim
 pages:
   script:
   - pip install -r requirements.txt
+  - apt-get update
+  - apt-get upgrade -y
+  - apt-get install build-essential -y
   - cd ./docs
   - make html
   - cd ..
