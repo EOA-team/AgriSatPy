@@ -9,8 +9,9 @@ Created on Jul 9, 2021
 import os
 import sys
 from typing import List
-from agrisatpy.config import Sentinel2
+from pathlib import Path
 
+from agrisatpy.config import Sentinel2
 from agrisatpy.config import get_settings
 from agrisatpy.utils.decorators import check_processing_level
 
@@ -25,11 +26,11 @@ class ArchiveCreationError(Exception):
 
 
 @check_processing_level
-def add_tile2archive(archive_dir: str,
+def add_tile2archive(archive_dir: Path,
                      processing_level: str,
                      year: int,
                      tile: str
-                     ) -> str:
+                     ) -> Path:
     """
     adds a new tile to an existing Sentinel-2 archive structure for
     storing bandstacked tiff files. Returns the path of the created
@@ -45,6 +46,8 @@ def add_tile2archive(archive_dir: str,
         year for which to create a sub-directories.
     :param tile:
         selected tile for which to create a storage directory.
+    :return tile_dir:
+        path of the directory created for storing the tile data
     """
     # check if the processing level is valid
     if processing_level not in s2.PROCESSING_LEVELS:

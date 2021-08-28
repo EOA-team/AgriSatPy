@@ -7,12 +7,13 @@ Created on Aug 3, 2021
 import os
 from datetime import datetime
 from datetime import date
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
 
-def scene_selection(metadata_file: str,
+def scene_selection(metadata_file: Path,
                     tile: str,
                     cloudcover_threshold: float,
                     date_start: date,

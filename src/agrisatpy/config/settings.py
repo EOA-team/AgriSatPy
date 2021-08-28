@@ -30,6 +30,10 @@ class Settings(BaseModel):
     # define date format
     DATE_FMT_INPUT: str = '%Y-%m-%d'
     DATE_FMT_FILES: str = '%Y%m%d'
+
+    # define DHUS username and password
+    DHUS_USER: str = ''
+    DHUS_PASSWORD: str = ''
     
     # define logger
     LOGGER_NAME: str = 'AgriSatPy'

@@ -29,7 +29,7 @@ class UnknownProcessingLevel(Exception):
     pass
 
 
-def parse_MTD_TL(in_file: str
+def parse_MTD_TL(in_file: Path
                 ) -> dict:
     """
     Parses the MTD_TL.xml metadata file provided by ESA.This metadata
@@ -46,6 +46,8 @@ def parse_MTD_TL(in_file: str
     
     :param in_file:
         filepath of the scene metadata xml
+    :return metadata:
+        dict with extracted metadata entries
     """
     # parse the xml file into a minidom object
     xmldoc = minidom.parse(in_file)
@@ -236,7 +238,10 @@ def get_scene_footprint(sensor_data: dict
 
     :param sensor_data:
         dict with ULX, ULY, NROWS_10m, NCOLS_10m, EPSG entries
-        obtained from the MTD_TL.xml file 
+        obtained from the MTD_TL.xml file
+    :return wkt:
+        extended well-known-text representation of the scene
+        footprint
     """
     dst_crs = 'epsg:4326'
     # get the EPSG-code
@@ -272,7 +277,7 @@ def get_scene_footprint(sensor_data: dict
     return wkt
 
 
-def parse_s2_scene_metadata(in_dir: str
+def parse_s2_scene_metadata(in_dir: Path
                             ) -> dict:
     """
     wrapper function to extract metadata from ESA Sentinel-2
@@ -290,6 +295,8 @@ def parse_s2_scene_metadata(in_dir: str
 
     :param in_dir:
         directory containing the L1C or L2A Sentinel-2 scene
+    :return mtd_msi:
+        dict with extracted metadata items
     """
     
     # depending on the processing level (supported: L1C and
@@ -329,6 +336,9 @@ def loop_s2_archive(in_dir: str
         directory containing the Sentinel-2 data (L1C and/or L2A
         processing level). Sentinel-2 scenes are assumed to follow ESA's
         .SAFE naming convention and structure
+    :return:
+        dataframe with metadata of all scenes handled by the function
+        call
     """
     # search for .SAFE subdirectories identifying the single scenes
     s2_scenes = glob.glob(os.path.join(in_dir, '*.SAFE'))
