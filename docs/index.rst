@@ -9,6 +9,8 @@ AgriSatPy is a lightweight package to organize, explore and process satellite re
 
 Our focus lies on Sentinel-2 MSI for which we offer special support but other satellite platforms in the optical domain could be added in the future as well.
 
+When working with Sentinel(-2) data we assume the datasets to follow the [Standard Archive Format for Europe (SAFE)](https://sentinel.esa.int/web/sentinel/user-guides/sentinel-1-sar/data-formats/safe-specification).
+
 Because of our background in agronomy and geography, we developed the tools to efficiently answer our research questions. However, we are convinced that the present package can also be useful to other researchers who need to work with satellite data or want to get familiar with the world of remote sensing.
 
 .. toctree::

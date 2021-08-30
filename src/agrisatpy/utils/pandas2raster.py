@@ -22,7 +22,10 @@ import sys
 import pandas as pd
 import rasterio as rio
 import numpy as np
-from typing import List, Tuple, TypeVar
+from typing import List
+from typing import  Tuple
+from typing import TypeVar
+from typing import Optional
 from rasterio.profiles import Profile
 
 from agrisatpy.config import get_settings
@@ -42,6 +45,8 @@ def extract_epsg(df: pd.DataFrame,
         dataframe from which to extract the EPSG
     :param col_crs:
         name of the column with the EPSG code (Def: 'CRS_epsg')
+    :return:
+        integer EPSG code
     """
     return df[col_crs].unique()[0]
 
@@ -72,6 +77,8 @@ def construct_profile(epsg_int: int,
         number of rows (height of the resulting image)
     :param bands:
         number of the bands in the output image
+    :return profile:
+        profile required for geo-referencing the image data
     """
     profile = {}
     # define the Affine projection parameters first
@@ -95,6 +102,8 @@ def polygon2raster(in_df: pd.DataFrame,
                    epsg_int: int, 
                    column_selection: List[str],
                    target_resolution: float,
+                   colname_x: Optional[str]='x_coord',
+                   colname_y: Optional[str]='y_coord'
                    ) -> Tuple[np.array, Profile]:
     """
     helper method to convert a polygon or collection of polygons
@@ -109,14 +118,22 @@ def polygon2raster(in_df: pd.DataFrame,
         spatial resolution (i.e, pixel size) of the output image
     :param column_selection:
         columns of the dataframe which shall be written to geoTiff (as bands)
+    :param colname_x:
+        name of the dataframe column with the x coordinates. The default
+        is 'x_coord'.
+    :param colname_y:
+        name of the dataframe column with the y coordinates. The default
+        is 'y_coord'.
+    :return (img_arr, profile):
+        returns the image array and the profile for proper geo-localisation
     """
     # get array of polygon values
     # get upper left X/Y coordinates
-    ulx = in_df["x_coord"].min()
-    uly = in_df["y_coord"].max()
+    ulx = in_df[colname_x].min()
+    uly = in_df[colname_y].max()
     # get lower right X/Y coordinates to span the img matrix
-    lrx = in_df["x_coord"].max()
-    lry = in_df["y_coord"].min()
+    lrx = in_df[colname_x].max()
+    lry = in_df[colname_y].min()
 
     # caluclate max rows along x and y axis
     max_x_coord = int((lrx - ulx) / target_resolution) + 1
@@ -243,28 +260,34 @@ def pandas2raster(in_df: pd.DataFrame,
             logger.info(f'Converting raster data for polygon with ID: {uid}')
     
             # define name of the output
-            out_file_polygon = os.path.join(out_dir,
-                                           f'{product_name}_fieldpolygon_{uid}_{col_str}.tiff')
+            out_file_polygon = os.path.join(
+                out_dir,
+                f'{product_name}_fieldpolygon_{uid}_{col_str}.tiff'
+            )
     
             # filter for uid
             polygon_in_df = in_df[in_df[id_column] == uid]
 
             # convert point-wise pixel values (i.e., rows in dataframe) to 3-d numpy array
             try:
-                img_arr, profile = polygon2raster(in_df=polygon_in_df,
-                                                  epsg_int=crs,
-                                                  target_resolution=target_resolution,
-                                                  column_selection=column_selection)
+                img_arr, profile = polygon2raster(
+                    in_df=polygon_in_df,
+                    epsg_int=crs,
+                    target_resolution=target_resolution,
+                    column_selection=column_selection
+                )
             except Exception as e:
                 logger.error(f'Could not convert data for polygon with ID {uid}: {e}')
                 continue
 
             # write image to file
             try:
-                write_image(out_file=out_file_polygon,
-                            profile=profile,
-                            out_array=img_arr,
-                            column_selection=column_selection)
+                write_image(
+                    out_file=out_file_polygon,
+                    profile=profile,
+                    out_array=img_arr,
+                    column_selection=column_selection
+                )
             except Exception as e:
                 logger.error(f'Could not write raster data to file (polygon ID {uid}): {e}')
                 continue
