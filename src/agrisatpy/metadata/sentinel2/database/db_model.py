@@ -6,6 +6,7 @@ Created on Jul 12, 2021
 
 from sqlalchemy import create_engine
 from sqlalchemy import MetaData
+from sqlalchemy import ForeignKeyConstraint
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, String, Float, Time, Date, Integer, Text, ARRAY
 from geoalchemy2 import Geometry
@@ -122,6 +123,13 @@ class S2_Processed_Metadata(Base):
     # spectral bands contained
     spectral_bands = Column(ARRAY(String), nullable=False)
 
+    __table_args__ = (
+        ForeignKeyConstraint(['scene_id', 'product_uri'],
+                             ['sentinel2_raw_metadata.scene_id', 'sentinel2_raw_metadata.product_uri'],
+                             onupdate="CASCADE", ondelete="CASCADE"
+        ),
+    )
+
 
 def create_tables() -> None:
     """
@@ -134,3 +142,8 @@ def create_tables() -> None:
             logger.info(f'Created table {table}')
     except Exception as e:
         raise Exception(f'Could not create table: {e}')
+
+
+if __name__ == '__main__':
+    
+    create_tables()
