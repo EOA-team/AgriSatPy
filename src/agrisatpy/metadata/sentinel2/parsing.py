@@ -75,6 +75,7 @@ def parse_MTD_TL(in_file: Path
     # sensing time (acquisition time)
     sensing_time_xml = xmldoc.getElementsByTagName('SENSING_TIME')
     sensing_time = sensing_time_xml[0].firstChild.nodeValue
+    metadata['SENSING_TIME'] = sensing_time
     metadata['SENSING_DATE'] = datetime.strptime(
         sensing_time.split('T')[0],'%Y-%m-%d').date()
 
@@ -284,7 +285,7 @@ def parse_s2_scene_metadata(in_dir: Path
     scenes. It returns a dict with the metadata most important
     to characterize a given Sentinel-2 scene.
 
-    The function works on both, L1C and L2A (sen2core-based)
+    The function works on both, L1C and L2A (sen2cor-based)
     processing levels. The amount of metadata, however, is
     reduced in the case of L1C since no scene classification
     information is available.
