@@ -1,5 +1,7 @@
 pandas
 geopandas
+sqlalchemy
+geoalchemy2
 numpy
 pydantic
 pyproj
