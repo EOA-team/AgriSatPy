@@ -155,31 +155,3 @@ def download_data(df: pd.DataFrame,
     except Exception as e:
         logger.error(f'Download failed: {e}')
         return
-
-
-
-if __name__ == '__main__':
-    
-    footprint_file = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/AOI_Esch.shp')
-    date_start = date(2021,1,1)
-    date_end = date(2021,8,15)
-    platform = Platforms.Sentinel2
-
-    # filter by tile and processing level
-    options = {
-        'tileid': '32TMT',
-        'processinglevel': 'Level-1C'
-    }
-
-    # query products
-    products = query_from_copernicus(
-        footprint_file,
-        date_start,
-        date_end,
-        platform,
-        **options
-    )
-
-    # download them
-    download_dir = '/tmp/'
-    download_data(products, download_dir)
