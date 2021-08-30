@@ -307,6 +307,9 @@ def parse_s2_scene_metadata(in_dir: Path
         # scene is L2A
         mtd_msil2a_xml = str(next(Path(in_dir).rglob('MTD_MSIL2A.xml')))
         mtd_msi = parse_MTD_MSI(in_file=mtd_msil2a_xml)
+        # TODO: test if that works
+        with open(mtd_msil2a_xml) as xml_file:
+            mtd_msi = mtd_msi['mtd_msi_xml'] = xml_file.read()
 
     elif in_dir.find('_MSIL1C_') > 0:
         # scene is L1C
