@@ -126,7 +126,8 @@ class S2_Processed_Metadata(Base):
     __table_args__ = (
         ForeignKeyConstraint(['scene_id', 'product_uri'],
                              ['sentinel2_raw_metadata.scene_id', 'sentinel2_raw_metadata.product_uri'],
-                             onupdate="CASCADE", ondelete="CASCADE"
+                             onupdate="CASCADE",
+                             ondelete="CASCADE"
         ),
     )
 
