@@ -216,14 +216,14 @@ def parse_MTD_MSI(in_file: str
         metadata[tag] = xml_elem[0].firstChild.data
 
     # extract solar irradiance for the single bands
-    bands = ['B01', 'BO2', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09',
+    bands = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09',
              'B10', 'B11', 'B12']
     sol_irrad_xml = xmldoc.getElementsByTagName('SOLAR_IRRADIANCE')
     for idx, band in enumerate(bands):
         metadata[f'SOLAR_IRRADIANCE_{band}'] = float(sol_irrad_xml[idx].firstChild.nodeValue)
 
     # S2 tile
-    metadata['TILE'] = metadata['PRODUCT_URI'].split('_')[5]
+    metadata['TILE_ID'] = metadata['PRODUCT_URI'].split('_')[5]
 
     return metadata
     
@@ -303,24 +303,28 @@ def parse_s2_scene_metadata(in_dir: Path
     # depending on the processing level (supported: L1C and
     # L2A) metadata has to be extracted slightly differently
     # because of different file names and storage locations
-    if in_dir.find('_MSIL2A_') > 0:
+    if str(in_dir).find('_MSIL2A_') > 0:
         # scene is L2A
         mtd_msil2a_xml = str(next(Path(in_dir).rglob('MTD_MSIL2A.xml')))
         mtd_msi = parse_MTD_MSI(in_file=mtd_msil2a_xml)
-        # TODO: test if that works
-        with open(mtd_msil2a_xml) as xml_file:
-            mtd_msi = mtd_msi['mtd_msi_xml'] = xml_file.read()
+        with open(mtd_msil2a_xml, 'r') as xml_file:
+            mtd_msi['mtd_msi_xml'] = xml_file.read()
 
-    elif in_dir.find('_MSIL1C_') > 0:
+    elif str(in_dir).find('_MSIL1C_') > 0:
         # scene is L1C
         mtd_msil1c_xml = str(next(Path(in_dir).rglob('MTD_MSIL1C.xml')))
         mtd_msi = parse_MTD_MSI(in_file=mtd_msil1c_xml)
+        with open(mtd_msil1c_xml, 'r') as xml_file:
+            mtd_msi['mtd_msi_xml'] = xml_file.read()
 
     else:
         raise UnknownProcessingLevel(
             f'{in_dir} seems not be a valid Sentinel-2 scene')
 
     mtd_tl_xml = str(next(Path(in_dir).rglob('MTD_TL.xml')))
+    with open(mtd_tl_xml) as xml_file:
+        mtd_msi['mtd_tl_xml'] = xml_file.read()
+
     mtd_msi.update(parse_MTD_TL(in_file=mtd_tl_xml))
 
     return mtd_msi

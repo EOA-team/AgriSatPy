@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy import MetaData
 from sqlalchemy import ForeignKeyConstraint
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, String, Float, Time, Date, Integer, Text, ARRAY
+from sqlalchemy import Column, String, Float, Date, Integer, Text, ARRAY, TIMESTAMP
 from geoalchemy2 import Geometry
 
 from agrisatpy.config import get_settings
@@ -33,7 +33,6 @@ class S2_Raw_Metadata(Base):
     product_uri = Column(String, nullable=False, primary_key=True)
     tile_id = Column(String, nullable=False)
     l1c_tile_id = Column(String)
-    tile = Column(String, nullable=False)
 
     # processing level, orbit and spacecraft
     processing_level = Column(String, nullable=False)
@@ -42,7 +41,7 @@ class S2_Raw_Metadata(Base):
     sensing_orbit_direction = Column(String, nullable=False)
 
     # temporal information
-    sensing_time = Column(Time, nullable=False)
+    sensing_time = Column(TIMESTAMP, nullable=False)
     sensing_date = Column(Date, nullable=False)
 
     # geometry and geolocalisation
