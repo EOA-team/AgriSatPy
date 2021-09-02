@@ -60,7 +60,7 @@ if __name__ == '__main__':
     from agrisatpy.metadata.sentinel2 import loop_s2_archive
     from pathlib import Path
 
-    sat_dir = Path('/home/graflu/public/Evaluation/Projects/KP0022_DeepField/Sentinel-2/S2_L2A_data/CH/2020')
+    sat_dir = Path('/home/graflu/public/Evaluation/Projects/KP0022_DeepField/Sentinel-2/S2_L2A_data/CH/2019')
     
     metadata = loop_s2_archive(in_dir=sat_dir)
     metadata['storage_device_ip'] = '//hest.nas.ethz.ch/green_groups_kp_public'

@@ -26,6 +26,7 @@ from typing import List
 from typing import  Tuple
 from typing import TypeVar
 from typing import Optional
+from pathlib import Path
 from rasterio.profiles import Profile
 
 from agrisatpy.config import get_settings
@@ -167,7 +168,7 @@ def polygon2raster(in_df: pd.DataFrame,
     return (img_arr, profile)
 
 
-def write_image(out_file: str,
+def write_image(out_file: Path,
                 profile: Profile,
                 out_array: np.array,
                 column_selection: List[str]
@@ -202,9 +203,9 @@ def pandas2raster(in_df: pd.DataFrame,
                   column_selection: List[str],
                   target_resolution: float,
                   product_name: str,
-                  id_column: str='polygon_ID',
-                  polygon_selection: List[TypeVar('T')]=[],
-                  single_out_file: bool=False,
+                  id_column: Optional[str]='polygon_ID',
+                  polygon_selection: Optional[List[TypeVar('T')]]=[],
+                  single_out_file: Optional[bool]=False,
                   ) -> None:
     """
     converts a pandas dataframe with field polygons (identified by the id_column
@@ -260,8 +261,7 @@ def pandas2raster(in_df: pd.DataFrame,
             logger.info(f'Converting raster data for polygon with ID: {uid}')
     
             # define name of the output
-            out_file_polygon = os.path.join(
-                out_dir,
+            out_file_polygon = out_dir.joinpath(
                 f'{product_name}_fieldpolygon_{uid}_{col_str}.tiff'
             )
     

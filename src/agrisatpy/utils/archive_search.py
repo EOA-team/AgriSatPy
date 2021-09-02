@@ -112,7 +112,7 @@ def search_data(in_dir: Path,
                         )
         ))
 
-        if not os.path.isdir(in_dir_year):
+        if not in_dir_year.exists():
             logger.warning(f'No such directory: {in_dir_year}')
             continue
 

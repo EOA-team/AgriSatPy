@@ -357,12 +357,16 @@ def loop_s2_archive(in_dir: Path
         call
     """
     # search for .SAFE subdirectories identifying the single scenes
+    # some data providers, however, do not name their products following the
+    # ESA convention (.SAFE is missing)
     s2_scenes = glob.glob(str(in_dir.joinpath('*.SAFE')))
     n_scenes = len(s2_scenes)
     if n_scenes == 0:
-        raise UnknownProcessingLevel(
-            f'No .SAFE sub-directories where found in {in_dir}')
-
+        s2_scenes = [f for f in in_dir.iterdir() if f.is_dir()]
+        n_scenes = len(s2_scenes)
+        if n_scenes == 0:
+            raise UnknownProcessingLevel('No Sentinel-2 scenes were found')
+        
     # loop over the scenes
     metadata_scenes = []
     for idx, s2_scene in enumerate(s2_scenes):
