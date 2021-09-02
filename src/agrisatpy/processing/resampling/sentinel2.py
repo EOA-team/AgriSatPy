@@ -13,10 +13,8 @@ Created on Jul 9, 2021
 
 import os
 import time
-import glob
 import pandas as pd
 import shutil
-from datetime import datetime
 from datetime import date
 from pathlib import Path
 from joblib import Parallel, delayed
@@ -31,7 +29,6 @@ from agrisatpy.spatial_resampling import identify_split_scenes, merge_split_scen
 from agrisatpy.utils import reconstruct_path
 from agrisatpy.config import get_settings
 from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
-from fileinput import fileno
 
 Settings = get_settings()
 engine = create_engine(Settings.DB_URL, echo=Settings.ECHO_DB)
@@ -112,12 +109,12 @@ def do_parallel(in_df: pd.DataFrame,
 
         # write to metadata dictionary
         innerdict = {
-            "fpath_bandstack": os.path.basename(path_bandstack), 
-            "fapth_scl": os.path.join(
+            "bandstack": os.path.basename(path_bandstack), 
+            "scl": os.path.join(
                 Settings.SUBDIR_SCL_FILES,
                 os.path.basename(path_sclfile)
             ),
-            "fpath_rgb_preview": os.path.join(
+            "preview": os.path.join(
                 Settings.SUBDIR_RGB_PREVIEWS,
                 os.path.splitext(
                     os.path.basename(path_bandstack))[0] + '.png'
@@ -125,7 +122,8 @@ def do_parallel(in_df: pd.DataFrame,
             'product_uri': in_df.PRODUCT_URI.iloc[loopcounter],
             'scene_id': in_df.SCENE_ID.iloc[loopcounter],
             'spatial_resolution': 10.,
-            'resampling_method': resampling_method
+            'resampling_method': resampling_method,
+            'scene_was_merged': False
         }
 
 
@@ -142,7 +140,7 @@ def exec_parallel(target_s2_archive: Path,
                   n_threads: int,
                   tile: str,
                   **kwargs
-                  ) -> None:
+                  ) -> pd.DataFrame:
     """
     parallel execution of the Sentinel-2 pre-processing pipeline, including:
     
@@ -170,6 +168,8 @@ def exec_parallel(target_s2_archive: Path,
         your computer hardware.
     :param kwargs:
         kwargs to pass to resample_and_stack_S2 and scl_10m_resampling (L2A, only)
+    :return bandstack_meta:
+        metadata of the processed datasets
     """
 
     # check the metadata from the database
@@ -216,48 +216,42 @@ def exec_parallel(target_s2_archive: Path,
     bandstack_meta = pd.DataFrame(result)
 
     # merge blackfill scenes (data take issue) if any
+    # TODO: this section is for sure buggy and there is a problem in the datamodel...
     if not meta_blackfill.empty:
-        is_mundi = kwargs.get('is_mundi', False)
         # after regular scene processsing, process the blackfill scenes single-threaded
         for date in meta_blackfill.sensing_date.unique():
             scenes = meta_blackfill[meta_blackfill.sensing_date == date]
-            scene_id_1 = scenes.product_uri.iloc[0]
-            scene_id_2 = scenes.product_uri.iloc[1]
-            if is_mundi:
-                scene_id_1 = scene_id_1.replace('.SAFE', '')
-                scene_id_2 = scene_id_2.replace('.SAFE', '')
+            product_id_1 = scenes.product_uri.iloc[0]
+            product_id_2 = scenes.product_uri.iloc[1]
             # reconstruct storage location
             raw_data_archive = reconstruct_path(record=scenes.iloc[0]).parent
-            scene_1 = raw_data_archive.joinpath(scene_id_1)
-            scene_2 = raw_data_archive.joinpath(scene_id_2)
-            res = merge_split_scenes(scene_1=scene_1,
-                                        scene_2=scene_2,
-                                        out_dir=target_s2_archive, 
-                                        **kwargs)
-
-        # append blackfill scenes to bandstack_meta
-        df_row = {
-            'SENSING_DATE': pd.to_datetime(date).date(),
-            'TILE': meta_blackfill.TILE.iloc[0],
-            'FPATH_BANDSTACK': os.path.basename(
-                res['bandstack']
-            ),
-            'FPATH_SCL': os.path.join(
-                Settings.SUBDIR_SCL_FILES,
-                os.path.basename(res['scl'])
-            ),
-            'FPATH_RGB_PREVIEW': os.path.join(
-                Settings.SUBDIR_RGB_PREVIEWS,
-                os.path.basename(res['preview'])
-            ),
-            'PRODUCT_URI': meta_blackfill.PRODUCT_URI.iloc[0],
-            'SCENE_ID': meta_blackfill.SCENE_ID.iloc[0]
-        }
-        # bandstack_meta = bandstack_meta.append(
-        #     df_row,
-        #     ignore_index=True
-        # )
+            scene_1 = raw_data_archive.joinpath(product_id_1)
+            scene_2 = raw_data_archive.joinpath(product_id_2)
+            # the usual naming problem witht the .SAFE directories
+            if not scene_1.exists():
+                product_id_1 = Path(str(product_id_1.replace('.SAFE', '')))
+            if not scene_2.exists():
+                product_id_2 = Path(str(product_id_2.replace('.SAFE', '')))
+            res = merge_split_scenes(
+                scene_1=scene_1,
+                scene_2=scene_2,
+                out_dir=target_s2_archive, 
+                **kwargs
+            )
+            res.update(
+                {'scene_was_merged': True,
+                 'spatial_resolution': 10.,
+                 'resampling_method': bandstack_meta.resampling_method.iloc[0],
+                 'product_uri': product_id_1,  # take the first scene
+                 'scene_id': scenes.scene_id.iloc[0]
+                 }
+            )
         
+            bandstack_meta = bandstack_meta.append(res, ignore_index=True)
+
+        # also the storage location shall be inserted into the database later
+        bandstack_meta['storage_location'] = target_s2_archive
+
         # move to target archive
         shutil.move(
             res['bandstack'],
@@ -302,10 +296,4 @@ def exec_parallel(target_s2_archive: Path,
         )
     
         # write metadata of all stacked files to CSV
-        bandstack_meta.to_csv(
-            os.path.join(
-                target_s2_archive,
-                Settings.RESAMPLED_METADATA_FILE
-            )
-        )
-
+        return bandstack_meta

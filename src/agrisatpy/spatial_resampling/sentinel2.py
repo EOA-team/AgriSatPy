@@ -439,3 +439,5 @@ if __name__ == '__main__':
     out_file = resample_and_stack_S2(in_dir=Path(in_dir),
                                      out_dir=Path(out_dir),
                                      is_L2A=is_L2A)
+    
+    print(out_file)

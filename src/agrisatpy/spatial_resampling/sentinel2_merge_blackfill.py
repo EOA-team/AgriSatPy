@@ -14,6 +14,7 @@ from typing import Tuple
 import rasterio as rio
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 from .sentinel2 import resample_and_stack_S2
 from .sentinel2 import scl_10m_resampling
@@ -44,8 +45,8 @@ def identify_split_scenes(metadata_df: pd.DataFrame,
     return metadata_df[metadata_df.sensing_date.duplicated(keep=False)]
 
 
-def find_rgb_preview(scene_out: str
-                    ) -> str:
+def find_rgb_preview(scene_out: Path
+                    ) -> Path:
     """
     returns the file path to the RGB preview created by raster_resampling for
     a given stacked, resampled Sentinel-2 scene
@@ -54,15 +55,17 @@ def find_rgb_preview(scene_out: str
         file path to the band-stacked, resampled Sentinel-2 file. It is assumed
         that the RGB preview is located in a subdirectory underneath the band-
         stack ('rgb_previews') and named as the bandstack but ends with *.png
+    :return:
+        file-path to the RGB preview
     """
-    return os.path.join(
-        os.path.abspath(os.path.join(scene_out, os.pardir)),
+    return Path(os.path.join(
+        os.path.abspath(os.path.join(str(scene_out), os.pardir)),
         os.path.join(Settings.SUBDIR_RGB_PREVIEWS,
-                     f'{os.path.splitext(os.path.basename(scene_out))[0]}.png'))
+                     f'{os.path.splitext(os.path.basename(scene_out))[0]}.png')))
 
 
-def merge_split_files(in_file_1: str,
-                      in_file_2: str,
+def merge_split_files(in_file_1: Path,
+                      in_file_2: Path,
                       is_blackfill: np.array
                       ) -> Tuple[dict, np.array]:
     """
@@ -99,7 +102,8 @@ def merge_split_files(in_file_1: str,
     return (meta, img_data_1)
 
 
-def get_blackfill(in_file: str):
+def get_blackfill(in_file: Path
+                  ) -> np.array:
     """
     returns a bool array where each True elements indicates that
     pixel is blackfill. Using this information it is possible to
@@ -109,15 +113,17 @@ def get_blackfill(in_file: str):
     :param in_file:
         file path to the band-stack geoTiff file that containes
         blackfill (all reflectance values are zero)
+    :return is_blackfill:
+        logical array indicating pixels that are black-filled
     """
     with rio.open(in_file, 'r') as src:
         is_blackfill = src.read(1) == 0
     return is_blackfill
 
 
-def merge_split_scenes(scene_1: str,
-                       scene_2: str,
-                       out_dir: str,
+def merge_split_scenes(scene_1: Path,
+                       scene_2: Path,
+                       out_dir: Path,
                        is_L2A: bool,
                        **kwargs
                        ) -> dict:
@@ -147,15 +153,15 @@ def merge_split_scenes(scene_1: str,
         The out_dir option, however, is ignored
     """
     # check if working directory exists
-    working_dir = os.path.join(out_dir, "temp_blackfill")
-    if not os.path.isdir(working_dir):
+    working_dir = out_dir.joinpath("temp_blackfill")
+    if not working_dir.exists():
         os.mkdir(working_dir)
 
     # save the outputs of the two scenes to different subdirectories within the working
     # directory to avoid to override the output
-    out_dirs = [os.path.join(working_dir, '1'), os.path.join(working_dir, '2')]
+    out_dirs = [working_dir.joinpath('1'), working_dir.joinpath('2')]
     for out_dir in out_dirs:
-        if os.path.isdir(out_dir):
+        if out_dir.exists():
             # for clean "start" of next loop iteration
             shutil.rmtree(out_dir)
         os.mkdir(out_dir)
@@ -165,58 +171,78 @@ def merge_split_scenes(scene_1: str,
 
     # do the spatial resampling for the two scenes
     # first scene
-    scene_out_1 = resample_and_stack_S2(in_dir=scene_1,
-                                        out_dir=out_dirs[0],
-                                        **kwargs)
+    scene_out_1 = resample_and_stack_S2(
+        in_dir=scene_1,
+        out_dir=out_dirs[0],
+        **kwargs
+    )
 
     scl_out_1 = ''
     if is_L2A:
-        scl_out_1 = scl_10m_resampling(in_dir=scene_1,
-                                       out_dir=out_dirs[0],
-                                       **kwargs)
+        scl_out_1 = scl_10m_resampling(
+            in_dir=scene_1,
+            out_dir=out_dirs[0],
+            **kwargs
+    )
 
     # second scene
-    scene_out_2 = resample_and_stack_S2(in_dir=scene_2,
-                                        out_dir=out_dirs[1],
-                                        **kwargs)
+    scene_out_2 = resample_and_stack_S2(
+        in_dir=scene_2,
+        out_dir=out_dirs[1],
+        **kwargs
+    )
 
     scl_out_2 = ''
     if is_L2A:
-        scl_out_2 = scl_10m_resampling(in_dir=scene_2,
-                                       out_dir=out_dirs[1],
-                                       **kwargs)
+        scl_out_2 = scl_10m_resampling(
+            in_dir=scene_2,
+            out_dir=out_dirs[1],
+            **kwargs
+        )
 
     # logic for masked scenes (they are already masked after "resample_and_stack_S2")
     if masking:
-        file1_yes = os.path.isfile(scene_out_1)
-        file2_yes = os.path.isfile(scene_out_2)
+        file1_yes = scene_out_1.exists()
+        file2_yes = scene_out_2.exists()
         
         # if 1 scene only has blackfill (e.g. does not exist) keep only this one
         if (file1_yes and not file2_yes) or (not file1_yes and file2_yes):
             if file1_yes:
-                out_file = os.path.basename(scene_out_1)
-                out_file = os.path.join(out_dirs[0], out_file)
+                out_file = os.path.basename(str(scene_out_1))
+                out_file = os.path.join(str(out_dirs[0]), out_file)
                 out_file_scl = ''
                 if is_L2A:
-                    out_file_scl = os.path.join(out_dirs[0], "SCL_resampled", 
-                                                os.path.basename(scl_out_1))
+                    out_file_scl = os.path.join(
+                        str(out_dirs[0]),
+                        Settings.SUBDIR_SCL_FILES, 
+                        os.path.basename(scl_out_1)
+                    )
                 quicklook = find_rgb_preview(scene_out_1)
-                out_file_rgb = os.path.join(out_dirs[0], "rgb_previews", 
-                                            os.path.basename(quicklook))
+                out_file_rgb = os.path.join(
+                    str(out_dirs[0]),
+                    Settings.SUBDIR_RGB_PREVIEWS, 
+                    os.path.basename(quicklook)
+                )
                 return {'bandstack': out_file,
                         'scl': out_file_scl,
                         'preview': out_file_rgb}
             
             if file2_yes:
-                out_file = os.path.basename(scene_out_2)
-                out_file = os.path.join(out_dirs[1], out_file)
+                out_file = os.path.basename(str(scene_out_2))
+                out_file = os.path.join(str(out_dirs[1]), out_file)
                 out_file_scl = ''
                 if is_L2A:
-                    out_file_scl = os.path.join(out_dirs[1], "SCL_resampled", 
-                                                os.path.basename(scl_out_2))
+                    out_file_scl = os.path.join(
+                        str(out_dirs[1]),
+                        Settings.SUBDIR_SCL_FILES, 
+                        os.path.basename(scl_out_2)
+                    )
                 quicklook = find_rgb_preview(scene_out_2)
-                out_file_rgb = os.path.join(out_dirs[1], "rgb_previews", 
-                                            os.path.basename(quicklook))
+                out_file_rgb = os.path.join(
+                    str(out_dirs[1]),
+                    Settings.SUBDIR_RGB_PREVIEWS, 
+                    os.path.basename(quicklook)
+                )
                 return {'bandstack': out_file,
                         'scl': out_file_scl,
                         'preview': out_file_rgb}
@@ -233,9 +259,11 @@ def merge_split_scenes(scene_1: str,
         band_names = list(src.descriptions)
 
     # merge band stacks
-    meta, img_data = merge_split_files(in_file_1=scene_out_1,
-                                       in_file_2=scene_out_2,
-                                       is_blackfill=is_blackfill)
+    meta, img_data = merge_split_files(
+        in_file_1=scene_out_1,
+        in_file_2=scene_out_2,
+        is_blackfill=is_blackfill
+    )
     # save output
     out_file = os.path.basename(scene_out_1)
     out_file = os.path.join(working_dir, out_file)
@@ -249,9 +277,11 @@ def merge_split_scenes(scene_1: str,
     quicklook_1 = find_rgb_preview(scene_out_1)
     quicklook_2 = find_rgb_preview(scene_out_2)
 
-    meta, rgb = merge_split_files(in_file_1=quicklook_1,
-                                  in_file_2=quicklook_2,
-                                  is_blackfill=is_blackfill)
+    meta, rgb = merge_split_files(
+        in_file_1=quicklook_1,
+        in_file_2=quicklook_2,
+        is_blackfill=is_blackfill
+    )
 
     # save new overview to file
     out_file_rgb = os.path.join(working_dir, os.path.basename(quicklook_1))
@@ -261,9 +291,11 @@ def merge_split_scenes(scene_1: str,
     # merge SCL scenes (L2A processing level ,only)
     out_file_scl = ''
     if is_L2A:
-        meta, scl_data = merge_split_files(in_file_1=scl_out_1,
-                                           in_file_2=scl_out_2,
-                                           is_blackfill=is_blackfill)
+        meta, scl_data = merge_split_files(
+            in_file_1=scl_out_1,
+            in_file_2=scl_out_2,
+            is_blackfill=is_blackfill
+        )
         out_file_scl = os.path.join(working_dir, os.path.basename(scl_out_1))
         with rio.open(out_file_scl, 'w', **meta) as dst:
             dst.write(scl_data)
