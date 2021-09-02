@@ -16,17 +16,25 @@ from agrisatpy.config import Sentinel2
 s2 = Sentinel2()
 
 
-def get_S2_bandfiles(in_dir: Path
+def get_S2_bandfiles(in_dir: Path,
+                     resolution: Optional[int]=None,
                      ) -> List[Path]:
     '''
-    returns all JPEG-2000 files (*.jp2) found in a directory
+    returns all JPEG-2000 files (*.jp2) found in a dataset directory
+    (.SAFE).
 
     :param search_dir:
         directory containing the JPEG2000 band files
+    :param resolution:
+        select only spectral bands with a certain spatial resolution.
+        Works currently on Sentinel-2 Level-2A data, only.
     :return files:
         list of Sentinel-2 single band files
     '''
-    search_pattern = 'GRANULE/*/IM*/*/*B*.jp2'
+    if resolution is None:
+        search_pattern = 'GRANULE/*/IM*/*/*B*.jp2'
+    else:
+        search_pattern = f'GRANULE/*/IM*/R{int(resolution)}m/*B*.jp2'
     files = glob.glob(str(in_dir.joinpath(search_pattern)))
     return [Path(x) for x in files]
 
