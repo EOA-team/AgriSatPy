@@ -9,16 +9,24 @@ Requirements:
     
 """
 
+from pathlib import Path
+from datetime import date
 from agrisatpy.processing.resampling import exec_parallel
 
 
-s2_archive = input('Enter path to Sentinel-2 directory (.SAFE structure): ')
-tile = input('Select a tile to query (e.g., "T32TMT"): ')
-out_dir = input('Enter toplevel directory where outputs shall be stored (e.g., ./SAT/L2A): ')
-year = input('Specify year to process (e.g., 2019): ')
-date_start = input('Enter start date (format: %Y-%m-%d): ')
-date_end = input('Enter end date (format: %Y-%m-%d): ')
-n_threads = input('Enter numer of threads for parallel execution: ')
+# tile = input('Select a tile to query (e.g., "T32TMT"): ')
+# out_dir = input('Enter toplevel directory where outputs shall be stored (e.g., ./SAT/L2A): ')
+# year = input('Specify year to process (e.g., 2019): ')
+# date_start = input('Enter start date (format: %Y-%m-%d): ')
+# date_end = input('Enter end date (format: %Y-%m-%d): ')
+# n_threads = input('Enter numer of threads for parallel execution: ')
+
+tile = 'T31TGL'
+out_dir = Path('/mnt/ides/Lukas/03_Debug/test_archive')
+date_start = date(2020,2,1)
+date_end = date(2020,4,30)
+n_threads = 4
+
 
 # target_s2_archive = f'/run/media/graflu/ETH-KP-SSD6/SAT/L2A/{year}/{tile}'
 
@@ -34,8 +42,7 @@ options = {'pixel_division': True,
            'is_mundi': False
            }
 
-exec_parallel(raw_data_archive,
-              target_s2_archive,
+exec_parallel(out_dir,
               date_start,
               date_end,
               n_threads,

@@ -41,7 +41,7 @@ def identify_split_scenes(metadata_df: pd.DataFrame,
     :param metadata_df:
         dataframe containing extracted Sentinel-2 metadata (L1C or L2A level)
     """
-    return metadata_df[metadata_df["SENSING_DATE"].duplicated(keep=False)]
+    return metadata_df[metadata_df.sensing_date.duplicated(keep=False)]
 
 
 def find_rgb_preview(scene_out: str

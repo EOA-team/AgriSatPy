@@ -26,7 +26,7 @@ def get_S2_bandfiles(in_dir: Path
     :return files:
         list of Sentinel-2 single band files
     '''
-    search_pattern = '*B*.jp2'
+    search_pattern = 'GRANULE/*/IM*/*/*B*.jp2'
     files = glob.glob(str(in_dir.joinpath(search_pattern)))
     return [Path(x) for x in files]
 
@@ -41,8 +41,9 @@ def get_S2_sclfile(in_dir: Path
     :return scl_file:
         SCL file-path
     '''
-    search_pattern = "*_SCL_20m.jp2"
+    search_pattern = "GRANULE/*/IM*/*/*_SCL_20m.jp2"
     scl_file = glob.glob(str(in_dir.joinpath(search_pattern)))[0]
+    glob.glob(str(in_dir.joinpath(search_pattern)))[0]
     return Path(scl_file)
 
 
@@ -75,7 +76,7 @@ def get_S2_bandfiles_with_res(in_dir: Path,
     if is_L2A:
         band_list = [
             glob.glob(
-                str(in_dir.join_path(f'GRANULE/*/IM*/*{int(x)}*/{search_str}')))
+                str(in_dir.joinpath(f'GRANULE/*/IM*/*{int(x)}*/{search_str}')))
             for x in resolution_selection
         ]
     else:

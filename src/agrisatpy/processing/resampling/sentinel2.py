@@ -24,11 +24,14 @@ from sqlalchemy import create_engine
 from sqlalchemy import and_
 from sqlalchemy import desc
 from sqlalchemy.orm import sessionmaker
+from rasterio.enums import Resampling
 
 from agrisatpy.spatial_resampling import resample_and_stack_S2, scl_10m_resampling
-from agrisatpy.utils import identify_split_scenes, merge_split_scenes
+from agrisatpy.spatial_resampling import identify_split_scenes, merge_split_scenes
+from agrisatpy.utils import reconstruct_path
 from agrisatpy.config import get_settings
 from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
+from fileinput import fileno
 
 Settings = get_settings()
 engine = create_engine(Settings.DB_URL, echo=Settings.ECHO_DB)
@@ -43,12 +46,11 @@ class MetadataNotFoundError(Exception):
     pass
 
 
-def do_parallel(
-        in_df: pd.DataFrame,
-        loopcounter: int, 
-        out_dir: str, 
-        **kwargs
-        ) -> dict:
+def do_parallel(in_df: pd.DataFrame,
+                loopcounter: int, 
+                out_dir: str, 
+                **kwargs
+                ) -> dict:
     """
     Wrapper function for (potential) parallel execution of S2 resampling & stacking, 
     SCL resampling and optionally per-polygon-ID pixel value extraction (per S2 scene)
@@ -68,15 +70,13 @@ def do_parallel(
         out_dir_csv = kwargs.get("out_dir_csv", str)
         buffer = kwargs.get("buffer", float)
         id_column = kwargs.get("id_column", str).
+    :return innerdict:
+        metadata dict of the processed dataset
     """
     try:
 
-        # handle data obtained from Mundi
-        is_mundi = kwargs.get('is_mundi', False)
-        if not is_mundi:
-            in_dir = in_df["PRODUCT_URI"].iloc[loopcounter]
-        else:
-            in_dir = in_df["PRODUCT_URI"].iloc[loopcounter].replace('.SAFE', '')
+        # reconstruct storage location
+        in_dir = reconstruct_path(record=in_df.iloc[loopcounter])
     
         path_bandstack = resample_and_stack_S2(
             in_dir=in_dir, 
@@ -91,31 +91,43 @@ def do_parallel(
         is_L2A = kwargs.get('is_L2A', True)
         path_sclfile = ''
         if is_L2A:
-            # remove the 'is_L2A' kwarg if present since it is not understood
+            # remove the 'is_L2A' kwarg since it is not understood
             # by the scl_10m_resampling function
-            if 'is_L2A' in kwargs.keys():
-                kwargs.pop('is_L2A')
+            kwargs.pop('is_L2A')
             path_sclfile = scl_10m_resampling(
                 in_dir=in_dir, 
                 out_dir=out_dir,
                 **kwargs
             )
 
+        # resampling method
+        if kwargs.get('pixel_division'):
+            resampling_method = 'pixel division'
+        else:
+            interpol_method = kwargs.get('interpolation', -999)
+            if  interpol_method > 0:
+                resampling_method = Resampling(interpol_method).name
+            else:
+                resampling_method = 'cubic' # default
+
         # write to metadata dictionary
         innerdict = {
             "fpath_bandstack": os.path.basename(path_bandstack), 
-            "FPATH_SCL": os.path.join(
+            "fapth_scl": os.path.join(
                 Settings.SUBDIR_SCL_FILES,
                 os.path.basename(path_sclfile)
             ),
-            "FPATH_RGB_PREVIEW": os.path.join(
+            "fpath_rgb_preview": os.path.join(
                 Settings.SUBDIR_RGB_PREVIEWS,
                 os.path.splitext(
                     os.path.basename(path_bandstack))[0] + '.png'
             ),
-            'PRODUCT_URI': in_df.PRODUCT_URI.iloc[loopcounter],
-            'SCENE_ID': in_df.SCENE_ID.iloc[loopcounter]
+            'product_uri': in_df.PRODUCT_URI.iloc[loopcounter],
+            'scene_id': in_df.SCENE_ID.iloc[loopcounter],
+            'spatial_resolution': 10.,
+            'resampling_method': resampling_method
         }
+
 
     except Exception as e:
         logger.error(e)
@@ -180,7 +192,7 @@ def exec_parallel(target_s2_archive: Path,
     meta_blackfill = identify_split_scenes(metadata_df=metadata)
 
     # exclude these duplicated scenes from the main (parallelized) workflow!
-    metadata = metadata[~metadata.PRODUCT_URI.isin(meta_blackfill['product_uri'])]
+    metadata = metadata[~metadata.product_uri.isin(meta_blackfill['product_uri'])]
     if meta_blackfill.empty:
         logger.info(
             f'Found {metadata.shape[0]} scenes out of which 0 must be merged'
@@ -193,7 +205,7 @@ def exec_parallel(target_s2_archive: Path,
     t = time.time()
     result = Parallel(n_jobs = n_threads)(
         delayed(do_parallel)(
-            in_df= metadata, 
+            in_df=metadata, 
             loopcounter=idx, 
             out_dir=target_s2_archive,
             **kwargs
@@ -207,15 +219,17 @@ def exec_parallel(target_s2_archive: Path,
     if not meta_blackfill.empty:
         is_mundi = kwargs.get('is_mundi', False)
         # after regular scene processsing, process the blackfill scenes single-threaded
-        for date in meta_blackfill.SENSING_DATE.unique():
-            scenes = meta_blackfill[meta_blackfill.SENSING_DATE == date]
-            scene_id_1 = scenes.PRODUCT_URI.iloc[0]
-            scene_id_2 = scenes.PRODUCT_URI.iloc[1]
+        for date in meta_blackfill.sensing_date.unique():
+            scenes = meta_blackfill[meta_blackfill.sensing_date == date]
+            scene_id_1 = scenes.product_uri.iloc[0]
+            scene_id_2 = scenes.product_uri.iloc[1]
             if is_mundi:
                 scene_id_1 = scene_id_1.replace('.SAFE', '')
                 scene_id_2 = scene_id_2.replace('.SAFE', '')
-            scene_1 = os.path.join(raw_data_archive, scene_id_1)
-            scene_2 = os.path.join(raw_data_archive, scene_id_2)
+            # reconstruct storage location
+            raw_data_archive = reconstruct_path(record=scenes.iloc[0]).parent
+            scene_1 = raw_data_archive.joinpath(scene_id_1)
+            scene_2 = raw_data_archive.joinpath(scene_id_2)
             res = merge_split_scenes(scene_1=scene_1,
                                         scene_2=scene_2,
                                         out_dir=target_s2_archive, 

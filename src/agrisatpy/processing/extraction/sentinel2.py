@@ -67,7 +67,7 @@ def S2singlebands2table(in_dir: Path,
     list of pixels. Moreover, the ID of each polygon is stored so that all pixels
     belonging to a polygon (i.e, field parcel) can be easily identified.
     
-    For S2 scenes w/o any non-cloudy pixel, no data is written to a CSV
+    For S2 scenes w/o any non-cloudy pixel, no data is returned
     
     :param in_dir:
         directory where the spectral bands are stored as JP2 files
