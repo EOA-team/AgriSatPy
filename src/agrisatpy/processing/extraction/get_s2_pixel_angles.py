@@ -1,7 +1,7 @@
 '''
 Created on Aug 10, 2021
 
-@author: graflu
+@author: Lukas Graf (D-USYS, ETHZ)
 '''
 
 import os
