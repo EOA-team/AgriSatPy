@@ -12,6 +12,10 @@ from pathlib import Path
 
 @pytest.fixture
 def tmppath(tmpdir):
+    '''
+    Fixture to make sure that test function receive proper
+    Posix or Windows path instead of 'localpath'
+    '''
     return Path(tmpdir)
 
 
