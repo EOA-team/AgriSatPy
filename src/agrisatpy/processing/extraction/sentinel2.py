@@ -15,16 +15,18 @@ import os
 from typing import Tuple
 import rasterio as rio
 import rasterio.mask
+from pathlib import Path
+from typing import Optional
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from .utils import get_S2_bandfiles
-from .utils import get_S2_sclfile
 from .utils import buffer_fieldpolygons
 from .utils import DataNotFoundError
 from .utils import compute_parcel_stat
 
+from agrisatpy.utils.sentinel2 import get_S2_bandfiles
+from agrisatpy.utils.sentinel2 import get_S2_sclfile
 from agrisatpy.config.sentinel2 import Sentinel2
 from agrisatpy.config import get_settings
 
@@ -33,14 +35,14 @@ Settings = get_settings()
 logger = Settings.logger
 
 
-def S2singlebands2table(in_dir: str,
+def S2singlebands2table(in_dir: Path,
                         buffer: float, 
                         id_column: str,
                         product_date: str,
-                        in_file_polys: str='',
-                        in_gdf_polys: gpd.GeoDataFrame=None,
-                        filter_clouds: bool = True,
-                        is_L2A: bool=True,
+                        in_file_polys: Optional[str]='',
+                        in_gdf_polys: Optional[gpd.GeoDataFrame]=None,
+                        filter_clouds: Optional[bool] = True,
+                        is_L2A: Optional[bool]=True,
                         **kwargs
                         ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -301,10 +303,10 @@ def S2bandstack2table(in_file: str,
                       buffer: float, 
                       id_column: str,
                       product_date: str,
-                      in_file_polys: str='',
-                      in_gdf_polys: gpd.GeoDataFrame=None,
-                      filter_clouds: bool = True,
-                      is_sentinel: bool = True,
+                      in_file_polys: Optional[str]='',
+                      in_gdf_polys: Optional[gpd.GeoDataFrame]=None,
+                      filter_clouds: Optional[bool]=True,
+                      is_sentinel: Optional[bool]=True,
                       **kwargs
                       ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     '''
@@ -340,12 +342,13 @@ def S2bandstack2table(in_file: str,
         nodata_refl = kwargs.get('nodata_refl', 64537)
         nodata_scl = kwargs.get('nodata_scl', 254).
 
-    :returns out_DF:
+    :return out_DF:
         Extracted Pixel values including X & Y Coordinates, EPSG code, ingestionproduct_date, 
         Polygon_ID, SCL classes plus the reflectance of each 10 S2 bands as int
-    :returns stat_DF:
+    :return stat_DF:
         SCL statistic for each S2 ingestionproduct_date and polygon ID.
     '''
+
     # check if files exist first
     if not os.path.isfile(in_file):
         raise DataNotFoundError(f'Could not find {in_file}')

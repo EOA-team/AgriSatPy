@@ -34,5 +34,5 @@ products = query_from_copernicus(
 )
 
 # download them
-download_dir = '/tmp/'
+download_dir = Path('/tmp/')
 download_data(products, download_dir)

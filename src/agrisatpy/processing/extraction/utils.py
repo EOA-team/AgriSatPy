@@ -7,7 +7,9 @@ Created on Jul 14, 2021
 import os
 import glob
 from typing import List
+from typing import Optional
 import numpy as np
+from pathlib import Path
 import geopandas as gpd
 
 class DataNotFoundError(Exception):
@@ -41,31 +43,9 @@ class SCL_Classes(object):
         return values
 
 
-def get_S2_bandfiles(in_dir: str) -> List[str]:
-    '''
-    returns all JPEG-2000 files (*.jp2) found in a directory
-
-    :param search_dir:
-        directory containing the JPEG2000 band files
-    '''
-    search_pattern = '*B*.jp2'
-    return glob.glob(os.path.join(in_dir, search_pattern))
-
-
-def get_S2_sclfile(in_dir: str) -> str:
-    '''
-    return the path to the S2 SCL (scene classification file) 20m resolution!
-
-    :param search_dir 
-        directory containing the SCL band files (jp2000 file).
-    '''
-    search_pattern = "*_SCL_20m.jp2"
-    return glob.glob(os.path.join(in_dir, search_pattern))[0]
-
-
 def buffer_fieldpolygons(in_gdf: gpd.GeoDataFrame,
                          buffer: float,
-                         drop_multipolygons: bool=True
+                         drop_multipolygons: Optional[bool]=True
                          ) -> gpd.GeoDataFrame:
     '''
     creates a buffer for field polygons and returns a new geodataframe.
@@ -76,6 +56,8 @@ def buffer_fieldpolygons(in_gdf: gpd.GeoDataFrame,
         buffer distance in metric units to create around original polygon geometries
     :param drop_multipolygons:
         keep only polygons and drop multi-polygons. The default is True.
+    :return buffered:
+        geodataframe with buffered geometries
     '''
     buffered = in_gdf.copy()
     # resolution is set to 16 to obtain high-quality edge regions
@@ -104,6 +86,8 @@ def compute_parcel_stat(in_array: np.array,
         array with extract SCL (scene classification) values
     :param nodata_value:
         value that shall be interpreted as nodata
+    :return statistics:
+        dictionary with extracted SCL statistic per field parcel
     """
     
     scl_classes = SCL_Classes().values()
@@ -121,4 +105,3 @@ def compute_parcel_stat(in_array: np.array,
     statistics["n_pixels_tot"] = num_pixels
     
     return statistics
-
