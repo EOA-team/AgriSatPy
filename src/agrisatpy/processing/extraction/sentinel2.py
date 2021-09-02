@@ -39,6 +39,7 @@ def S2singlebands2table(in_dir: Path,
                         buffer: float, 
                         id_column: str,
                         product_date: str,
+                        resolution: int,
                         in_file_polys: Optional[str]='',
                         in_gdf_polys: Optional[gpd.GeoDataFrame]=None,
                         filter_clouds: Optional[bool] = True,
@@ -78,6 +79,9 @@ def S2singlebands2table(in_dir: Path,
     :param product_date:
         scene acquisition product_date (derived from metadata = ingestiondate)
         in YYYYMMDD format
+    :param resolution:
+        spatial resolution on which to work. Must be 10, 20 or 60 meters
+        (Sentinel-2 native spatial resolutions)
     :param in_file_polys:
         ESRI shapefile containung 1 to N (field) polygons. Alternatively, a
         geopandas GeoDataFrame (e.g., from a database query) can be passed.
@@ -97,10 +101,20 @@ def S2singlebands2table(in_dir: Path,
         nodata_scl = kwargs.get('nodata_scl', 254)
     """
 
+    # check for the bands that match the selected spatial resolution
+    bands_to_select = S2.SPATIAL_RESOLUTIONS.get(resolution, None)
+    if bands_to_select is None:
+        raise Exception(
+            f'The resolution specified does not exist for Sentinel-2: {resolution}'
+        )
+
     # ========================== Get list of files ==========================
     # get a list of files containing the single spectral bands
     try:
-        jp2_files = get_S2_bandfiles(in_dir=in_dir)
+        jp2_files = get_S2_bandfiles(
+            in_dir=in_dir,
+            resolution=resolution
+        )
     except Exception as e:
         raise DataNotFoundError(f'Could not find Sentinel-2 JPEG2000 files: {e}')
     # get the file with SCL (scene classification)
@@ -130,6 +144,8 @@ def S2singlebands2table(in_dir: Path,
             bandname = filename.split(os.sep)[-1].split(".")[0].split("_")[-2]
         else:
             bandname = filename.split(os.sep)[-1].split(".")[0].split("_")[-1]
+            # if the band does not match the spatial resolution skip it
+            if bandname not in bands_to_select: continue
         bandlist.append(bandname) 
 
     # read the shapefile that contains the polyons
@@ -177,12 +193,13 @@ def S2singlebands2table(in_dir: Path,
                 shape = gpd.GeoDataFrame(feature[1]).transpose()
 
                 try:
-                    out_band, out_transform = rio.mask.mask(src,
-                                                            shape["geometry"],
-                                                            crop=True, 
-                                                            all_touched=True, # IMPORTANT!
-                                                            nodata=nodata_refl
-                                                            )
+                    out_band, out_transform = rio.mask.mask(
+                        src,
+                        shape["geometry"],
+                        crop=True, 
+                        all_touched=True, # IMPORTANT!
+                        nodata=nodata_refl
+                    )
                 except Exception as e:
                     logger.warning(f'Couldnot clip feature {feature[1][id_column]}: {e}')
                     # if the feature could not be clipped (e.g., because it is not located
@@ -239,16 +256,19 @@ def S2singlebands2table(in_dir: Path,
                 with rio.open(scl_file) as src:
                     shape = gpd.GeoDataFrame(feature[1]).transpose()
                     
-                    out_scl, out_transform = rio.mask.mask(src,
-                                                            shape["geometry"],
-                                                            crop=True, 
-                                                            all_touched=True,
-                                                            nodata=nodata_scl
-                                                            )
+                    out_scl, out_transform = rio.mask.mask(
+                        src,
+                        shape["geometry"],
+                        crop=True, 
+                        all_touched=True,
+                        nodata=nodata_scl
+                    )
     
                     # compute share of SCL classes for the current polygon
-                    stats = compute_parcel_stat(in_array=out_scl,
-                                                nodata_value=nodata_scl)
+                    stats = compute_parcel_stat(
+                        in_array=out_scl,
+                        nodata_value=nodata_scl
+                    )
     
                     stats[id_column] = feature[1][id_column]
                     parcel_statistics.append(stats)
@@ -298,8 +318,8 @@ def S2singlebands2table(in_dir: Path,
     return out_DF, stat_DF
 
 
-def S2bandstack2table(in_file: str,
-                      in_file_scl: str, 
+def S2bandstack2table(in_file: Path,
+                      in_file_scl: Path, 
                       buffer: float, 
                       id_column: str,
                       product_date: str,
@@ -350,9 +370,9 @@ def S2bandstack2table(in_file: str,
     '''
 
     # check if files exist first
-    if not os.path.isfile(in_file):
+    if not in_file.exists():
         raise DataNotFoundError(f'Could not find {in_file}')
-    if not os.path.isfile(in_file_scl):
+    if not in_file_scl.exists():
         raise DataNotFoundError(f'Could not find {in_file_scl}')
 
     # open stacked .tiff file
@@ -393,8 +413,10 @@ def S2bandstack2table(in_file: str,
     bbox_s2_crs = bbox_parcels.to_crs(sat_crs)
 
     # calculate the buffer
-    bbox_parcels_buffered = buffer_fieldpolygons(in_gdf=bbox_s2_crs, 
-                                                 buffer=buffer)
+    bbox_parcels_buffered = buffer_fieldpolygons(
+        in_gdf=bbox_s2_crs, 
+        buffer=buffer
+    )
 
 
     # ========================== loop over IDs ==========================
@@ -410,11 +432,12 @@ def S2bandstack2table(in_file: str,
     # ========================== Loop over bands! ==========================
         flat_band_rflt_per_ID = []
         try:
-            out_band, out_transform = rio.mask.mask(bandstack,
-                                                    shape.geometry,
-                                                    crop=True, 
-                                                    all_touched=True, # IMPORTANT!
-                                                    nodata = nodata_refl
+            out_band, out_transform = rio.mask.mask(
+                bandstack,
+                shape.geometry,
+                crop=True, 
+                all_touched=True, # IMPORTANT!
+                nodata = nodata_refl
             )
         except Exception as e:
             logger.warning(f'Couldnot clip feature {shape[id_column]}: {e}')
@@ -465,16 +488,18 @@ def S2bandstack2table(in_file: str,
         # works only for is_sentinel processing level
         if is_sentinel:
             with rio.open(scl_filepath) as src:
-                out_scl, out_transform = rio.mask.mask(src,
-                                                        shape.geometry,
-                                                        crop=True, 
-                                                        all_touched=True,
-                                                        nodata=nodata_scl
+                out_scl, out_transform = rio.mask.mask(
+                    src,
+                    shape.geometry,
+                    crop=True, 
+                    all_touched=True,
+                    nodata=nodata_scl
                 )
 
                 # compute share of SCL classes for the current polygon
-                stats = compute_parcel_stat(in_array=out_scl,
-                                            nodata_value=nodata_scl
+                stats = compute_parcel_stat(
+                    in_array=out_scl,
+                    nodata_value=nodata_scl
                 )
 
                 stats[id_column] = shape[id_column].values[0]
