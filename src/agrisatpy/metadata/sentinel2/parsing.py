@@ -28,6 +28,8 @@ logger = get_settings().logger
 class UnknownProcessingLevel(Exception):
     pass
 
+# TODO: add storage location, drive and path-type
+
 
 def parse_MTD_TL(in_file: Path
                 ) -> dict:
@@ -308,14 +310,14 @@ def parse_s2_scene_metadata(in_dir: Path
         mtd_msil2a_xml = str(next(Path(in_dir).rglob('MTD_MSIL2A.xml')))
         mtd_msi = parse_MTD_MSI(in_file=mtd_msil2a_xml)
         with open(mtd_msil2a_xml, 'r') as xml_file:
-            mtd_msi['mtd_msi_xml'] = xml_file.read()
+            mtd_msi['mtd_msi_xml'] = xml_file.read().strip()
 
     elif str(in_dir).find('_MSIL1C_') > 0:
         # scene is L1C
         mtd_msil1c_xml = str(next(Path(in_dir).rglob('MTD_MSIL1C.xml')))
         mtd_msi = parse_MTD_MSI(in_file=mtd_msil1c_xml)
         with open(mtd_msil1c_xml, 'r') as xml_file:
-            mtd_msi['mtd_msi_xml'] = xml_file.read()
+            mtd_msi['mtd_msi_xml'] = xml_file.read().strip()
 
     else:
         raise UnknownProcessingLevel(
@@ -323,14 +325,20 @@ def parse_s2_scene_metadata(in_dir: Path
 
     mtd_tl_xml = str(next(Path(in_dir).rglob('MTD_TL.xml')))
     with open(mtd_tl_xml) as xml_file:
-        mtd_msi['mtd_tl_xml'] = xml_file.read()
+        mtd_msi['mtd_tl_xml'] = xml_file.read().strip()
 
     mtd_msi.update(parse_MTD_TL(in_file=mtd_tl_xml))
+
+    # storage location and path handling
+    storage_path = in_dir.parent.as_posix()
+    mtd_msi['storage_share'] = storage_path
+    mtd_msi['path_type'] = 'Posix'
+    mtd_msi['storage_device_ip'] = ''
 
     return mtd_msi
 
 
-def loop_s2_archive(in_dir: str
+def loop_s2_archive(in_dir: Path
                     ) -> pd.DataFrame:
     """
     wrapper function to loop over an entire archive (i.e., collection) of
@@ -349,7 +357,7 @@ def loop_s2_archive(in_dir: str
         call
     """
     # search for .SAFE subdirectories identifying the single scenes
-    s2_scenes = glob.glob(os.path.join(in_dir, '*.SAFE'))
+    s2_scenes = glob.glob(str(in_dir.joinpath('*.SAFE')))
     n_scenes = len(s2_scenes)
     if n_scenes == 0:
         raise UnknownProcessingLevel(
@@ -358,10 +366,9 @@ def loop_s2_archive(in_dir: str
     # loop over the scenes
     metadata_scenes = []
     for idx, s2_scene in enumerate(s2_scenes):
-        print(f'Extracting metadata of {os.path.basename(s2_scene)} ({idx+1}/{n_scenes})')
+        logger.info(f'Extracting metadata of {os.path.basename(s2_scene)} ({idx+1}/{n_scenes})')
         try:
-            mtd_scene = parse_s2_scene_metadata(in_dir=s2_scene)
-            mtd_scene['filepath'] = s2_scene
+            mtd_scene = parse_s2_scene_metadata(in_dir=Path(s2_scene))
         except Exception as e:
             logger.error(f'Extraction of metadata failed {s2_scene}: {e}')
             continue
