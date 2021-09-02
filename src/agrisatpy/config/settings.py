@@ -30,6 +30,21 @@ class Settings(BaseModel):
     # define date format
     DATE_FMT_INPUT: str = '%Y-%m-%d'
     DATE_FMT_FILES: str = '%Y%m%d'
+
+    # define DHUS username and password
+    DHUS_USER: str = ''
+    DHUS_PASSWORD: str = ''
+
+    # metadata base connection details
+    DB_USER: str = 'postgres'
+    DB_PW: str = '12345'
+    DB_HOST: str = 'localhost'
+    DB_PORT: str = '5432'
+    DB_NAME: str = 'metadata_db'
+    DB_URL: str = f'postgresql://{DB_USER}:{DB_PW}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+    
+    DEFAULT_SCHEMA: str = 'public'
+    ECHO_DB: bool = False
     
     # define logger
     LOGGER_NAME: str = 'AgriSatPy'

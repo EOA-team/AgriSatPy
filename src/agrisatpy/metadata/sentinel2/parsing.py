@@ -28,8 +28,10 @@ logger = get_settings().logger
 class UnknownProcessingLevel(Exception):
     pass
 
+# TODO: add storage location, drive and path-type
 
-def parse_MTD_TL(in_file: str
+
+def parse_MTD_TL(in_file: Path
                 ) -> dict:
     """
     Parses the MTD_TL.xml metadata file provided by ESA.This metadata
@@ -46,6 +48,8 @@ def parse_MTD_TL(in_file: str
     
     :param in_file:
         filepath of the scene metadata xml
+    :return metadata:
+        dict with extracted metadata entries
     """
     # parse the xml file into a minidom object
     xmldoc = minidom.parse(in_file)
@@ -73,6 +77,7 @@ def parse_MTD_TL(in_file: str
     # sensing time (acquisition time)
     sensing_time_xml = xmldoc.getElementsByTagName('SENSING_TIME')
     sensing_time = sensing_time_xml[0].firstChild.nodeValue
+    metadata['SENSING_TIME'] = sensing_time
     metadata['SENSING_DATE'] = datetime.strptime(
         sensing_time.split('T')[0],'%Y-%m-%d').date()
 
@@ -213,14 +218,14 @@ def parse_MTD_MSI(in_file: str
         metadata[tag] = xml_elem[0].firstChild.data
 
     # extract solar irradiance for the single bands
-    bands = ['B01', 'BO2', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09',
+    bands = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09',
              'B10', 'B11', 'B12']
     sol_irrad_xml = xmldoc.getElementsByTagName('SOLAR_IRRADIANCE')
     for idx, band in enumerate(bands):
         metadata[f'SOLAR_IRRADIANCE_{band}'] = float(sol_irrad_xml[idx].firstChild.nodeValue)
 
     # S2 tile
-    metadata['TILE'] = metadata['PRODUCT_URI'].split('_')[5]
+    metadata['TILE_ID'] = metadata['PRODUCT_URI'].split('_')[5]
 
     return metadata
     
@@ -236,7 +241,10 @@ def get_scene_footprint(sensor_data: dict
 
     :param sensor_data:
         dict with ULX, ULY, NROWS_10m, NCOLS_10m, EPSG entries
-        obtained from the MTD_TL.xml file 
+        obtained from the MTD_TL.xml file
+    :return wkt:
+        extended well-known-text representation of the scene
+        footprint
     """
     dst_crs = 'epsg:4326'
     # get the EPSG-code
@@ -272,14 +280,14 @@ def get_scene_footprint(sensor_data: dict
     return wkt
 
 
-def parse_s2_scene_metadata(in_dir: str
+def parse_s2_scene_metadata(in_dir: Path
                             ) -> dict:
     """
     wrapper function to extract metadata from ESA Sentinel-2
     scenes. It returns a dict with the metadata most important
     to characterize a given Sentinel-2 scene.
 
-    The function works on both, L1C and L2A (sen2core-based)
+    The function works on both, L1C and L2A (sen2cor-based)
     processing levels. The amount of metadata, however, is
     reduced in the case of L1C since no scene classification
     information is available.
@@ -290,32 +298,47 @@ def parse_s2_scene_metadata(in_dir: str
 
     :param in_dir:
         directory containing the L1C or L2A Sentinel-2 scene
+    :return mtd_msi:
+        dict with extracted metadata items
     """
     
     # depending on the processing level (supported: L1C and
     # L2A) metadata has to be extracted slightly differently
     # because of different file names and storage locations
-    if in_dir.find('_MSIL2A_') > 0:
+    if str(in_dir).find('_MSIL2A_') > 0:
         # scene is L2A
         mtd_msil2a_xml = str(next(Path(in_dir).rglob('MTD_MSIL2A.xml')))
         mtd_msi = parse_MTD_MSI(in_file=mtd_msil2a_xml)
+        with open(mtd_msil2a_xml, 'r') as xml_file:
+            mtd_msi['mtd_msi_xml'] = xml_file.read().strip()
 
-    elif in_dir.find('_MSIL1C_') > 0:
+    elif str(in_dir).find('_MSIL1C_') > 0:
         # scene is L1C
         mtd_msil1c_xml = str(next(Path(in_dir).rglob('MTD_MSIL1C.xml')))
         mtd_msi = parse_MTD_MSI(in_file=mtd_msil1c_xml)
+        with open(mtd_msil1c_xml, 'r') as xml_file:
+            mtd_msi['mtd_msi_xml'] = xml_file.read().strip()
 
     else:
         raise UnknownProcessingLevel(
             f'{in_dir} seems not be a valid Sentinel-2 scene')
 
     mtd_tl_xml = str(next(Path(in_dir).rglob('MTD_TL.xml')))
+    with open(mtd_tl_xml) as xml_file:
+        mtd_msi['mtd_tl_xml'] = xml_file.read().strip()
+
     mtd_msi.update(parse_MTD_TL(in_file=mtd_tl_xml))
+
+    # storage location and path handling
+    storage_path = in_dir.parent.as_posix()
+    mtd_msi['storage_share'] = storage_path
+    mtd_msi['path_type'] = 'Posix'
+    mtd_msi['storage_device_ip'] = ''
 
     return mtd_msi
 
 
-def loop_s2_archive(in_dir: str
+def loop_s2_archive(in_dir: Path
                     ) -> pd.DataFrame:
     """
     wrapper function to loop over an entire archive (i.e., collection) of
@@ -329,21 +352,27 @@ def loop_s2_archive(in_dir: str
         directory containing the Sentinel-2 data (L1C and/or L2A
         processing level). Sentinel-2 scenes are assumed to follow ESA's
         .SAFE naming convention and structure
+    :return:
+        dataframe with metadata of all scenes handled by the function
+        call
     """
     # search for .SAFE subdirectories identifying the single scenes
-    s2_scenes = glob.glob(os.path.join(in_dir, '*.SAFE'))
+    # some data providers, however, do not name their products following the
+    # ESA convention (.SAFE is missing)
+    s2_scenes = glob.glob(str(in_dir.joinpath('*.SAFE')))
     n_scenes = len(s2_scenes)
     if n_scenes == 0:
-        raise UnknownProcessingLevel(
-            f'No .SAFE sub-directories where found in {in_dir}')
-
+        s2_scenes = [f for f in in_dir.iterdir() if f.is_dir()]
+        n_scenes = len(s2_scenes)
+        if n_scenes == 0:
+            raise UnknownProcessingLevel('No Sentinel-2 scenes were found')
+        
     # loop over the scenes
     metadata_scenes = []
     for idx, s2_scene in enumerate(s2_scenes):
-        print(f'Extracting metadata of {os.path.basename(s2_scene)} ({idx+1}/{n_scenes})')
+        logger.info(f'Extracting metadata of {os.path.basename(s2_scene)} ({idx+1}/{n_scenes})')
         try:
-            mtd_scene = parse_s2_scene_metadata(in_dir=s2_scene)
-            mtd_scene['filepath'] = s2_scene
+            mtd_scene = parse_s2_scene_metadata(in_dir=Path(s2_scene))
         except Exception as e:
             logger.error(f'Extraction of metadata failed {s2_scene}: {e}')
             continue

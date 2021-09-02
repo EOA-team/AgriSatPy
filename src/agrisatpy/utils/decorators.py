@@ -1,7 +1,7 @@
 '''
 Created on Jul 19, 2021
 
-@author: graflu
+@author: Lukas Graf (D-USYS, ETHZ)
 '''
 
 from functools import wraps

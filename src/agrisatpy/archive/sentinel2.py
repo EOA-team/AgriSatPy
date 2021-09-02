@@ -9,8 +9,9 @@ Created on Jul 9, 2021
 import os
 import sys
 from typing import List
-from agrisatpy.config import Sentinel2
+from pathlib import Path
 
+from agrisatpy.config import Sentinel2
 from agrisatpy.config import get_settings
 from agrisatpy.utils.decorators import check_processing_level
 
@@ -25,11 +26,11 @@ class ArchiveCreationError(Exception):
 
 
 @check_processing_level
-def add_tile2archive(archive_dir: str,
+def add_tile2archive(archive_dir: Path,
                      processing_level: str,
                      year: int,
                      tile: str
-                     ) -> str:
+                     ) -> Path:
     """
     adds a new tile to an existing Sentinel-2 archive structure for
     storing bandstacked tiff files. Returns the path of the created
@@ -45,6 +46,8 @@ def add_tile2archive(archive_dir: str,
         year for which to create a sub-directories.
     :param tile:
         selected tile for which to create a storage directory.
+    :return tile_dir:
+        path of the directory created for storing the tile data
     """
     # check if the processing level is valid
     if processing_level not in s2.PROCESSING_LEVELS:
@@ -52,8 +55,8 @@ def add_tile2archive(archive_dir: str,
             f'{processing_level} is not allowed for Sentinel-2. '\
             f'Must be one of {s2.PROCESSING_LEVELS})')
     # create a subdirectory for the processing level if it does not exist
-    proc_dir = os.path.join(archive_dir, processing_level)
-    if not os.path.isdir(proc_dir):
+    proc_dir = archive_dir.joinpath(processing_level)
+    if not proc_dir.exists():
         try:
             os.mkdir(proc_dir)
         except Exception as e:
@@ -62,19 +65,19 @@ def add_tile2archive(archive_dir: str,
     
     if year < 0:
         raise ValueError(f'{year} is not a valid value for a year')
-    year_dir = os.path.join(proc_dir, str(year))
+    year_dir = proc_dir.joinpath(str(year))
 
     # try to create a directory for the specified year if it does not
     # exist
-    if not os.path.isdir(year_dir):
+    if not year_dir.exists():
         try:
             os.mkdir(year_dir)
         except Exception as e:
             raise ArchiveCreationError(f'Could not create {year_dir}: {e}')
 
     # try to create a directory for the tile if it does not exist
-    tile_dir = os.path.join(year_dir, tile)
-    if not os.path.isdir(tile_dir):
+    tile_dir = year_dir.joinpath(tile)
+    if not tile_dir.exists():
         try:
             os.mkdir(tile_dir)
         except Exception as e:
@@ -82,7 +85,7 @@ def add_tile2archive(archive_dir: str,
     return tile_dir
   
 
-def create_archive_struct(in_dir: str,
+def create_archive_struct(in_dir: Path,
                           processing_levels: List[str],
                           tile_selection: List[str],
                           year_selection: List[int]
@@ -102,7 +105,7 @@ def create_archive_struct(in_dir: str,
     :param year_selection:
         list of year for which to create sub-directories.
     """
-    if not os.path.isdir(in_dir):
+    if not in_dir.exists():
         try:
             os.makedirs(in_dir)
         except Exception as e:

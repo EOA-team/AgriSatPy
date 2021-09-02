@@ -10,14 +10,25 @@ from datetime import date
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
+from sqlalchemy import desc
+from sqlalchemy import and_
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from agrisatpy.config import get_settings
+from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
+
+Settings = get_settings()
+engine = create_engine(Settings.DB_URL, echo=Settings.ECHO_DB)
+session = sessionmaker(bind=engine)()
 
 
-def scene_selection(metadata_file: str,
-                    tile: str,
+def scene_selection(tile: str,
                     cloudcover_threshold: float,
                     date_start: date,
                     date_end: date,
-                    out_dir: str
+                    out_dir: Path
                     ) -> None:
     """
     Function to query the metadata CSV file (generated using AgriSatpy) and extract
@@ -28,9 +39,6 @@ def scene_selection(metadata_file: str,
     returned plus a plot showing the cloud cover (extracted from the metadata xml file)
     per image acquisition date.
 
-    :param metadata_file:
-        CSV file containing the full (i.e., extracted from the xml files) metadata of
-        all scenes in a specific sat directory containing .SAFE files
     :param tile:
         Sentinel-2 tile for which the scene selection should be performed. For instance,
         'T32TMT'
@@ -44,44 +52,42 @@ def scene_selection(metadata_file: str,
     :param out_dir:
         directory where to store the subset metadata CSV file and the cloud cover plot.
     """
-    # read metadata file
-    try:
-        metadata_full = pd.read_csv(metadata_file)
-    except Exception as e:
-        raise Exception(f'Could not read metadata file: {e}')
 
-    # filter metadata by tile
-    metadata = metadata_full[metadata_full.TILE == tile].copy()
+    # query metadata from database
+    metadata = pd.read_sql(session.query(S2_Raw_Metadata).filter(
+        and_(
+            S2_Raw_Metadata.tile_id == tile,
+            S2_Raw_Metadata.cloudy_pixel_percentage < cloudcover_threshold
+        )).filter(
+            and_(
+                S2_Raw_Metadata.sensing_date <= date_end,
+                S2_Raw_Metadata.sensing_date >= date_start
+            )
+        ).order_by(
+            S2_Raw_Metadata.sensing_date.desc()
+        ).statement,
+        session.bind
+    )
 
-    # filter and sort by date
-    metadata.SENSING_DATE = pd.to_datetime(metadata.SENSING_DATE)
-    metadata = metadata[pd.to_datetime(metadata.SENSING_DATE).between(
-        date_start, date_end, inclusive=True)]
-    metadata = metadata.sort_values(by='SENSING_DATE')
-
-    # filter by cloud cover
-    # '''
-    # cloud cover as reported in the S2 L2A metadata consists of the sum of: 
-    #     HIGH_PROBA_CLOUDS_PERCENTAGE + MEDIUM_PROBA_CLOUDS_PERCENTAGE +
-    #     THIN_CIRRUS_PERCENTAGE (SCL classes 3, 8, 9)
-    # '''
-    metadata = metadata[metadata.CLOUDY_PIXEL_PERCENTAGE <= cloudcover_threshold]
+    # drop xml columns
+    metadata.drop('mtd_tl_xml', axis=1, inplace=True)
+    metadata.drop('mtd_msi_xml', axis=1, inplace=True)
 
     # calculate average cloud cover for the selected scenes
-    cc_avg = metadata.CLOUDY_PIXEL_PERCENTAGE.mean()
+    cc_avg = metadata.cloudy_pixel_percentage.mean()
 
     # get timestamp of query execution
     query_time = datetime.now().strftime('%Y%m%d_%H%M%S')
     # write out metadata of the query as CSV
-    metadata.to_csv(os.path.join(out_dir, f'{query_time}_query.csv'), index=False)
+    metadata.to_csv(out_dir.joinpath(f'{query_time}_query.csv'), index=False)
 
     # Plot available scenes for query
     fig = plt.figure(figsize = (8, 6), dpi = 300)
     ax = fig.add_subplot(111)
-    ax.plot(metadata['SENSING_DATE'], metadata['CLOUDY_PIXEL_PERCENTAGE'], 
+    ax.plot(metadata['sensing_date'], metadata['cloudy_pixel_percentage'], 
             marker = 'o', markersize = 10)
-    ax.set_xlabel("Sensing Date")
-    ax.set_ylabel("Cloud cover [%]")
+    ax.set_xlabel('Sensing Date')
+    ax.set_ylabel('Cloud cover [%]')
     ax.set_ylim(0., 100.)
     ax.set_title(f'Tile {tile} - No. of scenes: {metadata.shape[0]}'
                  + '\n' + f'Average cloud cover: {np.round(cc_avg, 2)}%')

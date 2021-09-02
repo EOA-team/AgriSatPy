@@ -1,13 +1,14 @@
 '''
 Created on Jul 8, 2021
 
-@author: graflu
+@author: Lukas Graf (D-USYS, ETHZ)
 '''
 
 import os
 import pandas as pd
 from typing import Tuple
 from datetime import datetime
+from pathlib import Path
 
 from agrisatpy.utils import stack_dataframes
 from agrisatpy.config import get_settings
@@ -18,7 +19,7 @@ Settings = get_settings()
 logger = Settings.logger
 
 @check_processing_level
-def search_data(in_dir,
+def search_data(in_dir: Path,
                 processing_level: str,
                 start_date: str,
                 end_date: str,
@@ -104,12 +105,14 @@ def search_data(in_dir,
         logger.info(f'Searching for data in {year}')
 
         expr = processing_level + os.sep + str(year) + os.sep + tile
-        in_dir_year = os.path.join(in_dir,
-                                   os.path.join(
-                                       expr,
-                                       Settings.SUBDIR_PIXEL_CSVS))
+        in_dir_year = Path(in_dir.joinpath(
+                        os.path.join(
+                            expr,
+                            Settings.SUBDIR_PIXEL_CSVS
+                        )
+        ))
 
-        if not os.path.isdir(in_dir_year):
+        if not in_dir_year.exists():
             logger.warning(f'No such directory: {in_dir_year}')
             continue
 

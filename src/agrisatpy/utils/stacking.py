@@ -7,9 +7,10 @@ Created on Jul 8, 2021
 import os
 import glob
 import pandas as pd
+from pathlib import Path
 
 
-def stack_dataframes(in_dir: str,
+def stack_dataframes(in_dir: Path,
                      search_pattern: str,
                      start_date: int=None,
                      end_date: int=None,
@@ -35,7 +36,7 @@ def stack_dataframes(in_dir: str,
         keyword arguments to pass to pandas.read_csv()
     """
     # get a list of all CSV files matching the search pattern
-    csv_files = glob.glob(os.path.join(in_dir, search_pattern))
+    csv_files = glob.glob(str(in_dir.joinpath(search_pattern)))
 
     # loop over files and read them into dataframes
     all_df = []

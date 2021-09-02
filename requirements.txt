@@ -1,5 +1,7 @@
 pandas
 geopandas
+sqlalchemy
+geoalchemy2
 numpy
 pydantic
 pyproj
@@ -7,3 +9,5 @@ rasterio
 pytest
 sphinx
 sphinx_rtd_theme
+matplotlib
+lxml
