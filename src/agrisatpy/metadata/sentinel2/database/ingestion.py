@@ -39,7 +39,14 @@ def meta_df_to_database(meta_df: pd.DataFrame,
     session.commit()
 
 
-def metadata_dict_to_database(metadata: dict):
+def metadata_dict_to_database(metadata: dict
+                              ) -> None:
+    """
+    Inserts extracted metadata into the meta database
+
+    :param metadata:
+        dictionary with the extracted metadata
+    """
 
     # convert keys to lower case
     metadata =  {k.lower(): v for k, v in metadata.items()}
@@ -50,13 +57,13 @@ def metadata_dict_to_database(metadata: dict):
 
 if __name__ == '__main__':
 
-    from agrisatpy.metadata.sentinel2 import parse_s2_scene_metadata
+    from agrisatpy.metadata.sentinel2 import loop_s2_archive
     from pathlib import Path
 
     sat_dir = Path('/home/graflu/public/Evaluation/Projects/KP0022_DeepField/Sentinel-2/S2_L2A_data/CH/2020')
     
-    metadata = parse_s2_scene_metadata(in_dir=sat_dir.joinpath('S2A_MSIL2A_20200102T102421_N0213_R065_T32TLS_20200102T115419.SAFE'))
-    metadata_dict_to_database(metadata)
-    
-    
+    metadata = loop_s2_archive(in_dir=sat_dir)
+    metadata['storage_device_ip'] = '//hest.nas.ethz.ch/green_groups_kp_public'
+    metadata['storage_share'] = metadata['storage_share'].apply(lambda x: x.replace('/home/graflu/public/',''))
+    meta_df_to_database(meta_df=metadata)
     

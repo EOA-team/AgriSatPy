@@ -122,6 +122,8 @@ class S2_Processed_Metadata(Base):
     # spectral bands contained
     spectral_bands = Column(ARRAY(String), nullable=False)
 
+    # TODO: add storage address, filenames
+
     __table_args__ = (
         ForeignKeyConstraint(['scene_id', 'product_uri'],
                              ['sentinel2_raw_metadata.scene_id', 'sentinel2_raw_metadata.product_uri'],
