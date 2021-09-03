@@ -401,7 +401,7 @@ def scl_10m_resampling(in_dir: Path,
             out_band = src.read()
             out_transform = src.transform
             
-        # define new Affine for img writeout
+        # define new Affine transformation for image writing
         t = Affine(
             10,
             out_transform.b,

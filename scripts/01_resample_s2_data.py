@@ -21,14 +21,14 @@ from agrisatpy.processing.resampling import exec_parallel
 # date_end = input('Enter end date (format: %Y-%m-%d): ')
 # n_threads = input('Enter numer of threads for parallel execution: ')
 
-tile = 'T31TGL'
-out_dir = Path('/mnt/ides/Lukas/03_Debug/test_archive')
-date_start = date(2020,2,1)
-date_end = date(2020,4,30)
-n_threads = 4
+tile = 'T32TMT'
+# out_dir = Path('/mnt/ides/Lukas/03_Debug/test_archive')
+date_start = date(2020,1,1)
+date_end = date(2020,1,31)
+n_threads = 1
 
-
-# target_s2_archive = f'/run/media/graflu/ETH-KP-SSD6/SAT/L2A/{year}/{tile}'
+year = date_start.year
+target_s2_archive = f'/run/media/graflu/ETH-KP-SSD6/SAT/L1C/{year}/{tile}'
 
 # specify the number of threads
 
@@ -38,7 +38,7 @@ n_threads = 4
 # when setting is_mundi to False we assume that all ESA datasets are named .SAFE (Mundi breaks with this
 # convention)
 options = {'pixel_division': True,
-           'is_L2A': True,
+           'is_L2A': False,
            'is_mundi': False
            }
 
