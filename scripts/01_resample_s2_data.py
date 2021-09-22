@@ -26,7 +26,7 @@ if __name__ == '__main__':
     date_end = date(2019,12,31)
     
     # specify the number of threads
-    n_threads = 1
+    n_threads = 4
     
     # set output path according to AgriSatPy conventions
     year = date_start.year
