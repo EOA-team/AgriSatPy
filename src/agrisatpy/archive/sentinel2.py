@@ -28,6 +28,7 @@ class ArchiveCreationError(Exception):
 @check_processing_level
 def add_tile2archive(archive_dir: Path,
                      processing_level: str,
+                     region: str,
                      year: int,
                      tile: str
                      ) -> Path:
@@ -42,6 +43,8 @@ def add_tile2archive(archive_dir: Path,
         years and tiles are stored.
     :param processing_level:
         processing level of the data. Must be one of 'L1C', 'L2A'
+    :param region:
+        string-identifier of geographic region (e.g., CH for Switzerland)
     :param year
         year for which to create a sub-directories.
     :param tile:
@@ -61,11 +64,16 @@ def add_tile2archive(archive_dir: Path,
             os.mkdir(proc_dir)
         except Exception as e:
             raise ArchiveCreationError(f'Could not create {proc_dir}: {e}')
+
+    # each region is a sub-directory
+    if region == '':
+        raise ValueError('Region identifier cannot be empty!')
+    region_dir = proc_dir.joinpath(region)
+
     # each year is a sub-directory underneath the archive directory
-    
     if year < 0:
         raise ValueError(f'{year} is not a valid value for a year')
-    year_dir = proc_dir.joinpath(str(year))
+    year_dir = region_dir.joinpath(str(year))
 
     # try to create a directory for the specified year if it does not
     # exist
@@ -87,6 +95,7 @@ def add_tile2archive(archive_dir: Path,
 
 def create_archive_struct(in_dir: Path,
                           processing_levels: List[str],
+                          regions: List[str],
                           tile_selection: List[str],
                           year_selection: List[int]
                           ) -> None:
@@ -100,6 +109,8 @@ def create_archive_struct(in_dir: Path,
         years and tiles are stored.
     :param processing_level:
         list of processing levels of the data.
+    :param regions:
+        list of geographic regions for which to create sub-directories
     :param tile_selection:
         list of tiles for which to create sub-directories
     :param year_selection:
@@ -114,18 +125,21 @@ def create_archive_struct(in_dir: Path,
 
     # loop over processing levels
     for processing_level in processing_levels:
-        # tiles
-        for tile in tile_selection:
-            # years
-            for year in year_selection:
-                # try to create an according storage directory for the current
-                # selection
-                try:
-                    tile_dir = add_tile2archive(archive_dir=in_dir,
-                                                processing_level=processing_level,
-                                                year=year,
-                                                tile=tile)
-                except Exception as e:
-                    logger.error(f'Could not create {tile_dir}: {e}')
-                    sys.exit()
-                logger.info(f'Created {tile_dir}')
+        # regions
+        for region in regions:
+            # tiles
+            for tile in tile_selection:
+                # years
+                for year in year_selection:
+                    # try to create an according storage directory for the current
+                    # selection
+                    try:
+                        tile_dir = add_tile2archive(archive_dir=in_dir,
+                                                    processing_level=processing_level,
+                                                    region=region,
+                                                    year=year,
+                                                    tile=tile)
+                    except Exception as e:
+                        logger.error(f'Could not create {tile_dir}: {e}')
+                        sys.exit()
+                    logger.info(f'Created {tile_dir}')

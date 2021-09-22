@@ -52,18 +52,3 @@ def metadata_dict_to_database(metadata: dict
     metadata =  {k.lower(): v for k, v in metadata.items()}
     session.add(S2_Raw_Metadata(**metadata))
     session.commit()
-    
-
-
-if __name__ == '__main__':
-
-    from agrisatpy.metadata.sentinel2 import loop_s2_archive
-    from pathlib import Path
-
-    sat_dir = Path('/home/graflu/public/Evaluation/Projects/KP0022_DeepField/Sentinel-2/S2_L1C_data/CH/CH_2018/PRODUCT')
-    
-    metadata = loop_s2_archive(in_dir=sat_dir)
-    metadata['storage_device_ip'] = '//hest.nas.ethz.ch/green_groups_kp_public'
-    metadata['storage_share'] = metadata['storage_share'].apply(lambda x: x.replace('/home/graflu/public/',''))
-    meta_df_to_database(meta_df=metadata)
-    
