@@ -12,7 +12,15 @@ Requirements:
 from agrisatpy.processing.resampling import exec_parallel
 
 
-s2_archive = input('Enter path to Sentinel-2 directory (.SAFE structure): ')
+# s2_archive = input('Enter path to Sentinel-2 directory (.SAFE structure): ')
+# tile = input('Select a tile to query (e.g., "T32TMT"): ')
+# out_dir = input('Enter toplevel directory where outputs shall be stored (e.g., ./SAT/L2A): ')
+# year = input('Specify year to process (e.g., 2019): ')
+# date_start = input('Enter start date (format: %Y-%m-%d): ')
+# date_end = input('Enter end date (format: %Y-%m-%d): ')
+# n_threads = input('Enter numer of threads for parallel execution: ')
+
+s2_archive = 
 tile = input('Select a tile to query (e.g., "T32TMT"): ')
 out_dir = input('Enter toplevel directory where outputs shall be stored (e.g., ./SAT/L2A): ')
 year = input('Specify year to process (e.g., 2019): ')
@@ -30,7 +38,7 @@ n_threads = input('Enter numer of threads for parallel execution: ')
 # when setting is_mundi to False we assume that all ESA datasets are named .SAFE (Mundi breaks with this
 # convention)
 options = {'pixel_division': True,
-           'is_L2A': True,
+           'is_L2A': False,
            'is_mundi': False
            }
 
