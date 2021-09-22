@@ -103,6 +103,7 @@ class S2_Raw_Metadata(Base):
 
     # storage location
     storage_device_ip = Column(String, nullable=False)
+    storage_device_ip_alias = Column(String, nullable=False) # Linux
     storage_share = Column(String, nullable=False)
     path_type = Column(String, nullable=False, comment='type of the path (e.g., POSIX-Path)')
 
@@ -120,10 +121,11 @@ class S2_Processed_Metadata(Base):
     interpolation_method = Column(String, nullable=False)
 
     # was the scene merged to because of blackfill
-    scene_was_merged = Column(Boolean, nullable=False)
+    scene_was_merged = Column(Boolean, nullable=False, default=False)
 
     # storage address, filenames
     storage_device_ip = Column(String, nullable=False)
+    storage_device_ip_alias = Column(String, nullable=False) # Linux
     storage_share = Column(String, nullable=False)
     bandstack = Column(String, nullable=False)
     scl = Column(String)

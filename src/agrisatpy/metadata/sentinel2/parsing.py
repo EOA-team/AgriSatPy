@@ -59,20 +59,26 @@ def parse_MTD_TL(in_file: Path
     
     # get tile ID of L2A product and its corresponding L1C counterpart
     tile_id_xml = xmldoc.getElementsByTagName('TILE_ID')
+    # adaption to older Sen2Cor version
+    check_l1c = True
+    if len(tile_id_xml) == 0:
+        tile_id_xml = xmldoc.getElementsByTagName('TILE_ID_2A')
+        check_l1c = False
     tile_id = tile_id_xml[0].firstChild.nodeValue
     scene_id = tile_id.split('.')[0]
     metadata['SCENE_ID'] = scene_id
 
     # check if the scene is L1C or L2A
     is_l1c = False
-    try:
-        l1c_tile_id_xml = xmldoc.getElementsByTagName('L1C_TILE_ID')
-        l1c_tile_id = l1c_tile_id_xml[0].firstChild.nodeValue
-        l1c_tile_id = l1c_tile_id.split('.')[0]
-        metadata['L1C_TILE_ID'] = l1c_tile_id
-    except Exception:
-        logger.info(f'{scene_id} is L1C processing level')
-        is_l1c = True
+    if check_l1c:
+        try:
+            l1c_tile_id_xml = xmldoc.getElementsByTagName('L1C_TILE_ID')
+            l1c_tile_id = l1c_tile_id_xml[0].firstChild.nodeValue
+            l1c_tile_id = l1c_tile_id.split('.')[0]
+            metadata['L1C_TILE_ID'] = l1c_tile_id
+        except Exception:
+            logger.info(f'{scene_id} is L1C processing level')
+            is_l1c = True
 
     # sensing time (acquisition time)
     sensing_time_xml = xmldoc.getElementsByTagName('SENSING_TIME')
@@ -207,15 +213,26 @@ def parse_MTD_MSI(in_file: str
     # parse the xml file into a minidom object
     xmldoc = minidom.parse(in_file)
 
-    # define tags to extract
-    tag_list = ['PRODUCT_URI', 'PROCESSING_LEVEL', 'SENSING_ORBIT_NUMBER',
-                'SPACECRAFT_NAME', 'SENSING_ORBIT_DIRECTION']
+    # check the version of the xml. Unfortunately, different sen2cor version
+    # also produced slightly different metadata xmls
+    if xmldoc.getElementsByTagName('L2A_Product_Info'):
+        tag_list = ['PRODUCT_URI_2A']
+    else:
+        tag_list = ['PRODUCT_URI']
+
+    # define further tags to extract
+    tag_list.extend(
+        ['PROCESSING_LEVEL', 'SENSING_ORBIT_NUMBER','SPACECRAFT_NAME', 'SENSING_ORBIT_DIRECTION']
+    )
 
     metadata = dict.fromkeys(tag_list)
 
     for tag in tag_list:
         xml_elem = xmldoc.getElementsByTagName(tag)
-        metadata[tag] = xml_elem[0].firstChild.data
+        if tag == 'PRODUCT_URI_2A':
+            metadata['PRODUCT_URI'] = xml_elem[0].firstChild.data
+        else:
+            metadata[tag] = xml_elem[0].firstChild.data
 
     # extract solar irradiance for the single bands
     bands = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09',

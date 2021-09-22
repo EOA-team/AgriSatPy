@@ -1,7 +1,7 @@
 '''
 Created on Sep 2, 2021
 
-@author: graflu
+@author: Lukas Graf (D-USYS; ETHZ)
 '''
 
 import os
@@ -27,13 +27,16 @@ def reconstruct_path(record: pd.Series
 
     # check if ip points towards a network drive under Linux
     if os.name == 'posix':
+        ip = record.storage_device_ip_alias
         exe = 'cat /proc/mounts | grep cifs'
         response = subprocess.getoutput(exe)
-        if str(ip) in response:
-            # data is on mounted share -> get local file system mapping
-            local_path = response[response.find(str(ip)):].split()[1]
-            del ip
-            ip = Path(local_path)
+        lines = response.split('\n')
+        for line in lines:
+            if line.find(ip.strip()) >= 0:
+                # data is on mounted share -> get local file system mapping
+                local_path = response[response.find(ip.strip()):].split()[1]
+                del ip
+                ip = Path(local_path)
 
     share = ip.joinpath(record.storage_share)
     in_dir = share.joinpath(record.product_uri)

@@ -1,7 +1,7 @@
 '''
 Created on Jul 9, 2021
 
-@author:     Lukas Graf (D-USYS, ETHZ)
+@author:     Lukas Graf, Gregor Perich (D-USYS, ETHZ)
 
 @purpose:    function that could be used in parallelized way for preprocessing Sentinel-2 data
              -> resampling from 20 to 10m spatial resolution
@@ -24,8 +24,10 @@ from sqlalchemy import desc
 from sqlalchemy.orm import sessionmaker
 from rasterio.enums import Resampling
 
-from agrisatpy.spatial_resampling import resample_and_stack_S2, scl_10m_resampling
-from agrisatpy.spatial_resampling import identify_split_scenes, merge_split_scenes
+from agrisatpy.spatial_resampling import resample_and_stack_S2
+from agrisatpy.spatial_resampling import scl_10m_resampling
+from agrisatpy.spatial_resampling import identify_split_scenes
+from agrisatpy.spatial_resampling import merge_split_scenes
 from agrisatpy.utils import reconstruct_path
 from agrisatpy.config import get_settings
 from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
@@ -45,7 +47,7 @@ class MetadataNotFoundError(Exception):
 
 def do_parallel(in_df: pd.DataFrame,
                 loopcounter: int, 
-                out_dir: str, 
+                out_dir: Path, 
                 **kwargs
                 ) -> dict:
     """
@@ -72,7 +74,7 @@ def do_parallel(in_df: pd.DataFrame,
     """
     try:
 
-        # reconstruct storage location
+        # reconstruct storage location based on DB records
         in_dir = reconstruct_path(record=in_df.iloc[loopcounter])
     
         path_bandstack = resample_and_stack_S2(
@@ -172,6 +174,13 @@ def exec_parallel(target_s2_archive: Path,
         metadata of the processed datasets
     """
 
+    # check processing level; default is L2A
+    is_l2a = kwargs.get('is_L2A', True)
+    if is_l2a:
+        processing_level = 'Level-2A'
+    else:
+        processing_level = 'Level-1C'
+
     # check the metadata from the database
     metadata = pd.read_sql(
         session.query(S2_Raw_Metadata).filter(
@@ -181,6 +190,8 @@ def exec_parallel(target_s2_archive: Path,
                 S2_Raw_Metadata.sensing_date <= date_end,
                 S2_Raw_Metadata.sensing_date >= date_start
             )
+        ).filter(
+            S2_Raw_Metadata.processing_level == processing_level
         ).order_by(
             S2_Raw_Metadata.sensing_date.desc()
         ).statement,
@@ -295,5 +306,5 @@ def exec_parallel(target_s2_archive: Path,
             )
         )
     
-        # write metadata of all stacked files to CSV
-        return bandstack_meta
+    # write metadata of all stacked files to CSV
+    return bandstack_meta

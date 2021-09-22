@@ -12,40 +12,55 @@ Requirements:
 from pathlib import Path
 from datetime import date
 from agrisatpy.processing.resampling import exec_parallel
+from agrisatpy.metadata.sentinel2.database import meta_df_to_database
 
 
-# tile = input('Select a tile to query (e.g., "T32TMT"): ')
-# out_dir = input('Enter toplevel directory where outputs shall be stored (e.g., ./SAT/L2A): ')
-# year = input('Specify year to process (e.g., 2019): ')
-# date_start = input('Enter start date (format: %Y-%m-%d): ')
-# date_end = input('Enter end date (format: %Y-%m-%d): ')
-# n_threads = input('Enter numer of threads for parallel execution: ')
+if __name__ == '__main__':
 
-tile = 'T32TMT'
-# out_dir = Path('/mnt/ides/Lukas/03_Debug/test_archive')
-date_start = date(2020,1,1)
-date_end = date(2020,1,31)
-n_threads = 1
-
-year = date_start.year
-target_s2_archive = f'/run/media/graflu/ETH-KP-SSD6/SAT/L1C/{year}/{tile}'
-
-# specify the number of threads
-
-# further options as key-value pairs.
-# pixel_division is a special approach that multiplies pixel values instead of doing an interpolation
-# use the is_L2A keyword to specify the processing level of the data
-# when setting is_mundi to False we assume that all ESA datasets are named .SAFE (Mundi breaks with this
-# convention)
-options = {'pixel_division': True,
-           'is_L2A': False,
-           'is_mundi': False
-           }
-
-exec_parallel(out_dir,
-              date_start,
-              date_end,
-              n_threads,
-              tile,
-              **options
-)
+    # define tile, region, processing level and date range
+    tile = 'T32TMT'
+    region = 'CH'
+    processing_level = 'L1C'
+    
+    date_start = date(2019,1,1)
+    date_end = date(2019,12,31)
+    
+    # specify the number of threads
+    n_threads = 1
+    
+    # set output path according to AgriSatPy conventions
+    year = date_start.year
+    target_s2_archive = Path(
+        f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Processed/{processing_level}/{region}/{year}/{tile}'
+    )
+    
+    # further options as key-value pairs.
+    # pixel_division is a special approach that multiplies pixel values instead of doing an interpolation
+    # use the is_L2A keyword to specify the processing level of the data
+    # when setting is_mundi to False we assume that all ESA datasets are named .SAFE (Mundi breaks with this
+    # convention)
+    options = {'pixel_division': True,
+               'is_L2A': False
+               }
+    
+    # start the processing
+    metadata = exec_parallel(
+        target_s2_archive,
+        date_start,
+        date_end,
+        n_threads,
+        tile,
+        **options
+    )
+    
+    # set storage paths
+    metadata['storage_device_ip'] = '//hest.nas.ethz.ch/green_groups_kp_public'
+    metadata['storage_device_ip_alias'] = '//nas12.ethz.ch/green_groups_kp_public'
+    metadata['storage_share'] = target_s2_archive
+    metadata['storage_share'] = metadata['storage_share'].apply(lambda x: x.replace('/home/graflu/public/',''))
+    
+    # write to database (set raw_metadata option to False)
+    meta_df_to_database(
+        meta_df=metadata,
+        raw_metadata=False
+    )

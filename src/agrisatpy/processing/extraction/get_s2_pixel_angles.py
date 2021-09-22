@@ -16,6 +16,9 @@ from agrisatpy.config import get_settings
 
 logger = get_settings().logger
 
+# TODO: adopt to metadata usage (all required information is actually stored there
+# required for DB-query; sensing_date and tile_id
+
 
 def search_mtd_xml(raw_archive_path: Path,
                    entry: pd.Series
