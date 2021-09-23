@@ -6,7 +6,7 @@ Requirements:
     - having downloaded data from ESA/Copernicus and stored them locally (.SAFE)
     - having created a metadata file per year in the archive with the .SAFE datasets
     - having created a local target archive for storing the resampled, stacked data
-    
+
 """
 
 from agrisatpy.processing.resampling import exec_parallel
