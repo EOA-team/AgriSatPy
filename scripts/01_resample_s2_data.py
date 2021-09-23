@@ -6,47 +6,71 @@ Requirements:
     - having downloaded data from ESA/Copernicus and stored them locally (.SAFE)
     - having created a metadata file per year in the archive with the .SAFE datasets
     - having created a local target archive for storing the resampled, stacked data
-    
+
 """
 
+from pathlib import Path
+from datetime import date
 from agrisatpy.processing.resampling import exec_parallel
+from agrisatpy.metadata.sentinel2.database import meta_df_to_database
 
 
-# s2_archive = input('Enter path to Sentinel-2 directory (.SAFE structure): ')
-# tile = input('Select a tile to query (e.g., "T32TMT"): ')
-# out_dir = input('Enter toplevel directory where outputs shall be stored (e.g., ./SAT/L2A): ')
-# year = input('Specify year to process (e.g., 2019): ')
-# date_start = input('Enter start date (format: %Y-%m-%d): ')
-# date_end = input('Enter end date (format: %Y-%m-%d): ')
-# n_threads = input('Enter numer of threads for parallel execution: ')
+if __name__ == '__main__':
 
-s2_archive = 
-tile = input('Select a tile to query (e.g., "T32TMT"): ')
-out_dir = input('Enter toplevel directory where outputs shall be stored (e.g., ./SAT/L2A): ')
-year = input('Specify year to process (e.g., 2019): ')
-date_start = input('Enter start date (format: %Y-%m-%d): ')
-date_end = input('Enter end date (format: %Y-%m-%d): ')
-n_threads = input('Enter numer of threads for parallel execution: ')
+    # define tile, region, processing level and date range
+    tile = 'T32TMT'
+    region = 'CH'
+    processing_level = 'L1C'
+    
+    date_start = date(2019,1,1)
+    date_end = date(2019,12,31)
+    
+    # specify the number of threads
+    n_threads = 4
 
-# target_s2_archive = f'/run/media/graflu/ETH-KP-SSD6/SAT/L2A/{year}/{tile}'
+    # database usage?
+    use_database = False
+    
+    # set output path according to AgriSatPy conventions
+    year = date_start.year
+    target_s2_archive = Path(
+        f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Processed/{processing_level}/{region}/{year}/{tile}'
+    )
+    
+    # further options as key-value pairs.
+    # pixel_division is a special approach that multiplies pixel values instead of doing an interpolation
+    # use the is_L2A keyword to specify the processing level of the data
+    # when setting is_mundi to False we assume that all ESA datasets are named .SAFE (Mundi breaks with this
+    # convention)
+    options = {'pixel_division': True,
+               'is_L2A': False
+               }
 
-# specify the number of threads
+    # no-database usage
+    options.update({'raw_data_archive': '/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L1C/CH/2019'})
+    
+    # start the processing
+    metadata = exec_parallel(
+        target_s2_archive,
+        date_start,
+        date_end,
+        n_threads,
+        tile,
+        use_database,
+        **options
+    )
+    
+    # set storage paths
+    metadata['storage_device_ip'] = '//hest.nas.ethz.ch/green_groups_kp_public'
+    metadata['storage_device_ip_alias'] = '//nas12.ethz.ch/green_groups_kp_public'
+    metadata['storage_share'] = target_s2_archive
+    metadata['storage_share'] = metadata['storage_share'].apply(lambda x: x.replace('/home/graflu/public/',''))
+    
+    # write to database (set raw_metadata option to False)
+    meta_df_to_database(
+        meta_df=metadata,
+        raw_metadata=False
+    )
 
-# further options as key-value pairs.
-# pixel_division is a special approach that multiplies pixel values instead of doing an interpolation
-# use the is_L2A keyword to specify the processing level of the data
-# when setting is_mundi to False we assume that all ESA datasets are named .SAFE (Mundi breaks with this
-# convention)
-options = {'pixel_division': True,
-           'is_L2A': False,
-           'is_mundi': False
-           }
-
-exec_parallel(raw_data_archive,
-              target_s2_archive,
-              date_start,
-              date_end,
-              n_threads,
-              tile,
-              **options
-)
+    # save to CSV in addition
+    metadata.to_csv(target_s2_archive.joinpath('metadata.csv'))

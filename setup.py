@@ -26,7 +26,7 @@ setuptools.setup(
     packages = find_packages(
         where = 'src'
     ),
-    package_dir={'':'source'},
+    package_dir={'':'src'},
     include_package_data=True,
     package_data={'': []},
     classifiers = [
@@ -38,6 +38,8 @@ setuptools.setup(
                       'numpy',
                       'pydantic',
                       'pyproj',
-                      'rasterio'
+                      'rasterio',
+                      'joblib',
+                      'psycopg2'
                       ]
 )
