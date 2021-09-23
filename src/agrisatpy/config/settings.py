@@ -8,14 +8,14 @@ from typing import List
 import logging
 from pathlib import Path
 from os.path import join
-from pydantic.main import BaseModel
+from pydantic import BaseSettings
 from functools import lru_cache
 
 
-class Settings(BaseModel):
+class Settings(BaseSettings):
     """
     The AgriSatPy setting class. Allows to modify default
-    settings and behaviour of the package using a .env file
+    settings and behavior of the package using a .env file
     or environmental variables
     """
     # sat archive definitions
@@ -23,7 +23,7 @@ class Settings(BaseModel):
     SUBDIR_RGB_PREVIEWS: str = 'rgb_previews'
     SUBDIR_SCL_FILES: str = 'scene_classification'
 
-    RESAMPLED_METADATA_FILE: str = 'processed_metadata.csv'
+    RESAMPLED_METADATA_FILE: str = 'metadata.csv'
 
     PROCESSING_LEVELS: List[str] = ['L1C', 'L2A']
     
@@ -34,6 +34,10 @@ class Settings(BaseModel):
     # define DHUS username and password
     DHUS_USER: str = ''
     DHUS_PASSWORD: str = ''
+
+    # define CREODIAS username and password
+    CREODIAS_USER: str = ''
+    CREODIAS_PASSWORD: str = ''
 
     # metadata base connection details
     DB_USER: str = 'postgres'
@@ -75,6 +79,7 @@ class Settings(BaseModel):
 
     # env files are encoded utf-8, only
     class Config:
+        env_file = '.env'
         env_file_encoding = 'utf-8'
         arbitrary_types_allowed = True
 
