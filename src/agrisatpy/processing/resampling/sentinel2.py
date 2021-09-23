@@ -121,8 +121,8 @@ def do_parallel(in_df: pd.DataFrame,
                 os.path.splitext(
                     os.path.basename(path_bandstack))[0] + '.png'
             ),
-            'product_uri': in_df.PRODUCT_URI.iloc[loopcounter],
-            'scene_id': in_df.SCENE_ID.iloc[loopcounter],
+            'product_uri': in_df.product_uri.iloc[loopcounter],
+            'scene_id': in_df.scene_id.iloc[loopcounter],
             'spatial_resolution': 10.,
             'resampling_method': resampling_method,
             'scene_was_merged': False
