@@ -8,12 +8,13 @@ import os
 import glob
 import pandas as pd
 from pathlib import Path
+from typing import Optional
 
 
 def stack_dataframes(in_dir: Path,
                      search_pattern: str,
-                     start_date: int=None,
-                     end_date: int=None,
+                     start_date: Optional[int]=None,
+                     end_date: Optional[int]=None,
                      **kwargs
                      ) -> pd.DataFrame:
     """

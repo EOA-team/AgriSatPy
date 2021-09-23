@@ -17,20 +17,23 @@ def test_archive_creation(datadir):
     year_selection = [2019, 2020, 2021]
     processing_levels = ['L1C', 'L2A']
     tile_selection = ['T31TGM', 'T32TMT']
+    regions = ['CH']
 
     create_archive_struct(datadir,
                           processing_levels,
+                          regions,
                           tile_selection,
                           year_selection)
 
     # check if all sub-directories were created
     for proc_level in processing_levels:
-        for year in year_selection:
-            for tile in tile_selection:
-                expr = proc_level + os.sep + str(year) + os.sep + tile
-                subdir = os.path.join(datadir, expr)
-                assert os.path.isdir(subdir), \
-                f'No sub-directory found for {proc_level} / {year} / {tile}: Expected: {subdir}'
+        for region in regions:
+            for year in year_selection:
+                for tile in tile_selection:
+                    expr = proc_level + os.sep + region + os.sep + str(year) + os.sep + tile
+                    subdir = os.path.join(datadir, expr)
+                    assert os.path.isdir(subdir), \
+                    f'No sub-directory found for {proc_level} / {year} / {tile}: Expected: {subdir}'
 
     # add a tile afterwards
     tile = 'T32TLS'
@@ -38,16 +41,18 @@ def test_archive_creation(datadir):
 
     create_archive_struct(datadir,
                           processing_levels,
+                          regions,
                           tile_selection,
                           year_selection)
 
     # check if the tile was added to all processing levels and years
     for proc_level in processing_levels:
-        for year in year_selection:
-            expr = proc_level + os.sep + str(year) + os.sep + tile
-            subdir = os.path.join(datadir, expr)
-            assert os.path.isdir(subdir), \
-            f'No sub-directory found for {proc_level} / {year} / {tile}: Expected: {subdir}'
+        for region in regions:
+            for year in year_selection:
+                expr = proc_level + os.sep + region + os.sep + str(year) + os.sep + tile
+                subdir = os.path.join(datadir, expr)
+                assert os.path.isdir(subdir), \
+                f'No sub-directory found for {proc_level} / {year} / {tile}: Expected: {subdir}'
     
 
     # add a year afterwards
@@ -56,13 +61,15 @@ def test_archive_creation(datadir):
 
     create_archive_struct(datadir,
                           processing_levels,
+                          regions,
                           tile_selection,
                           year_selection)
 
     # check if the year was added to all processing levels and tiles
     for proc_level in processing_levels:
-        for tile in tile_selection:
-            expr = proc_level + os.sep + str(year) + os.sep + tile
-            subdir = os.path.join(datadir, expr)
-            assert os.path.isdir(subdir), \
-            f'No sub-directory found for {proc_level} / {year} / {tile}: Expected: {subdir}'
+        for region in regions:
+            for year in year_selection:
+                expr = proc_level + os.sep + region + os.sep + str(year) + os.sep + tile
+                subdir = os.path.join(datadir, expr)
+                assert os.path.isdir(subdir), \
+                f'No sub-directory found for {proc_level} / {year} / {tile}: Expected: {subdir}'

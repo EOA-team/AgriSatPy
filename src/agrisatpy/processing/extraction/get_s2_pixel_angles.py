@@ -1,7 +1,7 @@
 '''
 Created on Aug 10, 2021
 
-@author: graflu
+@author: Lukas Graf (D-USYS, ETHZ)
 '''
 
 import os
@@ -9,14 +9,18 @@ import glob
 import geopandas as gpd
 import pandas as pd
 import numpy as np
+from pathlib import Path
 from lxml import etree
 from scipy.interpolate import interp2d
 from agrisatpy.config import get_settings
 
 logger = get_settings().logger
 
+# TODO: adopt to metadata usage (all required information is actually stored there
+# required for DB-query; sensing_date and tile_id
 
-def search_mtd_xml(raw_archive_path: str,
+
+def search_mtd_xml(raw_archive_path: Path,
                    entry: pd.Series
                    ) -> str:
     """
@@ -29,20 +33,22 @@ def search_mtd_xml(raw_archive_path: str,
         pandas series containing the main metadata about the scene,
         specifically the PRODUCT_URI
     """
-    dot_safe_dir = os.path.join(raw_archive_path, entry.PRODUCT_URI)
+    dot_safe_dir = raw_archive_path.joinpath(entry.PRODUCT_URI)
 
     # in case the scene comes from Mundi the .SAFE is missing
-    if not os.path.isdir(dot_safe_dir):
-        dot_safe_dir = os.path.join(
-            raw_archive_path,
+    if not dot_safe_dir.exists():
+        dot_safe_dir = raw_archive_path.joinpath(
             os.path.splitext(entry.PRODUCT_URI)[0]
         )
-    search_expression = dot_safe_dir + os.sep + 'GRANULE' + os.sep + '*' \
-                        + os.sep + 'MTD_TL.xml'
-    return glob.glob(search_expression)[0]
+    search_expression = dot_safe_dir.joinpath(
+        'GRANULE' + os.sep + '*' + os.sep + 'MTD_TL.xml'
+    )
+    return glob.glob(str(search_expression))[0]
 
 
-def get_grid_values_from_xml(tree_node, xpath_str):
+def get_grid_values_from_xml(tree_node,
+                             xpath_str
+                             ):
     '''
     Receives a XML tree node and a XPath parsing string
     and search for children matching the string.
@@ -68,7 +74,7 @@ def get_grid_values_from_xml(tree_node, xpath_str):
 
 def get_s2_pixel_angles(pixels: gpd.GeoDataFrame,
                         meta_df: pd.DataFrame,
-                        raw_archive_path: str
+                        raw_archive_path: Path
                         ) -> gpd.GeoDataFrame:
     """
     Function to extract the illumination and vieiwing angles from

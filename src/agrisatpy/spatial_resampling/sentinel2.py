@@ -14,9 +14,7 @@ Created on Jul 9, 2021
 
 
 import os
-from typing import List
 import glob
-import pandas as pd
 import geopandas as gpd
 import rasterio as rio
 import rasterio.mask
@@ -24,8 +22,13 @@ from rasterio.enums import Resampling
 from rasterio.io import MemoryFile
 from rasterio import Affine
 import numpy as np
+from typing import Optional
+from pathlib import Path
 
 from agrisatpy.spatial_resampling import upsample_array
+from agrisatpy.utils import get_S2_sclfile
+from agrisatpy.utils import get_S2_bandfiles_with_res
+from agrisatpy.utils import get_S2_tci
 from agrisatpy.config import Sentinel2
 from agrisatpy.config import get_settings
 
@@ -33,151 +36,17 @@ Settings = get_settings()
 logger = Settings.logger
 
 
-# global defintion of spectral bands and their spatial resolution
+# global definition of spectral bands and their spatial resolution
 s2 = Sentinel2()
 
 
-# %% helper funs
-def get_S2_bandfiles(in_dir: str,
-                     resolution_selection: List[float]=[10.0, 20.0],
-                     search_str: str='*B*.jp2',
-                     is_L2A: bool=True
-                     ) -> pd.DataFrame:
-    '''
-    Returns a selection of native resolution Sentinel-2 bands (Def.: 10, 20 m).
-    Works on MSIL2A data (sen2core derived) but also allows to work on Sentinel2
-    L1C data. In the latter case, the spatial resolution of the single bands is
-    hard-coded since the L1C data structure does not allow to extract the spatial
-    resolution from the file or directory name.
-
-    :param in_dir:
-        Directory where the search_string is applied. Here - for Sentinel-2 - the
-        it is the .SAFE directory of S2 rawdata files.
-    :param resolution_selection:
-        list of Sentinel-2 spatial resolutions to process (Def: [10, 20] m)
-    :param search_str:
-        search pattern for Sentinel-2 band files
-    :param is_L2A:
-        if False, assumes that the data is in Sentinel-2 L1C processing level. The
-        spatial resolution is then hard-coded for each spectral band. Default is True.
-    :returns: pandas dataframe of jp2 files
-    '''
-    # search for files in subdirectories in case of L2A data
-    if is_L2A:
-        band_list = [glob.glob(os.path.join(in_dir,f'GRANULE/*/IM*/*{int(x)}*/{search_str}')) \
-                     for x in resolution_selection]
-    else:
-        band_list = []
-        for spatial_resolution in s2.SPATIAL_RESOLUTIONS.keys():
-            if spatial_resolution not in resolution_selection: continue
-            tmp_list = []
-            for band_name in s2.SPATIAL_RESOLUTIONS[spatial_resolution]:
-                tmp_list.extend(glob.glob(
-                    os.path.join(in_dir, f'GRANULE/*/IMG_DATA/*_{band_name}.jp2')))
-            band_list.append(tmp_list)
-                
-    # convert list of list to dictionary using resolutions as keys
-    band_dict = dict.fromkeys(resolution_selection)
-    for idx, key in enumerate(band_dict.keys()):
-        band_dict[key] = band_list[idx]
-
-    # find the highest resolution
-    highest_resolution = min(resolution_selection)
-    # save the band numbers of those bands with the highest resolution
-    if is_L2A:
-        hires_bands = [x.split('_')[-2] for x in band_dict[highest_resolution]]
-    else:
-        hires_bands = [x.split('_')[-1].replace('jp2', '') \
-                        for x in band_dict[highest_resolution]]
-    
-    # loop over the other resolutions and drop the downsampled high resolution
-    # bands and keep only the native bands per resolution
-    native_bands = band_dict[highest_resolution]
-    resolution_per_band = [highest_resolution for x in hires_bands]
-    for key in band_dict.keys():
-
-        if key == highest_resolution:
-            continue
-
-        if is_L2A:
-            lowres_bands = [(x.split('_')[-2], x) for x in band_dict[key]]
-        else:
-            lowres_bands = [(x.split('_')[-1].replace('.jp2', ''), x) \
-                            for x in band_dict[key]]
-        lowres_bands2keep = [x[1] for x in lowres_bands if x[0] not in hires_bands]
-        native_bands.extend(lowres_bands2keep)
-        
-        lowres_resolution = [key for x in lowres_bands2keep]
-        resolution_per_band.extend(lowres_resolution)
-
-    if is_L2A:
-        native_band_names = [x.split('_')[-2] for x in native_bands]
-    else:
-        native_band_names = [x.split('_')[-1].replace('.jp2','') \
-                             for x in native_bands]
-    native_band_df = pd.DataFrame(native_band_names, columns=['band_name'])
-    native_band_df["band_path"] = native_bands
-    native_band_df["band_resolution"] = resolution_per_band
-    
-    native_band_df = native_band_df.sort_values(by='band_name')
-
-    # Sentinel-2 Band 8A needs "special" treatment in terms of band ordering
-    if 'B8A' in native_band_df['band_name'].values:
-
-        tmp_bandnums = [int(x.replace('B','')) for x in list(native_band_df['band_name'].values[0:-1])]
-        indices2shift = [i for i,v in enumerate(tmp_bandnums) if v > 8]
-        index_b8a = indices2shift[0]
-        final_band_df = native_band_df.iloc[0:index_b8a]
-        final_band_df = final_band_df.append(native_band_df[native_band_df['band_name']=='B8A'])
-        final_band_df = final_band_df.append(native_band_df.iloc[indices2shift])
-        return final_band_df
-    else:
-        return native_band_df
-
-
-def get_S2_sclfile(in_dir: str
-                   ) -> str:
-    '''
-    returns the path to the S2 SCL (scene classification file) files in 20m resolution.
-    Works for L2A processing level, only.
-
-    :param in_dir:
-        directory containing the SCL band files (jp2000 file).
-    '''
-    search_pattern = "/GRANULE/*/IM*/R20m/*_SCL_20m.jp2"
-    return glob.glob(in_dir + search_pattern)[0]
-
-
-def get_S2_tci(in_dir: str,
-               is_L2A: bool=True,
-               ) -> str:
-
-    '''
-    Returns path to S2 TCI (quicklook) img (10m resolution). Works for both
-    Sentinel-2 processing levels ('L2A' and 'L1C').
-
-    :param in_dir:
-        .SAFE folder which contains Sentinel-2 data
-    :param is_L2A:
-        if False, it is assumed that the data is organized in L1C .SAFE folder
-        structure. The default is True.
-    '''
-    file_tci = ''
-    if is_L2A:
-        file_tci = glob.glob(in_dir + '/GRANULE' + '/*/IM*/*10*/*TCI*')[0]
-    else:
-        file_tci = glob.glob(in_dir + '/GRANULE' + '/*/IM*/*TCI*')[0]
-    return file_tci
-
-
-# %% main fun
-def resample_and_stack_S2(in_dir: str,
-                          out_dir: str,
-                          target_resolution: float=10.0,
-                          interpolation: int=Resampling.cubic,
-                          masking: bool=False,
-                          pixel_division: bool=False,
-                          is_L2A: bool=True,
+def resample_and_stack_S2(in_dir: Path,
+                          out_dir: Path,
+                          target_resolution: Optional[float]=10.0,
+                          interpolation: Optional[int]=Resampling.cubic,
+                          masking: Optional[bool]=False,
+                          pixel_division: Optional[bool]=False,
+                          is_L2A: Optional[bool]=True,
                           **kwargs
                          ) -> str:
     '''
@@ -222,13 +91,17 @@ def resample_and_stack_S2(in_dir: str,
     '''
     # read in S2 band and SCL file
     resolution_selection = kwargs.get('resolution_selection', [10., 20.])
-    s2bands = get_S2_bandfiles(in_dir=in_dir,
-                               is_L2A=is_L2A,
-                               resolution_selection=resolution_selection)
+    s2bands = get_S2_bandfiles_with_res(
+        in_dir=in_dir,
+        is_L2A=is_L2A,
+        resolution_selection=resolution_selection
+    )
 
     # get 10m TCI file
-    tci_file = get_S2_tci(in_dir=in_dir,
-                          is_L2A=is_L2A)
+    tci_file = get_S2_tci(
+        in_dir=in_dir,
+        is_L2A=is_L2A
+    )
 
     # If masking is chosen
     if masking:
@@ -239,8 +112,10 @@ def resample_and_stack_S2(in_dir: str,
         crs_mask = mask.crs
         # re-project data if needed    
         if crs_s2 != crs_mask:
-            logger.warning("CRS mismatch between satellite image and mask layer!")
-            logger.warning("Reprojecting mask CRS to S2 CRS.")
+            logger.warning(
+                "CRS mismatch between satellite image and mask layer!" \
+                + "Reprojecting mask CRS to S2 CRS."
+            )
             mask = mask.to_crs(crs_s2)
     
     # get metadata of for a file with the highest resolution (here 10m)
@@ -251,7 +126,8 @@ def resample_and_stack_S2(in_dir: str,
     if pixel_division:
         if (target_resolution > s2bands["band_resolution"]).any():
             raise ValueError(
-                'Could not decrease spatial resolution when using pixel_division!')
+                'Could not decrease spatial resolution when using pixel_division!'
+            )
         interpolation = 'Resampling.pixel_division'
     
     # copy metadata of a hires file
@@ -282,8 +158,8 @@ def resample_and_stack_S2(in_dir: str,
         cols = meta['width']
 
     # update the out_meta with the desired number of S2 bands
-    meta.update(count = s2bands.shape[0])
-    meta.update(driver = "GTiff")
+    meta.update(count=s2bands.shape[0])
+    meta.update(driver="GTiff")
   
     # get S2 UID
     s2_uid = os.path.basename(p=in_dir)
@@ -450,13 +326,14 @@ def resample_and_stack_S2(in_dir: str,
         os.remove(xml_file)
 
     logger.info(f"file {out_file} written successfully!")
-    return os.path.join(out_dir, out_file)
+    return Path(out_dir).joinpath(out_file)
 
 
-def scl_10m_resampling(in_dir: str,
-                       out_dir: str,
-                       masking: bool = False,
-                       **kwargs):
+def scl_10m_resampling(in_dir: Path,
+                       out_dir: Path,
+                       masking: Optional[bool]=False,
+                       **kwargs
+                       ) -> Path:
     '''
     Resamples the scene classification layer (SCL) available for L2A Sentinel-2 data.
     Since the SCL is provided in 20 m spatial resolution, this function allows to
@@ -477,17 +354,19 @@ def scl_10m_resampling(in_dir: str,
         SHould masking be applied. The default is False.
     :param kwargs:
         in_file_aoi = filepath to the mask (AOI file).
+    :return scl_out_path:
+        path to the resampled SCL file
     '''    
     # scl file is resampled after band resampling (see below)
     scl_file = get_S2_sclfile(in_dir)
 
     # create subfolder for SCL scenes
-    scl_subdir = os.path.join(out_dir, Settings.SUBDIR_SCL_FILES)
-    if not os.path.isdir(scl_subdir):
+    scl_subdir = out_dir.joinpath(Settings.SUBDIR_SCL_FILES)
+    if not scl_subdir.exists():
         os.mkdir(scl_subdir)
         
     # get unique ID of S2 tile
-    s2_uid = os.path.basename(p=in_dir)
+    s2_uid = os.path.basename(p=str(in_dir))
     # Write out_file
     scl_out_file = s2_uid.split("_")[2].split("T")[0] + "_" + s2_uid.split("_")[-2] + \
         "_" + s2_uid.split("_")[0] + "_SCL_10m.tiff"
@@ -495,32 +374,42 @@ def scl_10m_resampling(in_dir: str,
     
     # read in mask & check CRS
     if masking:
-        in_file_aoi = kwargs.get("in_file_aoi", str)
-        mask = gpd.read_file(in_file_aoi)
+        in_file_aoi = kwargs.get("in_file_aoi", Path)
+        mask = gpd.read_file(Path(in_file_aoi))
         # check CRS of mask
         crs_scl = rio.open(scl_file).crs
         crs_mask = mask.crs
         # reproject if needed    
         if crs_scl != crs_mask:
-            logger.warning("CRS mismatch between SCL and mask layer!")
-            logger.info("Reprojecting mask CRS to SCL CRS.")
+            logger.warning(
+                "CRS mismatch between SCL and mask layer!" \
+                + "Reprojecting mask CRS to SCL CRS."
+            )
             mask = mask.to_crs(crs_scl)
 
     with rio.open(scl_file) as src:
         meta = src.meta
         
         if masking:
-            out_band, out_transform = rio.mask.mask(src,
-                            mask["geometry"],
-                            crop = True, 
-                            all_touched = True
-                            )
+            out_band, out_transform = rio.mask.mask(
+                src,
+                mask["geometry"],
+                crop = True, 
+                all_touched = True
+            )
         else:
             out_band = src.read()
             out_transform = src.transform
             
-        # define new Affine for img writeout
-        t = Affine(10, out_transform.b, out_transform.c, out_transform.d, -10, out_transform.f)
+        # define new Affine transformation for image writing
+        t = Affine(
+            10,
+            out_transform.b,
+            out_transform.c,
+            out_transform.d,
+            -10,
+            out_transform.f
+        )
 
         scaling_factor = 2
         meta.update({"driver": "Gtiff",
@@ -528,15 +417,17 @@ def scl_10m_resampling(in_dir: str,
                      "width": out_band.shape[2]*scaling_factor, 
                      "transform": t})
 
-        # upsample the array spatial resolution by a factor of 2
-        out_array = upsample_array(in_array=out_band[0,:,:],
-                                   scaling_factor=scaling_factor)
+        # upsample the array spatial resolution by a factor of x
+        out_array = upsample_array(
+            in_array=out_band[0,:,:],
+            scaling_factor=scaling_factor
+        )
 
         with rio.open(scl_out_path, 'w',  **meta) as dst:
             dst.write(out_array, 1)
   
     logger.info(f"file {scl_out_file} written successfully!")
-    return scl_out_path
+    return Path(scl_out_path)
 
 
 if __name__ == '__main__':
@@ -545,6 +436,8 @@ if __name__ == '__main__':
     out_dir = '/mnt/ides/Lukas/03_Debug/Sentinel2/L1C/'
     is_L2A = False
     
-    out_file = resample_and_stack_S2(in_dir=in_dir,
-                                     out_dir=out_dir,
+    out_file = resample_and_stack_S2(in_dir=Path(in_dir),
+                                     out_dir=Path(out_dir),
                                      is_L2A=is_L2A)
+    
+    print(out_file)

@@ -4,6 +4,8 @@ Created on Aug 3, 2021
 @author: graflu
 '''
 
+# TODO adopt to metadatabase
+
 import os
 import glob
 from typing import List

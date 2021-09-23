@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy import MetaData
 from sqlalchemy import ForeignKeyConstraint
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, String, Float, Date, Integer, Text, ARRAY, TIMESTAMP
+from sqlalchemy import Column, String, Float, Date, Integer, Text, Boolean, TIMESTAMP
 from geoalchemy2 import Geometry
 
 from agrisatpy.config import get_settings
@@ -103,6 +103,7 @@ class S2_Raw_Metadata(Base):
 
     # storage location
     storage_device_ip = Column(String, nullable=False)
+    storage_device_ip_alias = Column(String, nullable=False) # Linux
     storage_share = Column(String, nullable=False)
     path_type = Column(String, nullable=False, comment='type of the path (e.g., POSIX-Path)')
 
@@ -119,10 +120,17 @@ class S2_Processed_Metadata(Base):
     spatial_resolution = Column(Float, nullable=False)
     interpolation_method = Column(String, nullable=False)
 
-    # spectral bands contained
-    spectral_bands = Column(ARRAY(String), nullable=False)
+    # was the scene merged to because of blackfill
+    scene_was_merged = Column(Boolean, nullable=False, default=False)
 
-    # TODO: add storage address, filenames
+    # storage address, filenames
+    storage_device_ip = Column(String, nullable=False)
+    storage_device_ip_alias = Column(String, nullable=False) # Linux
+    storage_share = Column(String, nullable=False)
+    bandstack = Column(String, nullable=False)
+    scl = Column(String)
+    preview = Column(String, nullable=False)
+    path_type = Column(String, nullable=False, comment='type of the path (e.g., POSIX-Path)')
 
     __table_args__ = (
         ForeignKeyConstraint(['scene_id', 'product_uri'],
