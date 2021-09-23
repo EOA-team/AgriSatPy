@@ -204,7 +204,7 @@ def exec_parallel(target_s2_archive: Path,
     # or use the csv
     else:
         raw_data_archive = Path(kwargs.get('raw_data_archive'))
-        raw_metadata = pd.read_csv(os.path.join(str(raw_data_archive), 'metadata.csv'))
+        raw_metadata = pd.read_csv(raw_data_archive)
         raw_metadata.columns = raw_metadata.columns.str.lower()
         metadata_filtered = raw_metadata[
             (raw_metadata.tile_id == tile) & (raw_metadata.processing_level == processing_level)
