@@ -27,6 +27,9 @@ if __name__ == '__main__':
     
     # specify the number of threads
     n_threads = 4
+
+    # database usage?
+    use_database = False
     
     # set output path according to AgriSatPy conventions
     year = date_start.year
@@ -42,6 +45,9 @@ if __name__ == '__main__':
     options = {'pixel_division': True,
                'is_L2A': False
                }
+
+    # no-database usage
+    options.update({'raw_data_archive': '/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L1C/CH/2019'})
     
     # start the processing
     metadata = exec_parallel(
@@ -50,6 +56,7 @@ if __name__ == '__main__':
         date_end,
         n_threads,
         tile,
+        use_database,
         **options
     )
     

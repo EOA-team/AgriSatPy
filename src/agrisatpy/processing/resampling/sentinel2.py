@@ -14,6 +14,7 @@ Created on Jul 9, 2021
 import os
 import time
 import pandas as pd
+import numpy as np
 import shutil
 from datetime import date
 from pathlib import Path
@@ -23,6 +24,7 @@ from sqlalchemy import and_
 from sqlalchemy import desc
 from sqlalchemy.orm import sessionmaker
 from rasterio.enums import Resampling
+from typing import Optional
 
 from agrisatpy.spatial_resampling import resample_and_stack_S2
 from agrisatpy.spatial_resampling import scl_10m_resampling
@@ -31,6 +33,7 @@ from agrisatpy.spatial_resampling import merge_split_scenes
 from agrisatpy.utils import reconstruct_path
 from agrisatpy.config import get_settings
 from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
+from agrisatpy import processing
 
 Settings = get_settings()
 engine = create_engine(Settings.DB_URL, echo=Settings.ECHO_DB)
@@ -141,6 +144,7 @@ def exec_parallel(target_s2_archive: Path,
                   date_end: date,
                   n_threads: int,
                   tile: str,
+                  use_database: Optional[bool]=True,
                   **kwargs
                   ) -> pd.DataFrame:
     """
@@ -182,21 +186,35 @@ def exec_parallel(target_s2_archive: Path,
         processing_level = 'Level-1C'
 
     # check the metadata from the database
-    metadata = pd.read_sql(
-        session.query(S2_Raw_Metadata).filter(
-            S2_Raw_Metadata.tile_id == tile
-        ).filter(
-            and_(
-                S2_Raw_Metadata.sensing_date <= date_end,
-                S2_Raw_Metadata.sensing_date >= date_start
+    if use_database:
+        metadata = pd.read_sql(
+            session.query(S2_Raw_Metadata).filter(
+                S2_Raw_Metadata.tile_id == tile
+            ).filter(
+                and_(
+                    S2_Raw_Metadata.sensing_date <= date_end,
+                    S2_Raw_Metadata.sensing_date >= date_start
+                )
+            ).filter(
+                S2_Raw_Metadata.processing_level == processing_level
+            ).order_by(
+                S2_Raw_Metadata.sensing_date.desc()
+            ).statement,
+            session.bind
+        )
+    # or use the csv
+    else:
+        raw_data_archive = Path(kwargs.get('raw_data_archive'))
+        raw_metadata = pd.read_csv(raw_data_archive.joinpath('metadata.csv'))
+        raw_metadata.columns = raw_metadata.columns.str.lower()
+        metadata_filtered = raw_metadata[
+            (raw_metadata.tile_id == tile) & (raw_metadata.processing_level == processing_level)
+        ]
+        metadata = metadata_filtered[
+            pd.to_datetime(raw_metadata.sensing_date).between(
+                np.datetime64(date_start), np.datetime64(date_end), inclusive=True
             )
-        ).filter(
-            S2_Raw_Metadata.processing_level == processing_level
-        ).order_by(
-            S2_Raw_Metadata.sensing_date.desc()
-        ).statement,
-        session.bind
-    )
+        ]
 
     # get "duplicates", i.e, scenes that have the same sensing date because of datastrip
     # beginning/end issue
