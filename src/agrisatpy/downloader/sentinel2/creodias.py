@@ -127,7 +127,7 @@ def get_keycloak() -> str:
 def download_datasets(
         datasets: pd.DataFrame,
         download_dir: str
-    ):
+    ) -> None:
     """
     Function for actual dataset download from CREODIAS.
     Requires valid CREODIAS username and password (to be
@@ -155,7 +155,7 @@ def download_datasets(
             stream=True
         )
         response.raise_for_status()
-        # download the data
+        # download the data using the iter_content method (writes chunks to disk)
         fname = dataset.properties['productIdentifier'].split('/')[-1].replace(
             'SAFE', 'zip'
         )
