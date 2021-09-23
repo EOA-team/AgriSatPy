@@ -71,3 +71,6 @@ if __name__ == '__main__':
         meta_df=metadata,
         raw_metadata=False
     )
+
+    # save to CSV in addition
+    metadata.to_csv(target_s2_archive.joinpath('metadata.csv'))
