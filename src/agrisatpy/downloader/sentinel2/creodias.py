@@ -163,7 +163,7 @@ def download_datasets(
         with open(fname, 'wb') as fd:
             for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 fd.write(chunk)
-        logger.info(f'Finished downloading {fname} ({idx}/{datasets.shape[0]})')
+        logger.info(f'Finished downloading {fname} ({idx+1}/{datasets.shape[0]})')
 
 
 if __name__ == '__main__':
