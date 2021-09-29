@@ -74,6 +74,11 @@ def do_parallel(in_df: pd.DataFrame,
     :return innerdict:
         metadata dict of the processed dataset
     """
+    
+    # define (to catch win10 related errors)
+    path_bandstack = '' 
+    innerdict = {}
+    
     try:
 
         # reconstruct storage location based on DB records
