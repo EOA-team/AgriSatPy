@@ -84,10 +84,15 @@ def do_parallel(in_df: pd.DataFrame,
             out_dir=out_dir,
             **kwargs
         )
-        # continue if the bandstack was blackfilled, only
-        if path_bandstack == '':
-            return {}
+        
+    except Exception as e:
+        logger.error(e)
+        
+    # continue if the bandstack was blackfilled, only
+    if path_bandstack == '':
+        return {}
 
+    try:
         # resample each SCL file (L2A processing level only)
         is_L2A = kwargs.get('is_L2A', True)
         path_sclfile = ''
@@ -130,11 +135,9 @@ def do_parallel(in_df: pd.DataFrame,
             'scene_was_merged': False
         }
 
-
     except Exception as e:
         logger.error(e)
-        return {}
-
+        
     return innerdict
 
 
@@ -191,7 +194,7 @@ def exec_parallel(target_s2_archive: Path,
                 S2_Raw_Metadata.tile_id == tile
             ).filter(
                 and_(
-                    S2_Raw_Metadata.sensing_date <= date_end,
+                        S2_Raw_Metadata.sensing_date <= date_end,
                     S2_Raw_Metadata.sensing_date >= date_start
                 )
             ).filter(

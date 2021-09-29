@@ -47,7 +47,7 @@ if __name__ == '__main__':
                }
 
     # no-database usage
-    options.update({'raw_data_archive': '/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L1C/CH/2019'})
+    options.update({'raw_data_archive': f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/{processing_level}/{region}/{year}'})
     
     # start the processing
     metadata = exec_parallel(
