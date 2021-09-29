@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     DB_NAME: str = 'metadata_db'
     DB_URL: str = f'postgresql://{DB_USER}:{DB_PW}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
     
-    DEFAULT_SCHEMA: str = 'public'
+    DEFAULT_SCHEMA: str = 'cs_sat_s1'
     ECHO_DB: bool = False
     
     # define logger

@@ -15,7 +15,9 @@ from agrisatpy.config import get_settings
 
 
 Settings = get_settings()
-engine = create_engine(Settings.DB_URL, echo=Settings.ECHO_DB)
+
+DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
+engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
 session = sessionmaker(bind=engine)()
 
 
