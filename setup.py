@@ -40,6 +40,9 @@ setuptools.setup(
                       'pyproj',
                       'rasterio',
                       'joblib',
-                      'psycopg2'
+                      'psycopg2', 
+                      'sqlalchemy', 
+                      'matplotlib', 
+                      'geoalchemy2'
                       ]
 )
