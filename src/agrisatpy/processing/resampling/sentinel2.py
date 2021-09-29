@@ -85,13 +85,13 @@ def do_parallel(in_df: pd.DataFrame,
             **kwargs
         )
         
+        # continue if the bandstack was only blackfilled
+        if path_bandstack == '':
+            return {}
+        
     except Exception as e:
         logger.error(e)
         
-    # continue if the bandstack was blackfilled, only
-    if path_bandstack == '':
-        return {}
-
     try:
         # resample each SCL file (L2A processing level only)
         is_L2A = kwargs.get('is_L2A', True)
