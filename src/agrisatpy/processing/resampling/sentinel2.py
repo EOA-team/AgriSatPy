@@ -151,7 +151,7 @@ def do_parallel(in_df: pd.DataFrame,
     creation_time = datetime.now().strftime('%Y%m%d-%H%M%S')
     with open(scenes_log_file, 'a+') as src:
         line = f"{in_dir}, {innerdict['bandstack']}, {innerdict['scl']}, {innerdict['preview']}, {creation_time}"
-        src.write(line)
+        src.write(line + '\n')
 
     return innerdict
 
@@ -319,7 +319,7 @@ def exec_parallel(target_s2_archive: Path,
                 creation_time = datetime.now().strftime('%Y%m%d-%H%M%S')
                 with open(scenes_log_file, 'a+') as src:
                     line = f"{scene_1}, {scene_2}, {creation_time}"
-                    src.write(line)
+                    src.write(line + '\n')
             except Exception as e:
                 logger.error(f'Failed to merge {scene_1} and {scene_2}: {e}')
 
