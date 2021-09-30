@@ -23,7 +23,7 @@ if __name__ == '__main__':
     processing_level = 'L1C'
     
     date_start = date(2019,1,1)
-    date_end = date(2019,12,31)
+    date_end = date(2019,1,15)
     
     # specify the number of threads
     n_threads = 4
@@ -33,9 +33,10 @@ if __name__ == '__main__':
     
     # set output path according to AgriSatPy conventions
     year = date_start.year
-    target_s2_archive = Path(
-        f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Processed/{processing_level}/{region}/{year}/{tile}'
-    )
+    # target_s2_archive = Path(
+    #     f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Processed/{processing_level}/{region}/{year}/{tile}'
+    # )
+    target_s2_archive = Path('/mnt/ides/Lukas/03_Debug/Sentinel2/pipeline')
     
     # further options as key-value pairs.
     # pixel_division is a special approach that multiplies pixel values instead of doing an interpolation
@@ -47,7 +48,9 @@ if __name__ == '__main__':
                }
 
     # no-database usage
-    options.update({'raw_data_archive': f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/{processing_level}/{region}/{year}'})
+    options.update(
+        {'raw_data_archive': f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/{processing_level}/{region}/{year}'}
+    )
     
     # start the processing
     metadata = exec_parallel(
