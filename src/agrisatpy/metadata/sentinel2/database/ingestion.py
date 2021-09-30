@@ -15,6 +15,7 @@ from agrisatpy.config import get_settings
 
 
 Settings = get_settings()
+logger = Settings.logger
 
 DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
 engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
@@ -39,14 +40,18 @@ def meta_df_to_database(meta_df: pd.DataFrame,
     """
 
     meta_df.columns = meta_df.columns.str.lower()
-    for _, record in meta_df.iterrows():
-        metadata = record.to_dict()
-        if raw_metadata:
-            session.add(S2_Raw_Metadata(**metadata))
-        else:
-            session.add(S2_Processed_Metadata(**metadata))
-        session.flush()
-    session.commit()
+    try:
+        for _, record in meta_df.iterrows():
+            metadata = record.to_dict()
+            if raw_metadata:
+                session.add(S2_Raw_Metadata(**metadata))
+            else:
+                session.add(S2_Processed_Metadata(**metadata))
+            session.flush()
+        session.commit()
+    except Exception as e:
+        logger.error(f'Database INSERT failed: {e}')
+        session.rollback()
 
 
 def metadata_dict_to_database(metadata: dict

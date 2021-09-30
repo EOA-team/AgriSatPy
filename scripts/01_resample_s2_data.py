@@ -66,9 +66,9 @@ if __name__ == '__main__':
     # set storage paths
     metadata['storage_device_ip'] = '//hest.nas.ethz.ch/green_groups_kp_public'
     metadata['storage_device_ip_alias'] = '//nas12.ethz.ch/green_groups_kp_public'
-    metadata['storage_share'] = target_s2_archive
+    metadata['storage_share'] = str(target_s2_archive)
     metadata['storage_share'] = metadata['storage_share'].apply(lambda x: x.replace('/home/graflu/public/',''))
-    
+
     # write to database (set raw_metadata option to False)
     meta_df_to_database(
         meta_df=metadata,

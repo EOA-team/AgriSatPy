@@ -324,7 +324,7 @@ def exec_parallel(target_s2_archive: Path,
                 logger.error(f'Failed to merge {scene_1} and {scene_2}: {e}')
 
         # also the storage location shall be inserted into the database later
-        bandstack_meta['storage_location'] = target_s2_archive
+        # bandstack_meta['storage_share'] = target_s2_archive
 
         # move to target archive
         try:
