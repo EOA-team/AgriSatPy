@@ -320,13 +320,8 @@ def exec_parallel(target_s2_archive: Path,
                 with open(scenes_log_file, 'a+') as src:
                     line = f"{scene_1}, {scene_2}, {creation_time}"
                     src.write(line + '\n')
-            except Exception as e:
-                logger.error(f'Failed to merge {scene_1} and {scene_2}: {e}')
 
-        # also the storage location shall be inserted into the database later
-        # bandstack_meta['storage_share'] = target_s2_archive
-
-        # move to target archive
+                # move to target archive
         try:
             shutil.move(
                 res['bandstack'],
@@ -382,6 +377,13 @@ def exec_parallel(target_s2_archive: Path,
             )
         except Exception as e:
             logger.error(f'Could not delete temp_blackfill: {e}')
+                
+                
+            except Exception as e:
+                logger.error(f'Failed to merge {scene_1} and {scene_2}: {e}')
+
+        # also the storage location shall be inserted into the database later
+        # bandstack_meta['storage_share'] = target_s2_archive
 
         logger.info('Finished merging of blackfill scenes')
     

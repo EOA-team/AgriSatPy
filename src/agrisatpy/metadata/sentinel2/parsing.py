@@ -386,11 +386,13 @@ def loop_s2_archive(in_dir: Path
         
     # loop over the scenes
     metadata_scenes = []
+    error_file = open(in_dir.joinpath('errored_datasets.txt'), 'w+')
     for idx, s2_scene in enumerate(s2_scenes):
         logger.info(f'Extracting metadata of {os.path.basename(s2_scene)} ({idx+1}/{n_scenes})')
         try:
             mtd_scene = parse_s2_scene_metadata(in_dir=Path(s2_scene))
         except Exception as e:
+            error_file.write(Path(s2_scene).name)
             logger.error(f'Extraction of metadata failed {s2_scene}: {e}')
             continue
         metadata_scenes.append(mtd_scene)
