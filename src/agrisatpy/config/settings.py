@@ -59,8 +59,8 @@ class Settings(BaseSettings):
     LOGGING_LEVEL: int = logging.INFO
 
     # processing checks
-    PROCESSING_CHECK_FILE_NO_BF: str = f'{CURRENT_TIME}_successful_scenes_noblackfill.txt'
-    PROCESSING_CHECK_FILE_BF: str = f'{CURRENT_TIME}_successful_scenes_blackfill.txt'
+    PROCESSING_CHECK_FILE_NO_BF: str = f'successful_scenes_noblackfill.txt'
+    PROCESSING_CHECK_FILE_BF: str = f'successful_scenes_blackfill.txt'
     
 
     logger: logging.Logger = logging.getLogger(LOGGER_NAME)

@@ -25,6 +25,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import sessionmaker
 from rasterio.enums import Resampling
 from typing import Optional
+from datetime import datetime
 
 from agrisatpy.spatial_resampling import resample_and_stack_S2
 from agrisatpy.spatial_resampling import scl_10m_resampling
@@ -147,8 +148,9 @@ def do_parallel(in_df: pd.DataFrame,
     # write to successful_scenes.txt to indicate that the processing of
     # the scene was accomplished without any errors
     scenes_log_file = out_dir.joinpath('log').joinpath(Settings.PROCESSING_CHECK_FILE_NO_BF)
+    creation_time = datetime.now().strftime('%Y%m%d-%H%M%S')
     with open(scenes_log_file, 'a+') as src:
-        line = f"{in_dir}, {innerdict['bandstack']}, {innerdict['scl']}, {innerdict['preview']}"
+        line = f"{in_dir}, {innerdict['bandstack']}, {innerdict['scl']}, {innerdict['preview']}, {creation_time}"
         src.write(line)
 
     return innerdict
@@ -314,8 +316,9 @@ def exec_parallel(target_s2_archive: Path,
                 scenes_log_file = target_s2_archive.joinpath('log').joinpath(
                     Settings.PROCESSING_CHECK_FILE_BF
                 )
+                creation_time = datetime.now().strftime('%Y%m%d-%H%M%S')
                 with open(scenes_log_file, 'a+') as src:
-                    line = f"{scene_1}, {scene_2}"
+                    line = f"{scene_1}, {scene_2}, {creation_time}"
                     src.write(line)
             except Exception as e:
                 logger.error(f'Failed to merge {scene_1} and {scene_2}: {e}')

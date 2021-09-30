@@ -23,7 +23,7 @@ if __name__ == '__main__':
     processing_level = 'L1C'
     
     date_start = date(2019,1,1)
-    date_end = date(2019,1,10)
+    date_end = date(2019,1,2)
     
     # specify the number of threads
     n_threads = 4
