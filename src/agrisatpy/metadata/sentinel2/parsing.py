@@ -393,6 +393,7 @@ def loop_s2_archive(in_dir: Path
             mtd_scene = parse_s2_scene_metadata(in_dir=Path(s2_scene))
         except Exception as e:
             error_file.write(Path(s2_scene).name)
+            error_file.flush()
             logger.error(f'Extraction of metadata failed {s2_scene}: {e}')
             continue
         metadata_scenes.append(mtd_scene)

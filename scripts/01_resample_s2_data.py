@@ -18,15 +18,15 @@ from agrisatpy.metadata.sentinel2.database import meta_df_to_database
 if __name__ == '__main__':
 
     # define tile, region, processing level and date range
-    tile = 'T32TMT'
+    tile = 'T32TLT'
     region = 'CH'
-    processing_level = 'L1C'
+    processing_level = 'L2A'
     
-    date_start = date(2019,1,1)
-    date_end = date(2019,1,2)
+    date_start = date(2018,8,10)
+    date_end = date(2018,8,12)
     
     # specify the number of threads
-    n_threads = 4
+    n_threads = 1
 
     # database usage?
     use_database = True
@@ -44,7 +44,7 @@ if __name__ == '__main__':
     # when setting is_mundi to False we assume that all ESA datasets are named .SAFE (Mundi breaks with this
     # convention)
     options = {'pixel_division': True,
-               'is_L2A': False
+               'is_L2A': True
                }
 
     # no-database usage

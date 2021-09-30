@@ -293,9 +293,11 @@ def exec_parallel(target_s2_archive: Path,
             )
             # the usual naming problem witht the .SAFE directories
             if not scene_1.exists():
-                product_id_1 = Path(str(product_id_1.replace('.SAFE', '')))
+                # product_id_1 = Path(str(product_id_1.replace('.SAFE', '')))
+                scene_1 = Path(str(scene_1).replace('.SAFE',''))
             if not scene_2.exists():
-                product_id_2 = Path(str(product_id_2.replace('.SAFE', '')))
+                # product_id_2 = Path(str(product_id_2.replace('.SAFE', '')))
+                scene_2 = Path(str(scene_2).replace('.SAFE',''))
             try:
                 res = merge_split_scenes(
                     scene_1=scene_1,
@@ -322,62 +324,61 @@ def exec_parallel(target_s2_archive: Path,
                     src.write(line + '\n')
 
                 # move to target archive
-        try:
-            shutil.move(
-                res['bandstack'],
-                os.path.join(
-                    target_s2_archive,
-                    os.path.basename(
-                        res['bandstack']
+                try:
+                    shutil.move(
+                        res['bandstack'],
+                        os.path.join(
+                            target_s2_archive,
+                            os.path.basename(
+                                res['bandstack']
+                            )
+                        )
                     )
-                )
-            )
-        except Exception as e:
-            logger.error(f'Could not move {res["bandstack"]}: {e}')
-
-        try:
-            shutil.move(
-                res['scl'],
-                os.path.join(
-                    os.path.join(
-                        target_s2_archive,
-                        Settings.SUBDIR_SCL_FILES
-                    ),
-                    os.path.basename(
-                        res['scl']
+                except Exception as e:
+                    logger.error(f'Could not move {res["bandstack"]}: {e}')
+        
+                try:
+                    shutil.move(
+                        res['scl'],
+                        os.path.join(
+                            os.path.join(
+                                target_s2_archive,
+                                Settings.SUBDIR_SCL_FILES
+                            ),
+                            os.path.basename(
+                                res['scl']
+                            )
+                        )
                     )
-                )
-            )
-        except Exception as e:
-            logger.error(f'Could not move {res["scl"]}: {e}')
-
-        try:
-            shutil.move(
-                res['preview'],
-                os.path.join(
-                    os.path.join(
-                        target_s2_archive,
-                        Settings.SUBDIR_RGB_PREVIEWS
-                    ),
-                    os.path.basename(
-                        res['preview']
+                except Exception as e:
+                    logger.error(f'Could not move {res["scl"]}: {e}')
+        
+                try:
+                    shutil.move(
+                        res['preview'],
+                        os.path.join(
+                            os.path.join(
+                                target_s2_archive,
+                                Settings.SUBDIR_RGB_PREVIEWS
+                            ),
+                            os.path.basename(
+                                res['preview']
+                            )
+                        )
                     )
-                )
-            )
-        except Exception as e:
-            logger.error(f'Could not move {res["preview"]}: {e}')
-    
-        # remove working directory in the end
-        try:
-            shutil.rmtree(
-                os.path.join(
-                    target_s2_archive,
-                    'temp_blackfill'
-                )
-            )
-        except Exception as e:
-            logger.error(f'Could not delete temp_blackfill: {e}')
-                
+                except Exception as e:
+                    logger.error(f'Could not move {res["preview"]}: {e}')
+            
+                # remove working directory in the end
+                try:
+                    shutil.rmtree(
+                        os.path.join(
+                            target_s2_archive,
+                            'temp_blackfill'
+                        )
+                    )
+                except Exception as e:
+                    logger.error(f'Could not delete temp_blackfill: {e}')
                 
             except Exception as e:
                 logger.error(f'Failed to merge {scene_1} and {scene_2}: {e}')
