@@ -29,7 +29,7 @@ if __name__ == '__main__':
     n_threads = 4
 
     # database usage?
-    use_database = False
+    use_database = True
     
     # set output path according to AgriSatPy conventions
     year = date_start.year

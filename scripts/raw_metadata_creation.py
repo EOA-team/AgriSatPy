@@ -6,7 +6,7 @@ from pathlib import Path
 
 if __name__ == '__main__':
 
-    years = [2017]
+    years = [2018,2019,2020]
     processing_levels = ['L2A']
     region = 'CH'
     

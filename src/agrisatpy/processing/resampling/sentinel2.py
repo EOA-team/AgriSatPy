@@ -35,7 +35,8 @@ from agrisatpy.config import get_settings
 from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
 
 Settings = get_settings()
-engine = create_engine(Settings.DB_URL, echo=Settings.ECHO_DB)
+DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
+engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
 session = sessionmaker(bind=engine)()
 logger = Settings.logger
 
@@ -195,7 +196,13 @@ def exec_parallel(target_s2_archive: Path,
     # check the metadata from the database
     if use_database:
         metadata = pd.read_sql(
-            session.query(S2_Raw_Metadata).filter(
+            session.query(
+                S2_Raw_Metadata.product_uri,
+                S2_Raw_Metadata.scene_id,
+                S2_Raw_Metadata.storage_share,
+                S2_Raw_Metadata.storage_device_ip_alias,
+                S2_Raw_Metadata.storage_device_ip
+            ).filter(
                 S2_Raw_Metadata.tile_id == tile
             ).filter(
                 and_(
