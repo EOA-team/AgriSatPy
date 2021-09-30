@@ -23,7 +23,7 @@ if __name__ == '__main__':
     processing_level = 'L1C'
     
     date_start = date(2019,1,1)
-    date_end = date(2019,1,15)
+    date_end = date(2019,1,10)
     
     # specify the number of threads
     n_threads = 4
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     options.update(
         {'raw_data_archive': f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/{processing_level}/{region}/{year}'}
     )
-    
+
     # start the processing
     metadata = exec_parallel(
         target_s2_archive,

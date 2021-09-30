@@ -148,8 +148,8 @@ def do_parallel(in_df: pd.DataFrame,
     # the scene was accomplished without any errors
     scenes_log_file = out_dir.joinpath('log').joinpath(Settings.PROCESSING_CHECK_FILE_NO_BF)
     with open(scenes_log_file, 'a+') as src:
-        line = f"{in_dir.joinpath(innerdict['product_uri'])}, {innerdict['bandstack']}, {innerdict['scl']}, {innerdict['preview']}"
-        src.write(line + os.linesep)
+        line = f"{in_dir}, {innerdict['bandstack']}, {innerdict['scl']}, {innerdict['preview']}"
+        src.write(line)
 
     return innerdict
 
@@ -316,7 +316,7 @@ def exec_parallel(target_s2_archive: Path,
                 )
                 with open(scenes_log_file, 'a+') as src:
                     line = f"{scene_1}, {scene_2}"
-                    src.write(line + os.linesep)
+                    src.write(line)
             except Exception as e:
                 logger.error(f'Failed to merge {scene_1} and {scene_2}: {e}')
 
