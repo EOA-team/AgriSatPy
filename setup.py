@@ -15,8 +15,8 @@ with open(path.join(home, 'README.md'), encoding='utf-8') as readme:
 
 setuptools.setup(
     name='AgriSatPy',
-    use_scm_version=True,
     setup_requires=['setuptools_scm'],
+    use_scm_version={'version_scheme': 'post-release'},
     description = '',
     long_description = long_description,
     long_description_content_type = 'text/markdown',
