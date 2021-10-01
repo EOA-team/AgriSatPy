@@ -8,9 +8,11 @@ import os
 import subprocess
 import pandas as pd
 from pathlib import Path
+from typing import Optional
 
 
-def reconstruct_path(record: pd.Series
+def reconstruct_path(record: pd.Series,
+                     is_raw_data: Optional[bool]=True
                     ) -> Path:
     """
     auxiliary function to reconstruct the actual dataset location
@@ -39,7 +41,11 @@ def reconstruct_path(record: pd.Series
                 ip = Path(local_path)
 
     share = ip.joinpath(record.storage_share)
-    in_dir = share.joinpath(record.product_uri)
+
+    if is_raw_data:
+        in_dir = share.joinpath(record.product_uri)
+    else:
+        in_dir = share
 
     # the path should work 'as it is' on Windows machines by replacing the
     # slashes
