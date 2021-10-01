@@ -324,9 +324,10 @@ def exec_parallel(target_s2_archive: Path,
                     src.write(line + '\n')
 
                 # move to target archive
+                working_dir = target_s2_archive.joinpath("temp_blackfill")
                 try:
                     shutil.move(
-                        res['bandstack'],
+                        working_dir.joinpath(res['bandstack']),
                         os.path.join(
                             target_s2_archive,
                             os.path.basename(
@@ -339,7 +340,7 @@ def exec_parallel(target_s2_archive: Path,
         
                 try:
                     shutil.move(
-                        res['scl'],
+                        working_dir.joinpath(Path(res['scl']).name),
                         os.path.join(
                             os.path.join(
                                 target_s2_archive,
@@ -355,7 +356,7 @@ def exec_parallel(target_s2_archive: Path,
         
                 try:
                     shutil.move(
-                        res['preview'],
+                        working_dir.joinpath(Path(res['preview']).name),
                         os.path.join(
                             os.path.join(
                                 target_s2_archive,
