@@ -21,6 +21,7 @@ from .sentinel2 import scl_10m_resampling
 from agrisatpy.config import get_settings
 
 Settings = get_settings()
+logger = Settings.logger
 
 
 def identify_split_scenes(metadata_df: pd.DataFrame,
@@ -259,6 +260,7 @@ def merge_split_scenes(scene_1: Path,
         band_names = list(src.descriptions)
 
     # merge band stacks
+    logger.info(f'Starting merging bandstack files {scene_out_1} and {scene_out_2}')
     meta, img_data = merge_split_files(
         in_file_1=scene_out_1,
         in_file_2=scene_out_2,
@@ -272,11 +274,13 @@ def merge_split_scenes(scene_1: Path,
             dst.write(img_data[idx,:,:], idx+1)
             # set band names
             dst.set_band_description(idx+1, band_names[idx])
+    logger.info(f'Finished merging bandstack files {scene_out_1} and {scene_out_2}')
 
     # generate quicklook
     quicklook_1 = find_rgb_preview(scene_out_1)
     quicklook_2 = find_rgb_preview(scene_out_2)
 
+    logger.info(f'Starting merging quicklook files {quicklook_1} and {quicklook_2}')
     meta, rgb = merge_split_files(
         in_file_1=quicklook_1,
         in_file_2=quicklook_2,
@@ -287,10 +291,12 @@ def merge_split_scenes(scene_1: Path,
     out_file_rgb = os.path.join(working_dir, os.path.basename(quicklook_1))
     with rio.open(out_file_rgb, 'w', **meta) as dst:
         dst.write(rgb)              
+    logger.info(f'Finished merging quicklook files {quicklook_1} and {quicklook_2}')
 
     # merge SCL scenes (L2A processing level ,only)
     out_file_scl = ''
     if is_L2A:
+        logger.info(f'Starting merging SCL files {scl_out_1} and {scl_out_2}')
         meta, scl_data = merge_split_files(
             in_file_1=scl_out_1,
             in_file_2=scl_out_2,
@@ -299,10 +305,16 @@ def merge_split_scenes(scene_1: Path,
         out_file_scl = os.path.join(working_dir, os.path.basename(scl_out_1))
         with rio.open(out_file_scl, 'w', **meta) as dst:
             dst.write(scl_data)
+        logger.info(f'Finished merging SCL files {scl_out_1} and {scl_out_2}')
 
-    # remove intermediate files (out_dirs)
-    for out_dir in out_dirs:
-        shutil.rmtree(out_dir)
+    # remove intermediate files (out_dirs) -> go into the working directory
+    # and delete the subfolders there
+    cwd = os.getcwd()
+    os.chdir(cwd)
+    os.chdir(working_dir)
+    shutil.rmtree('1')
+    shutil.rmtree('2')
+    os.chdir(cwd)
 
     # save filepaths to dict and return
     return {'bandstack': Path(out_file).name,
