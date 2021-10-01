@@ -164,34 +164,3 @@ def download_datasets(
             for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 fd.write(chunk)
         logger.info(f'Finished downloading {fname} ({idx+1}/{datasets.shape[0]})')
-
-
-if __name__ == '__main__':
-
-    import geopandas as gpd
-    
-    processing_level = ProcessingLevels.L1C
-    start_date = date(2019,1,1)
-    end_date = date(2019,1,31)
-    max_records = 200
-
-    aoi_file = '/mnt/ides/Lukas/04_Work/ESCH_2021/AOI_Esch_EPSG32632.shp'
-    bbox_data = gpd.read_file(aoi_file)
-    # project to geographic coordinates (required for API query)
-    bbox_data.to_crs(4326, inplace=True)
-    bounding_box = bbox_data.geometry.iloc[0]
-
-    datasets = query_creodias(
-        start_date,
-        end_date,
-        max_records,
-        processing_level,
-        bounding_box
-    )
-
-    download_dir = '/mnt/ides/Lukas/04_Work'
-    
-    download_datasets(datasets, download_dir)
-    
-    
-    
