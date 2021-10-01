@@ -10,6 +10,7 @@ from pathlib import Path
 from os.path import join
 from pydantic import BaseSettings
 from functools import lru_cache
+from datetime import datetime
 
 
 class Settings(BaseSettings):
@@ -51,10 +52,16 @@ class Settings(BaseSettings):
     ECHO_DB: bool = False
     
     # define logger
+    CURRENT_TIME: str = datetime.now().strftime('%Y%m%d-%H%M%S')
     LOGGER_NAME: str = 'AgriSatPy'
     LOG_FORMAT: str = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
-    LOG_FILE: str = join(Path.home(), f'{LOGGER_NAME}.log')
+    LOG_FILE: str = join(Path.home(), f'{CURRENT_TIME}_{LOGGER_NAME}.log')
     LOGGING_LEVEL: int = logging.INFO
+
+    # processing checks
+    PROCESSING_CHECK_FILE_NO_BF: str = f'successful_scenes_noblackfill.txt'
+    PROCESSING_CHECK_FILE_BF: str = f'successful_scenes_blackfill.txt'
+    
 
     logger: logging.Logger = logging.getLogger(LOGGER_NAME)
 

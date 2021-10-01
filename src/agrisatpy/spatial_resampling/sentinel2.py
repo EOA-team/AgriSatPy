@@ -186,8 +186,10 @@ def resample_and_stack_S2(in_dir: Path,
             
             for idx in range(s2bands.shape[0]):
     
-                logger.info(f'Processing band {s2bands["band_name"].iloc[idx]} ({idx+1}/{s2bands.shape[0]})')
-                    
+                logger.info(
+                    f'Processing band {s2bands["band_name"].iloc[idx]} ({idx+1}/{s2bands.shape[0]}) from {in_dir}'
+                )
+
                 # exception for native bands not to be resampled
                 if s2bands["band_resolution"].iloc[idx] == target_resolution:
                     
@@ -206,7 +208,11 @@ def resample_and_stack_S2(in_dir: Path,
 
                         # save using write() since it's an array
                         dst.set_band_description(idx+1, s2bands["band_name"].iloc[idx])
-                        dst.write(out_band[0, :, :], idx+1) 
+                        dst.write(out_band[0, :, :], idx+1)
+
+                    logger.info(
+                            f"Completed writing of {s2bands['band_name'].iloc[idx]} from {in_dir}"
+                        ) 
 
                 # resample all other non-native bands
                 else:
@@ -249,10 +255,13 @@ def resample_and_stack_S2(in_dir: Path,
                                 return ''
                             dst.set_band_description(idx+1, s2bands["band_name"].iloc[idx])
                             dst.write(out_array, idx+1)
-                        logger.info("interpolation complete")
+                        logger.info(
+                            f"Completed interpolation of {s2bands['band_name'].iloc[idx]} from {in_dir}"
+                        )
 
         # clip TCI by AOI and write to 8 bit RGB .png
         # read in TCI, clip to AOI and write out as RGB
+        logger.info(f'Creating RGB preview from {in_dir}')
         with rio.open(tci_file) as src:
             meta = src.meta
             out_img, out_transform = rio.mask.mask(src,
@@ -271,6 +280,7 @@ def resample_and_stack_S2(in_dir: Path,
             with rio.open(os.path.join(rgb_subdir, out_file_rgb), "w+", **meta) as dst:
                 for i in range(out_img.shape[0]):
                     dst.write(out_img[i, :, :].astype(np.uint8), i+1)
+        logger.info(f'Completed creating RGB preview from {in_dir}')
 
     # case 2: if no masking is needed, just resample the whole S2 tile
     else: 
@@ -279,14 +289,20 @@ def resample_and_stack_S2(in_dir: Path,
             for idx in range(s2bands.shape[0]):
         
                 logger.info(
-                    f'Processing band {s2bands["band_name"].iloc[idx]} ({idx+1}/{s2bands.shape[0]})')
+                    f'Processing band {s2bands["band_name"].iloc[idx]} ({idx+1}/{s2bands.shape[0]}) from {in_dir}'
+                )
                 
                 if s2bands["band_resolution"].iloc[idx] == target_resolution:
-                    
+
+                    # nothing to interpolate
                     with rio.open(s2bands["band_path"].iloc[idx]) as src:
                         # band indices begin with 1 in rasterio
                         dst.set_band_description(idx+1, s2bands["band_name"].iloc[idx])
                         dst.write_band(idx+1, src.read(1))
+
+                    logger.info(
+                        f"Completed writing of {s2bands['band_name'].iloc[idx]} from {in_dir}"
+                    ) 
 
                 # resample all other non-native bands
                 else:
@@ -305,9 +321,12 @@ def resample_and_stack_S2(in_dir: Path,
                                                        scaling_factor=scaling_factor)
                             dst.set_band_description(idx+1, s2bands["band_name"].iloc[idx])
                             dst.write(out_array, idx+1)
-                    logger.info("interpolation complete")
+                    logger.info(
+                        f"Completed interpolation of {s2bands['band_name'].iloc[idx]} from {in_dir}"
+                    ) 
 
         # read in TCI, reduce to 8 bit and write out as RGB .png
+        logger.info(f'Creating RGB preview from {in_dir}')
         with rio.open(tci_file) as src:
             meta = src.meta
             out_img = src.read()
@@ -319,13 +338,18 @@ def resample_and_stack_S2(in_dir: Path,
             with rio.open(os.path.join(rgb_subdir, out_file_rgb), "w+", **meta) as dst:
                 for i in range(out_img.shape[0]):
                     dst.write(out_img[i, :, :].astype(np.uint8), i+1)
+        logger.info(f'Completed creating RGB preview from {in_dir}')
 
     # delete .aux.xml files in rgb_previews folder
     xml_files = glob.glob(os.path.join(rgb_subdir, '*.xml'))
     for xml_file in xml_files:
-        os.remove(xml_file)
+        try:
+            os.remove(xml_file)
+        except Exception as e:
+            logger.warning(f'Could not remove {xml_file}: {e}')
+            continue
 
-    logger.info(f"file {out_file} written successfully!")
+    logger.info(f"file {out_file} written successfully from {in_dir}!")
     return Path(out_dir).joinpath(out_file)
 
 
@@ -371,7 +395,8 @@ def scl_10m_resampling(in_dir: Path,
     scl_out_file = s2_uid.split("_")[2].split("T")[0] + "_" + s2_uid.split("_")[-2] + \
         "_" + s2_uid.split("_")[0] + "_SCL_10m.tiff"
     scl_out_path = os.path.join(scl_subdir, scl_out_file)
-    
+
+    logger.info(f'Starting interpolation of SCL file from {in_dir}')
     # read in mask & check CRS
     if masking:
         in_file_aoi = kwargs.get("in_file_aoi", Path)
@@ -426,18 +451,26 @@ def scl_10m_resampling(in_dir: Path,
         with rio.open(scl_out_path, 'w',  **meta) as dst:
             dst.write(out_array, 1)
   
-    logger.info(f"file {scl_out_file} written successfully!")
+    logger.info(f"file {scl_out_file} written successfully from {in_dir}!")
     return Path(scl_out_path)
 
 
 if __name__ == '__main__':
     
-    in_dir = '/home/graflu/public/Evaluation/Projects/KP0022_DeepField/Sentinel-2/S2_L1C_data/CH/CH_2018/PRODUCT/S2A_MSIL1C_20180108T104421_N0206_R008_T31UGP_20180108T124506.SAFE'
+    in_dir = '/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L2A/CH/2018/S2A_MSIL2A_20180816T104021_N0208_R008_T32TLT_20180816T190612'
     out_dir = '/mnt/ides/Lukas/03_Debug/Sentinel2/L1C/'
-    is_L2A = False
+    is_L2A = True
     
-    out_file = resample_and_stack_S2(in_dir=Path(in_dir),
-                                     out_dir=Path(out_dir),
-                                     is_L2A=is_L2A)
-    
+    out_file = resample_and_stack_S2(
+        in_dir=Path(in_dir),
+        out_dir=Path(out_dir),
+        is_L2A=is_L2A
+    )
+
+    if is_L2A:
+        out_file_scl = scl_10m_resampling(
+            in_dir=Path(in_dir),
+            out_dir=Path(out_dir)
+        )
+
     print(out_file)

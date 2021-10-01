@@ -25,6 +25,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import sessionmaker
 from rasterio.enums import Resampling
 from typing import Optional
+from datetime import datetime
 
 from agrisatpy.spatial_resampling import resample_and_stack_S2
 from agrisatpy.spatial_resampling import scl_10m_resampling
@@ -35,7 +36,8 @@ from agrisatpy.config import get_settings
 from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
 
 Settings = get_settings()
-engine = create_engine(Settings.DB_URL, echo=Settings.ECHO_DB)
+DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
+engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
 session = sessionmaker(bind=engine)()
 logger = Settings.logger
 
@@ -78,7 +80,7 @@ def do_parallel(in_df: pd.DataFrame,
     # define (to catch win10 related errors)
     path_bandstack = '' 
     innerdict = {}
-    
+
     try:
 
         # reconstruct storage location based on DB records
@@ -142,7 +144,15 @@ def do_parallel(in_df: pd.DataFrame,
 
     except Exception as e:
         logger.error(e)
-        
+
+    # write to successful_scenes.txt to indicate that the processing of
+    # the scene was accomplished without any errors
+    scenes_log_file = out_dir.joinpath('log').joinpath(Settings.PROCESSING_CHECK_FILE_NO_BF)
+    creation_time = datetime.now().strftime('%Y%m%d-%H%M%S')
+    with open(scenes_log_file, 'a+') as src:
+        line = f"{in_dir}, {innerdict['bandstack']}, {innerdict['scl']}, {innerdict['preview']}, {creation_time}"
+        src.write(line + '\n')
+
     return innerdict
 
 
@@ -192,21 +202,34 @@ def exec_parallel(target_s2_archive: Path,
     else:
         processing_level = 'Level-1C'
 
+    # make subdirectory for logging successfully processed scenes in out_dir
+    log_dir = target_s2_archive.joinpath('log')
+    if not log_dir.exists():
+        log_dir.mkdir(parents=True, exist_ok=True)
+
     # check the metadata from the database
     if use_database:
-        metadata = pd.read_sql(
-            session.query(S2_Raw_Metadata).filter(
+        query_statement = session.query(
+                S2_Raw_Metadata.product_uri,
+                S2_Raw_Metadata.scene_id,
+                S2_Raw_Metadata.storage_share,
+                S2_Raw_Metadata.storage_device_ip_alias,
+                S2_Raw_Metadata.storage_device_ip,
+                S2_Raw_Metadata.sensing_date
+            ).filter(
                 S2_Raw_Metadata.tile_id == tile
             ).filter(
                 and_(
-                        S2_Raw_Metadata.sensing_date <= date_end,
+                    S2_Raw_Metadata.sensing_date <= date_end,
                     S2_Raw_Metadata.sensing_date >= date_start
                 )
             ).filter(
                 S2_Raw_Metadata.processing_level == processing_level
             ).order_by(
                 S2_Raw_Metadata.sensing_date.desc()
-            ).statement,
+            ).statement
+        metadata = pd.read_sql(
+            query_statement,
             session.bind
         )
     # or use the csv
@@ -225,17 +248,18 @@ def exec_parallel(target_s2_archive: Path,
 
     # get "duplicates", i.e, scenes that have the same sensing date because of datastrip
     # beginning/end issue
+    num_scenes = metadata.shape[0]
     meta_blackfill = identify_split_scenes(metadata_df=metadata)
 
     # exclude these duplicated scenes from the main (parallelized) workflow!
     metadata = metadata[~metadata.product_uri.isin(meta_blackfill['product_uri'])]
     if meta_blackfill.empty:
         logger.info(
-            f'Found {metadata.shape[0]} scenes out of which 0 must be merged'
+            f'Found {num_scenes} scenes out of which 0 must be merged'
         )
     else:
         logger.info(
-            f'Found {metadata.shape[0]} scenes out of which {meta_blackfill.shape[0]} must be merged'
+            f'Found {num_scenes} scenes out of which {meta_blackfill.shape[0]} must be merged'
         )
 
     t = time.time()
@@ -254,6 +278,7 @@ def exec_parallel(target_s2_archive: Path,
     # merge blackfill scenes (data take issue) if any
     # TODO: this section is for sure buggy and there is a problem in the datamodel...
     if not meta_blackfill.empty:
+        logger.info('Starting merging of blackfill scenes')
         # after regular scene processsing, process the blackfill scenes single-threaded
         for date in meta_blackfill.sensing_date.unique():
             scenes = meta_blackfill[meta_blackfill.sensing_date == date]
@@ -263,73 +288,105 @@ def exec_parallel(target_s2_archive: Path,
             raw_data_archive = reconstruct_path(record=scenes.iloc[0]).parent
             scene_1 = raw_data_archive.joinpath(product_id_1)
             scene_2 = raw_data_archive.joinpath(product_id_2)
+            logger.info(
+                f'Starting merging {scene_1} and {scene_2}'
+            )
             # the usual naming problem witht the .SAFE directories
             if not scene_1.exists():
-                product_id_1 = Path(str(product_id_1.replace('.SAFE', '')))
+                # product_id_1 = Path(str(product_id_1.replace('.SAFE', '')))
+                scene_1 = Path(str(scene_1).replace('.SAFE',''))
             if not scene_2.exists():
-                product_id_2 = Path(str(product_id_2.replace('.SAFE', '')))
-            res = merge_split_scenes(
-                scene_1=scene_1,
-                scene_2=scene_2,
-                out_dir=target_s2_archive, 
-                **kwargs
-            )
-            res.update(
-                {'scene_was_merged': True,
-                 'spatial_resolution': 10.,
-                 'resampling_method': bandstack_meta.resampling_method.iloc[0],
-                 'product_uri': product_id_1,  # take the first scene
-                 'scene_id': scenes.scene_id.iloc[0]
-                 }
-            )
+                # product_id_2 = Path(str(product_id_2.replace('.SAFE', '')))
+                scene_2 = Path(str(scene_2).replace('.SAFE',''))
+            try:
+                res = merge_split_scenes(
+                    scene_1=scene_1,
+                    scene_2=scene_2,
+                    out_dir=target_s2_archive, 
+                    **kwargs
+                )
+                res.update(
+                    {'scene_was_merged': True,
+                     'spatial_resolution': 10.,
+                     'resampling_method': bandstack_meta.resampling_method.iloc[0],
+                     'product_uri': product_id_1,  # take the first scene
+                     'scene_id': scenes.scene_id.iloc[0]
+                     }
+                )
+                bandstack_meta = bandstack_meta.append(res, ignore_index=True)
+
+                scenes_log_file = target_s2_archive.joinpath('log').joinpath(
+                    Settings.PROCESSING_CHECK_FILE_BF
+                )
+                creation_time = datetime.now().strftime('%Y%m%d-%H%M%S')
+                with open(scenes_log_file, 'a+') as src:
+                    line = f"{scene_1}, {scene_2}, {creation_time}"
+                    src.write(line + '\n')
+
+                # move to target archive
+                try:
+                    shutil.move(
+                        res['bandstack'],
+                        os.path.join(
+                            target_s2_archive,
+                            os.path.basename(
+                                res['bandstack']
+                            )
+                        )
+                    )
+                except Exception as e:
+                    logger.error(f'Could not move {res["bandstack"]}: {e}')
         
-            bandstack_meta = bandstack_meta.append(res, ignore_index=True)
+                try:
+                    shutil.move(
+                        res['scl'],
+                        os.path.join(
+                            os.path.join(
+                                target_s2_archive,
+                                Settings.SUBDIR_SCL_FILES
+                            ),
+                            os.path.basename(
+                                res['scl']
+                            )
+                        )
+                    )
+                except Exception as e:
+                    logger.error(f'Could not move {res["scl"]}: {e}')
+        
+                try:
+                    shutil.move(
+                        res['preview'],
+                        os.path.join(
+                            os.path.join(
+                                target_s2_archive,
+                                Settings.SUBDIR_RGB_PREVIEWS
+                            ),
+                            os.path.basename(
+                                res['preview']
+                            )
+                        )
+                    )
+                except Exception as e:
+                    logger.error(f'Could not move {res["preview"]}: {e}')
+            
+                # remove working directory in the end
+                try:
+                    shutil.rmtree(
+                        os.path.join(
+                            target_s2_archive,
+                            'temp_blackfill'
+                        )
+                    )
+                except Exception as e:
+                    logger.error(f'Could not delete temp_blackfill: {e}')
+                
+            except Exception as e:
+                logger.error(f'Failed to merge {scene_1} and {scene_2}: {e}')
 
         # also the storage location shall be inserted into the database later
-        bandstack_meta['storage_location'] = target_s2_archive
+        # bandstack_meta['storage_share'] = target_s2_archive
 
-        # move to target archive
-        shutil.move(
-            res['bandstack'],
-            os.path.join(
-                target_s2_archive,
-                os.path.basename(
-                    res['bandstack']
-                )
-            )
-        )
-        shutil.move(
-            res['scl'],
-            os.path.join(
-                os.path.join(
-                    target_s2_archive,
-                    Settings.SUBDIR_SCL_FILES
-                ),
-                os.path.basename(
-                    res['scl']
-                )
-            )
-        )
-        shutil.move(
-            res['preview'],
-            os.path.join(
-                os.path.join(
-                    target_s2_archive,
-                    Settings.SUBDIR_RGB_PREVIEWS
-                ),
-                os.path.basename(
-                    res['preview']
-                )
-            )
-        )
-    
-        # remove working directory in the end
-        shutil.rmtree(
-            os.path.join(
-                target_s2_archive,
-                'temp_blackfill'
-            )
-        )
+        logger.info('Finished merging of blackfill scenes')
     
     # write metadata of all stacked files to CSV
     return bandstack_meta

@@ -118,7 +118,7 @@ class S2_Processed_Metadata(Base):
 
     # spatial resolution and used resampling method
     spatial_resolution = Column(Float, nullable=False)
-    interpolation_method = Column(String, nullable=False)
+    resampling_method = Column(String, nullable=False)
 
     # was the scene merged to because of blackfill
     scene_was_merged = Column(Boolean, nullable=False, default=False)

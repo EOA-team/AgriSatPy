@@ -49,6 +49,7 @@ for tile in tiles:
         os.mkdir(out_dir)
 
     # read metadata file and filter by date
+    # TODO: use database here
     metadata = pd.read_csv(Settings.RESAMPLED_METADATA_FILE)
     date_start_dt = datetime.strptime(date_start, Settings.DATE_FMT_INPUT)
     date_end_dt = datetime.strptime(date_end, Settings.DATE_FMT_INPUT)

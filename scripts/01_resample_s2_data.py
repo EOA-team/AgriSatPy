@@ -18,24 +18,25 @@ from agrisatpy.metadata.sentinel2.database import meta_df_to_database
 if __name__ == '__main__':
 
     # define tile, region, processing level and date range
-    tile = 'T32TMT'
+    tile = 'T32TLT'
     region = 'CH'
-    processing_level = 'L1C'
+    processing_level = 'L2A'
     
-    date_start = date(2019,1,1)
-    date_end = date(2019,12,31)
+    date_start = date(2018,8,10)
+    date_end = date(2018,8,12)
     
     # specify the number of threads
-    n_threads = 4
+    n_threads = 1
 
     # database usage?
-    use_database = False
+    use_database = True
     
     # set output path according to AgriSatPy conventions
     year = date_start.year
-    target_s2_archive = Path(
-        f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Processed/{processing_level}/{region}/{year}/{tile}'
-    )
+    # target_s2_archive = Path(
+    #     f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Processed/{processing_level}/{region}/{year}/{tile}'
+    # )
+    target_s2_archive = Path('/mnt/ides/Lukas/03_Debug/Sentinel2/pipeline')
     
     # further options as key-value pairs.
     # pixel_division is a special approach that multiplies pixel values instead of doing an interpolation
@@ -43,12 +44,14 @@ if __name__ == '__main__':
     # when setting is_mundi to False we assume that all ESA datasets are named .SAFE (Mundi breaks with this
     # convention)
     options = {'pixel_division': True,
-               'is_L2A': False
+               'is_L2A': True
                }
 
     # no-database usage
-    options.update({'raw_data_archive': f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/{processing_level}/{region}/{year}'})
-    
+    options.update(
+        {'raw_data_archive': f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/{processing_level}/{region}/{year}'}
+    )
+
     # start the processing
     metadata = exec_parallel(
         target_s2_archive,
@@ -63,9 +66,10 @@ if __name__ == '__main__':
     # set storage paths
     metadata['storage_device_ip'] = '//hest.nas.ethz.ch/green_groups_kp_public'
     metadata['storage_device_ip_alias'] = '//nas12.ethz.ch/green_groups_kp_public'
-    metadata['storage_share'] = target_s2_archive
+    metadata['storage_share'] = str(target_s2_archive)
     metadata['storage_share'] = metadata['storage_share'].apply(lambda x: x.replace('/home/graflu/public/',''))
-    
+    metadata['path_type'] = 'posix'
+
     # write to database (set raw_metadata option to False)
     meta_df_to_database(
         meta_df=metadata,
