@@ -21,6 +21,8 @@ if __name__ == '__main__':
             metadata['storage_device_ip'] = '//hest.nas.ethz.ch/green_groups_kp_public'
             metadata['storage_device_ip_alias'] = '//nas12.ethz.ch/green_groups_kp_public'
             metadata['storage_share'] = metadata['storage_share'].apply(lambda x: x.replace('/home/graflu/public/',''))
+
+            # write metadata to database
             meta_df_to_database(meta_df=metadata)
 
             # save to CSV as a backup and to support non-database based access
