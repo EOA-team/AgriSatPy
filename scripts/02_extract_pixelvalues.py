@@ -10,60 +10,79 @@ Requirements:
 
 import os
 import pandas as pd
+from pathlib import Path
+from sqlalchemy import create_engine
 from datetime import datetime
 from agrisatpy.processing.extraction import S2bandstack2table
 from agrisatpy.config import get_settings
+from agrisatpy.utils import reconstruct_path
 
 Settings = get_settings()
+DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
+engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
+
+# connect to database for executing the metadata query
+
+
+# filter DB by time, tile, processing_level
 
 
 # define inputs
-tiles = ['T31TGM', 'T32TMT']
-shp_dir = '/mnt/ides/Lukas/02_Research/PhenomEn/01_Data/01_ReferenceData/'
-files_shp = {
-    'T31TGM': os.path.join(shp_dir, 'lac_lemon_agroscope_epsg32631.shp'),
-    'T32TMT': os.path.join(shp_dir, 'zurich_agroscope_epsg32632.shp')
-    }
-year = 2019
-s2_archive = f'/run/media/graflu/ETH-KP-SSD6/SAT/{year}'
-
+tiles = ['T32TLT']
+path_shp_file = "O:/Projects/KP0022_DeepField/Kapitel_02/01_Data/Erntedaten_shp_buffer20/20170705_P21_Wintergerste_utm32_buffer20.shp"
 id_column = 'FID'
-buffer = -20
+buffer = 0
+# define storage location where to store the extracted pixel values as CSV file(s)
+out_dir = 'O:/Projects/KP0022_DeepField/Kapitel_02/01_Data/Debug_Pipeline'
 
 # define date range for which values should be extracted
-date_start = f'{year}-10-01'
-date_end = f'{year}-12-31'
+date_start = '2018-01-01'
+date_end = '2018-12-31'
+
+processing_level = 'Level-2A'
 
 # loop over tiles
 for tile in tiles:
 
-    s2_tile_dir = os.path.join(s2_archive, tile)
-    os.chdir(s2_tile_dir)
+    # query the database
+    query = f"""
+    select
+        proc.scene_id,
+        proc.storage_device_ip, 
+        proc.storage_device_ip_alias, 
+        proc.storage_share, 
+        proc.product_uri, 
+        proc.bandstack, 
+        proc.scl,
+        raw.sensing_date
+    from sentinel2_processed_metadata as proc
+    left join sentinel2_raw_metadata as raw
+    on proc.product_uri=raw.product_uri
+    where
+        raw.sensing_date between '{date_start}' and '{date_end}'
+    and
+        raw.tile_id = '{tile}'
+    and
+        raw.processing_level = '{processing_level}'
+    order by sensing_date;
+    """
+    metadata = pd.read_sql(query, engine)
 
     # read the shapefile containing the field geometries
-    in_file_polys = files_shp[tile]
-
-    # make an ouptut directory for storing the CSV files if necessary
-    out_dir = os.path.join(s2_tile_dir, Settings.SUBDIR_PIXEL_CSVS)
-    if not os.path.isdir(out_dir):
-        os.mkdir(out_dir)
-
-    # read metadata file and filter by date
-    # TODO: use database here
-    metadata = pd.read_csv(Settings.RESAMPLED_METADATA_FILE)
-    date_start_dt = datetime.strptime(date_start, Settings.DATE_FMT_INPUT)
-    date_end_dt = datetime.strptime(date_end, Settings.DATE_FMT_INPUT)
-    metadata = metadata[pd.to_datetime(metadata.SENSING_DATE).between(date_start_dt,
-                                                              date_end_dt,
-                                                              inclusive=True)]
-    metadata = metadata.sort_values(by='SENSING_DATE')
+    in_file_polys = path_shp_file
 
     # loop over the sensing dates available
     for idx in range(metadata.shape[0]):
         
-        date = metadata.SENSING_DATE.iloc[idx]
-        in_file_scl = metadata.FPATH_SCL.iloc[idx]
-        bandstack = metadata.FPATH_BANDSTACK.iloc[idx]
+        date = metadata.sensing_date.iloc[idx]
+
+        in_dir = reconstruct_path(
+            record=metadata.iloc[idx],
+            is_raw_data=False
+        )
+
+        in_file_scl = Path(in_dir).joinpath(metadata.scl.iloc[idx])
+        bandstack = Path(in_dir).joinpath(metadata.bandstack.iloc[idx])
 
         # extract the pixel values
         refl, scl_stats = S2bandstack2table(in_file=bandstack,
@@ -72,11 +91,12 @@ for tile in tiles:
                                             buffer=buffer,
                                             id_column=id_column,
                                             product_date=date)
+        refl['scene_id'] = metadata.scene_id.iloc[idx]
+        refl['product_uri'] = metadata.product_uri.iloc[idx]
 
         # save data-frames to CSV files (if they contain data)
-        out_file = os.path.join(out_dir, f'{os.path.splitext(bandstack)[0]}.csv')
-        out_file_scl = os.path.join(out_dir, f'{os.path.splitext(bandstack)[0]}_SCL.csv')
+        out_file = os.path.join(out_dir, f'{os.path.splitext(bandstack.name)[0]}.csv')
+        out_file_scl = os.path.join(out_dir, f'{os.path.splitext(bandstack.name)[0]}_SCL.csv')
         if not refl.empty:
             refl.to_csv(out_file, index=False)
             scl_stats.to_csv(out_file_scl, index=False)
-        
