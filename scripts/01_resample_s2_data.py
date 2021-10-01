@@ -71,7 +71,7 @@ if __name__ == '__main__':
     metadata['path_type'] = 'posix'
     # in case of win10, remove the datafolder O:/ 
     if os.name == "nt":
-        metadata["storage_share"] = metadata["storage_share"].apply(lambda x: str(Path(x).as_posix()).replace("O:/", ""))
+        metadata["storage_share"] = metadata["storage_share"].apply(lambda x: str(Path(x).as_posix()).replace("O:", "Evaluation"))
     # for unix, get user and remove datafolder
     else:
         username = os.environ.get('USER')
