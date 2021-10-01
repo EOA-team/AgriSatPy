@@ -9,6 +9,7 @@ Requirements:
 
 """
 
+import os
 from pathlib import Path
 from datetime import date
 from agrisatpy.processing.resampling import exec_parallel
@@ -67,9 +68,15 @@ if __name__ == '__main__':
     metadata['storage_device_ip'] = '//hest.nas.ethz.ch/green_groups_kp_public'
     metadata['storage_device_ip_alias'] = '//nas12.ethz.ch/green_groups_kp_public'
     metadata['storage_share'] = str(target_s2_archive)
-    metadata['storage_share'] = metadata['storage_share'].apply(lambda x: x.replace('/home/graflu/public/',''))
     metadata['path_type'] = 'posix'
-
+    # in case of win10, remove the datafolder O:/ 
+    if os.name == "nt":
+        metadata["storage_share"] = metadata["storage_share"].apply(lambda x: str(Path(x).as_posix()).replace("O:/", ""))
+    # for unix, get user and remove datafolder
+    else:
+        username = os.environ.get('USER')
+        metadata['storage_share'] = metadata['storage_share'].apply(lambda x: x.replace(f'/home/{username}/public/',''))
+    
     # write to database (set raw_metadata option to False)
     meta_df_to_database(
         meta_df=metadata,

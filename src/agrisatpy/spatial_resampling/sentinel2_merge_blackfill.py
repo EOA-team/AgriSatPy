@@ -305,6 +305,6 @@ def merge_split_scenes(scene_1: Path,
         shutil.rmtree(out_dir)
 
     # save filepaths to dict and return
-    return {'bandstack': out_file,
-            'scl': out_file_scl,
-            'preview': out_file_rgb}
+    return {'bandstack': Path(out_file).name,
+            'scl': Path(Settings.SUBDIR_SCL_FILES).joinpath(Path(out_file_scl).name),
+            'preview': Path(Settings.SUBDIR_RGB_PREVIEWS).joinpath(Path(out_file_rgb).name)}
