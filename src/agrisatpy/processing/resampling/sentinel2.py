@@ -308,11 +308,15 @@ def exec_parallel(target_s2_archive: Path,
 
                 # if bandstack_meta is empty, find the interpolation from kwargs
                 if bandstack_meta.empty:
-                    interpol_method = kwargs.get('interpolation', -999)
-                    if  interpol_method > 0:
-                        resampling_method = Resampling(interpol_method).name
+                    pixel_division = kwargs.get('pixel_division', False)
+                    if pixel_division:
+                        resampling_method = 'pixel_division'
                     else:
-                        resampling_method = 'cubic' # default
+                        interpol_method = kwargs.get('interpolation', -999)
+                        if  interpol_method > 0:
+                            resampling_method = Resampling(interpol_method).name
+                        else:
+                            resampling_method = 'cubic' # default
                 else:
                     resampling_method = bandstack_meta.resampling_method.iloc[0]
                 res.update(
@@ -325,7 +329,7 @@ def exec_parallel(target_s2_archive: Path,
                 )
                 # check if bandstack_meta is already populated, otherwise create it
                 if bandstack_meta.empty:
-                    bandstack_meta = pd.DataFrame(res)
+                    bandstack_meta = pd.DataFrame.from_records([res])
                 else:
                     bandstack_meta = bandstack_meta.append(res, ignore_index=True)
 
