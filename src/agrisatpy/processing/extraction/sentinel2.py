@@ -555,22 +555,3 @@ def S2bandstack2table(in_file: Path,
         if is_sentinel: stat_DF["date"] = product_date
 
     return out_DF, stat_DF
-
-# if __name__ == '__main__':
-#
-#     in_file = Path('/mnt/ides/Lukas/04_Work/DEM/hillshade_eschikon.tif')
-#     in_file_polys = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/ZH_Polygons_2020_ESCH_EPSG32632.shp')
-#     buffer = 0
-#     id_column = 'GIS_ID'
-#     is_sentinel = False
-#     out_colnames = ['hillshade']
-#     out_df, _ = S2bandstack2table(in_file=in_file,
-#                                   buffer=buffer,
-#                                   id_column=id_column,
-#                                   in_file_polys=in_file_polys,
-#                                   is_sentinel=is_sentinel,
-#                                   out_colnames=out_colnames)
-#
-#
-#     out_df.to_csv('/mnt/ides/Lukas/04_Work/DEM/test.csv')
-#

@@ -6,11 +6,24 @@ Created on Jul 14, 2021
 
 import os
 import glob
+import geopandas as gpd
+import pandas as pd
+import numpy as np
+import rasterio as rio
+import rasterio.mask
+
 from typing import List
 from typing import Optional
-import numpy as np
+from typing import Tuple
 from pathlib import Path
-import geopandas as gpd
+
+from agrisatpy.config.sentinel2 import Sentinel2
+from agrisatpy.config import get_settings
+
+S2 = Sentinel2()
+Settings = get_settings()
+logger = Settings.logger
+
 
 class DataNotFoundError(Exception):
     pass
@@ -105,3 +118,175 @@ def compute_parcel_stat(in_array: np.array,
     statistics["n_pixels_tot"] = num_pixels
     
     return statistics
+
+
+def raster2table(
+        in_file: Path,
+        buffer: float, 
+        id_column: str,       
+        in_file_polys: Optional[str]='',
+        in_gdf_polys: Optional[gpd.GeoDataFrame]=None,     
+        out_colnames: Optional[List[str]]=None,
+        **kwargs
+    ) -> Tuple[pd.DataFrame]:
+    '''
+    Function to extract raster pixel values for a set of vector features
+    (Polygons) from any raster data (single and multi-band).
+
+    :param in_file: 
+        Path to the raster file from which to extract pixel values.
+        We recommend to use GeoTiff files.
+    :param buffer:
+        Value to buffer the individual field polygons by (negative for inward buffer).
+    :param id_column:
+        COlumn name that contains the ID for each individual field polygon.
+    :param in_file_polys: 
+        Path to the shapefile containing the Polygons (can be other filetype as well).
+    :param in_file_polys:
+        ESRI shapefile containung 1 to N (field) polygons. Alternatively, a
+        geopandas GeoDataFrame (e.g., from a database query) can be passed.
+    :param in_gdf_polys:
+        instead of a file with field parcel geometries, a geo-dataframe can
+        be passed directly.
+    :param out_colnames:
+        optional list of column names for the resulting dataframe. Must equal the
+        number of raster bands. Otherwise, the information is taken from the
+        raster band description (if available).
+    :param **kwargs:
+        nodata = kwargs.get('nodata_refl', 64537)
+    :return out_DF:
+        Extracted Pixel values including X & Y Coordinates, EPSG code,
+        and the ID of the polygons
+    '''
+
+    # check if files exist first
+    if not in_file.exists():
+        raise DataNotFoundError(f'Could not find {in_file}')
+
+    # open input .tiff file
+    bandstack = rio.open(in_file)
+
+    # check for user-defined nodata values for reflectance
+    nodata_refl = kwargs.get('nodata', S2.NODATA_REFLECTANCE)
+
+    # read in bandlist
+    if out_colnames is None:
+        bandlist = list(bandstack.descriptions)
+    else:
+        bandlist = out_colnames
+
+    # read the shapefile that contains the polyons
+    try:
+        if in_file_polys != '':
+            bbox_parcels = gpd.read_file(in_file_polys)
+        else:
+            bbox_parcels = in_gdf_polys.copy()
+    except Exception as e:
+        raise DataNotFoundError(f'Could not read field parcel geoms: {e}')
+
+    # ========================== check CRS ==========================
+
+    # get CRS of satellite data by taking the 1st .JP2 file
+    sat_crs = bandstack.crs
+    # convert bbox to S2 CRS before buffering to be in the correct coordinate system
+    bbox_s2_crs = bbox_parcels.to_crs(sat_crs)
+
+    # calculate the buffer
+    bbox_parcels_buffered = buffer_fieldpolygons(
+        in_gdf=bbox_s2_crs, 
+        buffer=buffer
+    )
+
+    # ========================== loop over IDs ==========================
+    full_DF = []
+   
+    for idx in bbox_parcels_buffered.index:
+
+        # unfortunately, geopandas still does not support iterrows() on geometries...
+        shape = bbox_parcels_buffered.loc[[idx]]
+        logger.info(f"Extracting field parcel with ID {shape[id_column]}")
+
+    # ========================== Loop over bands! ==========================
+        flat_band_rflt_per_ID = []
+        try:
+            out_band, out_transform = rio.mask.mask(
+                bandstack,
+                shape.geometry,
+                crop=True, 
+                all_touched=True, # IMPORTANT!
+                nodata = nodata_refl
+            )
+        except Exception as e:
+            logger.warning(f'Couldnot clip feature {shape[id_column]}: {e}')
+            # if the feature could not be clipped (e.g., because it is not located
+            # within the extent of the raster) flag the feature and continue with the next
+            continue
+       
+        for idx in range(len(bandlist)):
+            # flatten spectral values from 2d to 1d along columns (order=F(ortran))
+            flat_band_n = out_band[idx, :, :].flatten(order='F')
+            flat_band_rflt_per_ID.append(flat_band_n)
+      
+        # coerce to DF
+        per_ID_df = pd.DataFrame(flat_band_rflt_per_ID).transpose()
+        # add bandnames
+        per_ID_df.columns = bandlist
+        
+        # ========== Get coordinates ==========
+        # out_transform[0] = resolution in x direction (resolution_x)
+        # out_transform[4] = resolution in y direction (resolution y)
+        # out_transform[2] = upper left x coordinate (ulx)
+        # out_transform[5] = upper left y coordinate (uly)
+        resolution_x  = out_transform[0]
+        resolution_y = out_transform[4]
+        ulx = out_transform[2]
+        uly = out_transform[5]
+
+        # get rows and columns of extracted spatial subset of the image 
+        maxcol = out_band.shape[2]
+        maxrow = out_band.shape[1]
+
+        # get coordinates of every item in out_image
+        max_x_coord = ulx + maxcol * resolution_x
+        max_y_coord = uly + maxrow * resolution_y
+        x_coords = np.arange(ulx, max_x_coord, resolution_x)
+        y_coords = np.arange(uly, max_y_coord, resolution_y)
+
+        # flatten x coordinates along the y-axis
+        flat_x_coords = np.repeat(x_coords, maxrow)
+        # flatten y coordinates along the x-axis
+        flat_y_coords = np.tile(y_coords, maxcol)
+    
+        # add coordinates
+        per_ID_df["x_coord"] = flat_x_coords
+        per_ID_df["y_coord"] = flat_y_coords
+
+        # add field ID
+        per_ID_df[id_column] = shape[id_column].values[0]
+        # add CRS in form of EPSG code
+        per_ID_df["epsg"] = bbox_parcels_buffered.crs.to_epsg()
+        # append to full DF holding all field_IDs
+        full_DF.append(per_ID_df)
+
+    # convert full_DF from list to dataframe
+    out_DF = pd.concat(full_DF)
+    # drop no-data pixels (all reflectance values equal zero)
+    out_DF = out_DF.loc[(out_DF[bandlist] != nodata_refl).all(axis=1)]
+
+    return out_DF
+
+if __name__ == '__main__':
+
+    in_file = Path('/mnt/ides/Lukas/04_Work/DEM/hillshade_eschikon.tif')
+    in_file_polys = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/ZH_Polygons_2020_ESCH_EPSG32632.shp')
+    buffer = 0
+    id_column = 'GIS_ID'
+    out_colnames = ['hillshade']
+    out_df, _ = raster2table(
+        in_file=in_file,
+        buffer=buffer,
+        id_column=id_column,
+        in_file_polys=in_file_polys,
+        out_colnames=out_colnames
+    )
+    out_df.to_csv('/mnt/ides/Lukas/04_Work/DEM/test.csv')
