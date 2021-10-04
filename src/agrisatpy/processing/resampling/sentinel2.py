@@ -355,22 +355,24 @@ def exec_parallel(target_s2_archive: Path,
                     )
                 except Exception as e:
                     logger.error(f'Could not move {res["bandstack"]}: {e}')
-        
-                try:
-                    shutil.move(
-                        working_dir.joinpath(Path(res['scl']).name),
-                        os.path.join(
+
+                # L2A only: move scene classification layer
+                if is_l2a:
+                    try:
+                        shutil.move(
+                            working_dir.joinpath(Path(res['scl']).name),
                             os.path.join(
-                                target_s2_archive,
-                                Settings.SUBDIR_SCL_FILES
-                            ),
-                            os.path.basename(
-                                res['scl']
+                                os.path.join(
+                                    target_s2_archive,
+                                    Settings.SUBDIR_SCL_FILES
+                                ),
+                                os.path.basename(
+                                    res['scl']
+                                )
                             )
                         )
-                    )
-                except Exception as e:
-                    logger.error(f'Could not move {res["scl"]}: {e}')
+                    except Exception as e:
+                        logger.error(f'Could not move {res["scl"]}: {e}')
         
                 try:
                     shutil.move(
