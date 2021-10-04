@@ -305,15 +305,33 @@ def exec_parallel(target_s2_archive: Path,
                     out_dir=target_s2_archive, 
                     **kwargs
                 )
+
+                # if bandstack_meta is empty, find the interpolation from kwargs
+                if bandstack_meta.empty:
+                    pixel_division = kwargs.get('pixel_division', False)
+                    if pixel_division:
+                        resampling_method = 'pixel_division'
+                    else:
+                        interpol_method = kwargs.get('interpolation', -999)
+                        if  interpol_method > 0:
+                            resampling_method = Resampling(interpol_method).name
+                        else:
+                            resampling_method = 'cubic' # default
+                else:
+                    resampling_method = bandstack_meta.resampling_method.iloc[0]
                 res.update(
                     {'scene_was_merged': True,
                      'spatial_resolution': 10.,
-                     'resampling_method': bandstack_meta.resampling_method.iloc[0],
+                     'resampling_method': resampling_method,
                      'product_uri': product_id_1,  # take the first scene
                      'scene_id': scenes.scene_id.iloc[0]
                      }
                 )
-                bandstack_meta = bandstack_meta.append(res, ignore_index=True)
+                # check if bandstack_meta is already populated, otherwise create it
+                if bandstack_meta.empty:
+                    bandstack_meta = pd.DataFrame.from_records([res])
+                else:
+                    bandstack_meta = bandstack_meta.append(res, ignore_index=True)
 
                 scenes_log_file = target_s2_archive.joinpath('log').joinpath(
                     Settings.PROCESSING_CHECK_FILE_BF
@@ -337,22 +355,24 @@ def exec_parallel(target_s2_archive: Path,
                     )
                 except Exception as e:
                     logger.error(f'Could not move {res["bandstack"]}: {e}')
-        
-                try:
-                    shutil.move(
-                        working_dir.joinpath(Path(res['scl']).name),
-                        os.path.join(
+
+                # L2A only: move scene classification layer
+                if is_l2a:
+                    try:
+                        shutil.move(
+                            working_dir.joinpath(Path(res['scl']).name),
                             os.path.join(
-                                target_s2_archive,
-                                Settings.SUBDIR_SCL_FILES
-                            ),
-                            os.path.basename(
-                                res['scl']
+                                os.path.join(
+                                    target_s2_archive,
+                                    Settings.SUBDIR_SCL_FILES
+                                ),
+                                os.path.basename(
+                                    res['scl']
+                                )
                             )
                         )
-                    )
-                except Exception as e:
-                    logger.error(f'Could not move {res["scl"]}: {e}')
+                    except Exception as e:
+                        logger.error(f'Could not move {res["scl"]}: {e}')
         
                 try:
                     shutil.move(

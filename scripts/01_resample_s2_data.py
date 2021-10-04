@@ -19,12 +19,12 @@ from agrisatpy.metadata.sentinel2.database import meta_df_to_database
 if __name__ == '__main__':
 
     # define tile, region, processing level and date range
-    tile = 'T32TLT'
+    tile = 'T32TMT'
     region = 'CH'
-    processing_level = 'L2A'
+    processing_level = 'L1C'
     
-    date_start = date(2018,8,10)
-    date_end = date(2018,8,12)
+    date_start = date(2019,3,26)
+    date_end = date(2019,3,26)
     
     # specify the number of threads
     n_threads = 1
@@ -34,10 +34,10 @@ if __name__ == '__main__':
     
     # set output path according to AgriSatPy conventions
     year = date_start.year
-    # target_s2_archive = Path(
-    #     f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Processed/{processing_level}/{region}/{year}/{tile}'
-    # )
-    target_s2_archive = Path('/mnt/ides/Lukas/03_Debug/Sentinel2/pipeline')
+    target_s2_archive = Path(
+        f'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Processed/{processing_level}/{region}/{year}/{tile}'
+    )
+    # target_s2_archive = Path('/mnt/ides/Lukas/03_Debug/Sentinel2/pipeline')
     
     # further options as key-value pairs.
     # pixel_division is a special approach that multiplies pixel values instead of doing an interpolation
@@ -45,7 +45,7 @@ if __name__ == '__main__':
     # when setting is_mundi to False we assume that all ESA datasets are named .SAFE (Mundi breaks with this
     # convention)
     options = {'pixel_division': True,
-               'is_L2A': True
+               'is_L2A': False
                }
 
     # no-database usage

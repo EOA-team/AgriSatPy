@@ -283,8 +283,7 @@ def resample_and_stack_S2(in_dir: Path,
         logger.info(f'Completed creating RGB preview from {in_dir}')
 
     # case 2: if no masking is needed, just resample the whole S2 tile
-    else: 
-        
+    else:
         with rio.open(os.path.join(out_dir, out_file), "w+", **meta) as dst:
             for idx in range(s2bands.shape[0]):
         
