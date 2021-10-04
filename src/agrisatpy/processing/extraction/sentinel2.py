@@ -17,13 +17,14 @@ import rasterio as rio
 import rasterio.mask
 from pathlib import Path
 from typing import Optional
+from typing import List
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from .utils import buffer_fieldpolygons
-from .utils import DataNotFoundError
-from .utils import compute_parcel_stat
+from agrisatpy.processing.extraction.utils import buffer_fieldpolygons
+from agrisatpy.processing.extraction.utils import DataNotFoundError
+from agrisatpy.processing.extraction.utils import compute_parcel_stat
 
 from agrisatpy.utils.sentinel2 import get_S2_bandfiles
 from agrisatpy.utils.sentinel2 import get_S2_sclfile
@@ -319,14 +320,15 @@ def S2singlebands2table(in_dir: Path,
 
 
 def S2bandstack2table(in_file: Path,
-                      in_file_scl: Path, 
                       buffer: float, 
                       id_column: str,
-                      product_date: str,
+                      product_date: Optional[str]='',
+                      in_file_scl: Optional[Path]=None, 
                       in_file_polys: Optional[str]='',
                       in_gdf_polys: Optional[gpd.GeoDataFrame]=None,
                       filter_clouds: Optional[bool]=True,
                       is_sentinel: Optional[bool]=True,
+                      out_colnames: Optional[List[str]]=None,
                       **kwargs
                       ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     '''
@@ -357,6 +359,9 @@ def S2bandstack2table(in_file: Path,
     :param is_sentinel:
         If satellite data other than is_sentinel-2 is used, set to false to ignore
         all SCL logic. The default is True.
+    :param out_colnames:
+        optional list of column names for the resulting dataframe. Must equal the
+        number of raster bands.
     :param **kwargs:
         scl_2_filterout = kwargs.get('scl_classes', [0, 1, 3, 8, 9, 10, 11])
         nodata_refl = kwargs.get('nodata_refl', 64537)
@@ -372,8 +377,9 @@ def S2bandstack2table(in_file: Path,
     # check if files exist first
     if not in_file.exists():
         raise DataNotFoundError(f'Could not find {in_file}')
-    if not in_file_scl.exists():
-        raise DataNotFoundError(f'Could not find {in_file_scl}')
+    if in_file_scl is not None:
+        if not in_file_scl.exists():
+            raise DataNotFoundError(f'Could not find {in_file_scl}')
 
     # open stacked .tiff file
     bandstack = rio.open(in_file)
@@ -394,7 +400,10 @@ def S2bandstack2table(in_file: Path,
     nodata_scl = kwargs.get('nodata_scl', S2.NODATA_SCL)
 
     # read in bandlist
-    bandlist = list(bandstack.descriptions)
+    if out_colnames is None:
+        bandlist = list(bandstack.descriptions)
+    else:
+        bandlist = out_colnames
 
     # read the shapefile that contains the polyons
     try:
@@ -541,7 +550,27 @@ def S2bandstack2table(in_file: Path,
         out_DF = out_DF.loc[~out_DF["scl_class"].isin(scl_2_filterout)]
     
     # Append sensing product_date of S2 image
-    out_DF["date"] = product_date
-    if is_sentinel: stat_DF["date"] = product_date
+    if product_date != '':
+        out_DF["date"] = product_date
+        if is_sentinel: stat_DF["date"] = product_date
 
     return out_DF, stat_DF
+
+# if __name__ == '__main__':
+#
+#     in_file = Path('/mnt/ides/Lukas/04_Work/DEM/hillshade_eschikon.tif')
+#     in_file_polys = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/ZH_Polygons_2020_ESCH_EPSG32632.shp')
+#     buffer = 0
+#     id_column = 'GIS_ID'
+#     is_sentinel = False
+#     out_colnames = ['hillshade']
+#     out_df, _ = S2bandstack2table(in_file=in_file,
+#                                   buffer=buffer,
+#                                   id_column=id_column,
+#                                   in_file_polys=in_file_polys,
+#                                   is_sentinel=is_sentinel,
+#                                   out_colnames=out_colnames)
+#
+#
+#     out_df.to_csv('/mnt/ides/Lukas/04_Work/DEM/test.csv')
+#
