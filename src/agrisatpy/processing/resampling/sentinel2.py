@@ -305,10 +305,20 @@ def exec_parallel(target_s2_archive: Path,
                     out_dir=target_s2_archive, 
                     **kwargs
                 )
+
+                # if bandstack_meta is empty, find the interpolation from kwargs
+                if bandstack_meta.empty:
+                    interpol_method = kwargs.get('interpolation', -999)
+                    if  interpol_method > 0:
+                        resampling_method = Resampling(interpol_method).name
+                    else:
+                        resampling_method = 'cubic' # default
+                else:
+                    resampling_method = bandstack_meta.resampling_method.iloc[0]
                 res.update(
                     {'scene_was_merged': True,
                      'spatial_resolution': 10.,
-                     'resampling_method': bandstack_meta.resampling_method.iloc[0],
+                     'resampling_method': resampling_method,
                      'product_uri': product_id_1,  # take the first scene
                      'scene_id': scenes.scene_id.iloc[0]
                      }
