@@ -175,6 +175,7 @@ def merge_split_scenes(scene_1: Path,
     scene_out_1 = resample_and_stack_S2(
         in_dir=scene_1,
         out_dir=out_dirs[0],
+        is_L2A=is_L2A,
         **kwargs
     )
 
@@ -190,6 +191,7 @@ def merge_split_scenes(scene_1: Path,
     scene_out_2 = resample_and_stack_S2(
         in_dir=scene_2,
         out_dir=out_dirs[1],
+        is_L2A=is_L2A,
         **kwargs
     )
 

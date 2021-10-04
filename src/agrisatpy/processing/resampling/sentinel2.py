@@ -313,7 +313,11 @@ def exec_parallel(target_s2_archive: Path,
                      'scene_id': scenes.scene_id.iloc[0]
                      }
                 )
-                bandstack_meta = bandstack_meta.append(res, ignore_index=True)
+                # check if bandstack_meta is already populated, otherwise create it
+                if bandstack_meta.empty:
+                    bandstack_meta = pd.DataFrame(res)
+                else:
+                    bandstack_meta = bandstack_meta.append(res, ignore_index=True)
 
                 scenes_log_file = target_s2_archive.joinpath('log').joinpath(
                     Settings.PROCESSING_CHECK_FILE_BF
