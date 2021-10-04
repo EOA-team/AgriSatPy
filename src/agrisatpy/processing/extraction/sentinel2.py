@@ -327,7 +327,7 @@ def S2bandstack2table(in_file: Path,
                       in_file_polys: Optional[str]='',
                       in_gdf_polys: Optional[gpd.GeoDataFrame]=None,
                       filter_clouds: Optional[bool]=True,
-                      is_sentinel: Optional[bool]=True,
+                      is_l2a: Optional[bool]=True,
                       out_colnames: Optional[List[str]]=None,
                       **kwargs
                       ) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -356,9 +356,10 @@ def S2bandstack2table(in_file: Path,
     :param filter_clouds:
         Should the SCL scene be used for masking cloudy pixels on polygon level. 
         The default is True.
-    :param is_sentinel:
-        If satellite data other than is_sentinel-2 is used, set to false to ignore
-        all SCL logic. The default is True.
+    :param is_l2a:
+        Specifies the Sentinel-2 processing level (L1C or L2A, default). In case of
+        False, the scene is treated as L1C processing level and no SCL information is
+        used.
     :param out_colnames:
         optional list of column names for the resulting dataframe. Must equal the
         number of raster bands.
@@ -385,12 +386,13 @@ def S2bandstack2table(in_file: Path,
     bandstack = rio.open(in_file)
     
     # get the file with SCL (scene classification)
-    if is_sentinel: scl_filepath = in_file_scl
+    if is_l2a: scl_filepath = in_file_scl
 
     # ==========================     Check kwargs   ==========================
     # check for user-defined SCL filtration
     # default is: clouds, snow and ice, cloud shadow and nodata classes
-    if not is_sentinel: filter_clouds = False  # cloud filtering does not work for L1C level
+    if not is_l2a:
+        filter_clouds = False  # cloud filtering does not work for L1C level
     if filter_clouds:
         scl_2_filterout = kwargs.get('scl_classes', [0, 1, 3, 8, 9, 10, 11])
 
@@ -430,7 +432,8 @@ def S2bandstack2table(in_file: Path,
 
     # ========================== loop over IDs ==========================
     full_DF = []
-    if is_sentinel: parcel_statistics = []  # SCL is available for is_sentinel level, only
+    if is_l2a:
+        parcel_statistics = []  # SCL is available for L2A level, only
    
     for idx in bbox_parcels_buffered.index:
 
@@ -495,7 +498,7 @@ def S2bandstack2table(in_file: Path,
         
         # ======== Get SCL class per pixel ==========
         # works only for is_sentinel processing level
-        if is_sentinel:
+        if is_l2a:
             with rio.open(scl_filepath) as src:
                 out_scl, out_transform = rio.mask.mask(
                     src,
@@ -527,8 +530,8 @@ def S2bandstack2table(in_file: Path,
         # append to full DF holding all field_IDs
         full_DF.append(per_ID_df)
     
-    # coerce parcel statistic to Dataframe (is_sentinel-2 only)
-    if is_sentinel:
+    # coerce parcel statistic to Dataframe (L2A processing level, only)
+    if is_l2a:
 
         stat_DF = pd.DataFrame(parcel_statistics)
         stat_DF[id_column] = stat_DF[id_column]
@@ -544,14 +547,14 @@ def S2bandstack2table(in_file: Path,
 
     # ========= filter out clouds based on SCL ================
     # works for is_sentinel-2 data only
-    if is_sentinel:
+    if is_l2a:
         out_DF = out_DF.loc[out_DF["scl_class"] != nodata_scl]
-    if filter_clouds and is_sentinel:
+    if filter_clouds and is_l2a:
         out_DF = out_DF.loc[~out_DF["scl_class"].isin(scl_2_filterout)]
     
     # Append sensing product_date of S2 image
     if product_date != '':
         out_DF["date"] = product_date
-        if is_sentinel: stat_DF["date"] = product_date
+        if is_l2a: stat_DF["date"] = product_date
 
     return out_DF, stat_DF
