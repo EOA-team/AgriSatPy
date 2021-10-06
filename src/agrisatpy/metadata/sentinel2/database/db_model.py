@@ -24,6 +24,59 @@ DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{
 engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
 
 
+class S2_Raw_Metadata_QL(Base):
+
+    __tablename__ = 'sentinel2_raw_metadata_ql'
+    
+    # Noise Model Information per band (required for uncertainty)
+    # parameter alpha
+    datatakeidentifier = Column(String, nullable=False, primary_key=True)
+
+    alpha_b01 = Column(Float)
+    alpha_b02 = Column(Float)
+    alpha_b03 = Column(Float)
+    alpha_b04 = Column(Float)
+    alpha_b05 = Column(Float)
+    alpha_b06 = Column(Float)
+    alpha_b07 = Column(Float)
+    alpha_b08 = Column(Float)
+    alpha_b8a = Column(Float)
+    alpha_b09 = Column(Float)
+    alpha_b10 = Column(Float)
+    alpha_b11 = Column(Float)
+    alpha_b12 = Column(Float)
+
+    # parameter beta
+    beta_b01 = Column(Float)
+    beta_b02 = Column(Float)
+    beta_b03 = Column(Float)
+    beta_b04 = Column(Float)
+    beta_b05 = Column(Float)
+    beta_b06 = Column(Float)
+    beta_b07 = Column(Float)
+    beta_b08 = Column(Float)
+    beta_b8a = Column(Float)
+    beta_b09 = Column(Float)
+    beta_b10 = Column(Float)
+    beta_b11 = Column(Float)
+    beta_b12 = Column(Float)
+
+    # physical gain factors per spectral band
+    physical_gain_b01 = Column(Float)
+    physical_gain_b02 = Column(Float)
+    physical_gain_b03 = Column(Float)
+    physical_gain_b04 = Column(Float)
+    physical_gain_b05 = Column(Float)
+    physical_gain_b06 = Column(Float)
+    physical_gain_b07 = Column(Float)
+    physical_gain_b08 = Column(Float)
+    physical_gain_b8a = Column(Float)
+    physical_gain_b09 = Column(Float)
+    physical_gain_b10 = Column(Float)
+    physical_gain_b11 = Column(Float)
+    physical_gain_b12 = Column(Float)
+
+
 class S2_Raw_Metadata(Base):
 
     __tablename__ = 'sentinel2_raw_metadata'
@@ -33,6 +86,9 @@ class S2_Raw_Metadata(Base):
     product_uri = Column(String, nullable=False, primary_key=True)
     tile_id = Column(String, nullable=False)
     l1c_tile_id = Column(String)
+
+    # Datatake Information
+    datatakeidentifier = Column(String, nullable=False)
 
     # processing level, orbit and spacecraft
     processing_level = Column(String, nullable=False)
