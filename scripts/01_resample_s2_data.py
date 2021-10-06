@@ -23,8 +23,8 @@ if __name__ == '__main__':
     region = 'CH'
     processing_level = 'L1C'
     
-    date_start = date(2019,3,26)
-    date_end = date(2019,3,26)
+    date_start = date(2019,3,8)
+    date_end = date(2019,3,8)
     
     # specify the number of threads
     n_threads = 1
