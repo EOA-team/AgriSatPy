@@ -2,6 +2,7 @@
 from agrisatpy.metadata.sentinel2 import loop_s2_archive
 from agrisatpy.metadata.sentinel2.database import meta_df_to_database
 from agrisatpy.metadata.sentinel2.database import ql_info_to_database
+from agrisatpy.metadata.sentinel2.database import update_raw_metadata
 from pathlib import Path
 
 import agrisatpy
@@ -12,7 +13,11 @@ if __name__ == '__main__':
     years = [2019]
     processing_levels = ['L1C']
     region = 'CH'
+    # set to True if noise model parameters are required (slow!)
     extract_datastrip = True
+    # set to True to UPDATe existing entries in the database
+    update_only = True
+    update_cols = ['datatakeidentifier']
     
     for processing_level in processing_levels:
         for year in years:
@@ -34,7 +39,13 @@ if __name__ == '__main__':
             if extract_datastrip:
                 ql_info_to_database(ql_df=datastrip_ql)
 
-            meta_df_to_database(meta_df=metadata)
+            if not update_only:
+                meta_df_to_database(meta_df=metadata)
+            else:
+                update_raw_metadata(
+                    meta_df=mmetadata,
+                    columns_to_update=update_cols
+                )
 
             # save to CSV as a backup and to support non-database based access
             fname_csv = sat_dir.joinpath('metadata.csv')
