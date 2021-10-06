@@ -55,16 +55,17 @@ def ql_info_to_database(
         index=False,
         if_exists='append'
     )
-    
-    try:
-        for _, record in ql_df.iterrows():
-            metadata = record.to_dict()
-            session.add(S2_Raw_Metadata_QL(**metadata))
-            session.flush()
-        session.commit()
-    except Exception as e:
-        logger.error(f'Database INSERT failed: {e}')
-        session.rollback()
+
+    # TODO: there seems to be a bug here
+    # try:
+    #     for _, record in ql_df.iterrows():
+    #         metadata = record.to_dict()
+    #         session.add(S2_Raw_Metadata_QL(**metadata))
+    #         session.flush()
+    #     session.commit()
+    # except Exception as e:
+    #     logger.error(f'Database INSERT failed: {e}')
+    #     session.rollback()
 
 
 def meta_df_to_database(

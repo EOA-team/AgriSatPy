@@ -5,7 +5,7 @@ Created on Mon May  6 13:09:42 2019
 
 Updated on Fri Jun 25 2021
 
-@author: graflu
+@author: Lukas Graf
 
 This module contains functions to extract relevant
 scene-specific Sentinel-2 metadata supporting
@@ -20,19 +20,70 @@ from xml.dom import minidom
 from pyproj import Transformer
 from pathlib import Path
 import pandas as pd
+from typing import Optional
+from typing import Tuple
 
 from agrisatpy.config import get_settings
+from agrisatpy.config.sentinel2 import Sentinel2
 
 logger = get_settings().logger
+S2 = Sentinel2()
 
 class UnknownProcessingLevel(Exception):
     pass
 
-# TODO: add storage location, drive and path-type
+
+def parse_MTD_DS(
+        in_file: Path
+    ) -> dict:
+    """
+    Parses the MTD_DS.xml located in tghe /DATASTRIP folder
+    in each .SAFE dataset. The xml contains the noise model parameters
+    alpha and beta as well as physical gain factors
+    required to calculate the radiometric uncertainty
+    of the Level-1C data. The extraction of this data is therefore
+    optional.
+
+    :param in_file:
+        filepath of the scene metadata xml (MTD_DS.xml)
+    :return metadata:
+        dictionary with extracted noise model parameters, alpha
+        and beta, per spectral band of MSI
+    """
+    # parse the xml file into a minidom object
+    xmldoc = minidom.parse(str(in_file))
+
+    # now, the values of some relevant tags can be extracted:
+    metadata = dict()
+    band_names = list(S2.BAND_INDICES.keys())
+
+    datatakeIdentifier_xml = xmldoc.getElementsByTagName('Datatake_Info')
+    element = datatakeIdentifier_xml[0]
+    datatakeIdentifier = element.getAttribute('datatakeIdentifier')
+    metadata['datatakeidentifier'] = datatakeIdentifier
+    
+    # extract noise model parameters alpha and beta for all bands
+    alpha_values = xmldoc.getElementsByTagName('ALPHA')
+    beta_values = xmldoc.getElementsByTagName('BETA')
+    # loop over bands and store values of alpha and beta
+    for idx, elem in enumerate(zip(alpha_values, beta_values)):
+        alpha = float(elem[0].firstChild.nodeValue)
+        beta = float(elem[1].firstChild.nodeValue)
+        metadata[f'alpha_{band_names[idx]}'] = alpha
+        metadata[f'beta_{band_names[idx]}'] = beta
+
+    # extract physical gans of the single spectral bands
+    physical_gains = xmldoc.getElementsByTagName('PHYSICAL_GAINS')
+    for idx, elem in enumerate(physical_gains):
+        physical_gain = float(elem.firstChild.nodeValue)
+        metadata[f'physical_gain_{band_names[idx]}'] = physical_gain
+
+    return metadata
 
 
-def parse_MTD_TL(in_file: Path
-                ) -> dict:
+def parse_MTD_TL(
+        in_file: Path
+    ) -> dict:
     """
     Parses the MTD_TL.xml metadata file provided by ESA.This metadata
     XML is usually placed in the GRANULE subfolder of a ESA-derived
@@ -47,7 +98,7 @@ def parse_MTD_TL(in_file: Path
     returns a dict with those extracted entries.
     
     :param in_file:
-        filepath of the scene metadata xml
+        filepath of the scene metadata xml 8MTD_TL.xml)
     :return metadata:
         dict with extracted metadata entries
     """
@@ -196,8 +247,9 @@ def parse_MTD_TL(in_file: Path
     return metadata
 
 
-def parse_MTD_MSI(in_file: str
-                 ) -> dict:
+def parse_MTD_MSI(
+        in_file: str
+    ) -> dict:
     """
     parses the MTD_MSIL1C or MTD_MSIL2A metadata file that is delivered with
     ESA Sentinel-2 L1C and L2A products, respectively.
@@ -208,7 +260,7 @@ def parse_MTD_MSI(in_file: str
     The extracted metadata is returned as a dict.
 
     :param in_file:
-        filepath of the scene metadata xml
+        filepath of the scene metadata xml (MTD_MSI2A.xml or MTD_MSIL1C.xml)
     """
     # parse the xml file into a minidom object
     xmldoc = minidom.parse(in_file)
@@ -219,6 +271,11 @@ def parse_MTD_MSI(in_file: str
         tag_list = ['PRODUCT_URI_2A']
     else:
         tag_list = ['PRODUCT_URI']
+
+    # datatake identifier
+    datatakeIdentifier_xml = xmldoc.getElementsByTagName('Datatake')
+    element = datatakeIdentifier_xml[0]
+    datatakeIdentifier = element.getAttribute('datatakeIdentifier')
 
     # define further tags to extract
     tag_list.extend(
@@ -234,6 +291,8 @@ def parse_MTD_MSI(in_file: str
         else:
             metadata[tag] = xml_elem[0].firstChild.data
 
+    metadata['datatakeIdentifier'] = datatakeIdentifier
+
     # extract solar irradiance for the single bands
     bands = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09',
              'B10', 'B11', 'B12']
@@ -247,8 +306,9 @@ def parse_MTD_MSI(in_file: str
     return metadata
     
 
-def get_scene_footprint(sensor_data: dict
-                        ) -> str:
+def get_scene_footprint(
+        sensor_data: dict
+    ) -> str:
     """
     get the footprint (geometry) of a scene by calculating its
     extent using the original UTM coordinates of the scene.
@@ -297,12 +357,18 @@ def get_scene_footprint(sensor_data: dict
     return wkt
 
 
-def parse_s2_scene_metadata(in_dir: Path
-                            ) -> dict:
+def parse_s2_scene_metadata(
+        in_dir: Path,
+        extract_datastrip: Optional[bool] = False
+    ) -> Tuple[dict]:
     """
     wrapper function to extract metadata from ESA Sentinel-2
     scenes. It returns a dict with the metadata most important
-    to characterize a given Sentinel-2 scene.
+    to characterize a given Sentinel-2 scene (mtd_msi).
+    Optionally, some information about the datastrip can be
+    extracted as well (MTD_DS.xml); this information is required
+    for the uncertainty modelling and therefore not extracted by
+    default.
 
     The function works on both, L1C and L2A (sen2cor-based)
     processing levels. The amount of metadata, however, is
@@ -315,6 +381,9 @@ def parse_s2_scene_metadata(in_dir: Path
 
     :param in_dir:
         directory containing the L1C or L2A Sentinel-2 scene
+    :param extract_datastrip:
+        If True reads also metadata from the datastrip xml file
+        (MTD_DS.xml)
     :return mtd_msi:
         dict with extracted metadata items
     """
@@ -344,6 +413,12 @@ def parse_s2_scene_metadata(in_dir: Path
     with open(mtd_tl_xml) as xml_file:
         mtd_msi['mtd_tl_xml'] = xml_file.read().strip()
 
+    # datastrip xml (optional)
+    mtd_ds = {}
+    if extract_datastrip:
+        mtd_ds_xml = str(next(Path(in_dir).rglob('MTD_DS.xml')))
+        mtd_ds = parse_MTD_DS(in_file=mtd_ds_xml)
+
     mtd_msi.update(parse_MTD_TL(in_file=mtd_tl_xml))
 
     # storage location and path handling
@@ -352,11 +427,13 @@ def parse_s2_scene_metadata(in_dir: Path
     mtd_msi['path_type'] = 'Posix'
     mtd_msi['storage_device_ip'] = ''
 
-    return mtd_msi
+    return mtd_msi, mtd_ds
 
 
-def loop_s2_archive(in_dir: Path
-                    ) -> pd.DataFrame:
+def loop_s2_archive(
+        in_dir: Path,
+        extract_datastrip: Optional[bool] = False
+    ) -> Tuple[pd.DataFrame]:
     """
     wrapper function to loop over an entire archive (i.e., collection) of
     Sentinel-2 scenes in either L1C or L2A processing level or a mixture
@@ -369,6 +446,9 @@ def loop_s2_archive(in_dir: Path
         directory containing the Sentinel-2 data (L1C and/or L2A
         processing level). Sentinel-2 scenes are assumed to follow ESA's
         .SAFE naming convention and structure
+    :param extract_datastrip:
+        If True reads also metadata from the datastrip xml file
+        (MTD_DS.xml)
     :return:
         dataframe with metadata of all scenes handled by the function
         call
@@ -386,17 +466,28 @@ def loop_s2_archive(in_dir: Path
         
     # loop over the scenes
     metadata_scenes = []
+    ql_ds_scenes = []
     error_file = open(in_dir.joinpath('errored_datasets.txt'), 'w+')
     for idx, s2_scene in enumerate(s2_scenes):
         logger.info(f'Extracting metadata of {os.path.basename(s2_scene)} ({idx+1}/{n_scenes})')
         try:
-            mtd_scene = parse_s2_scene_metadata(in_dir=Path(s2_scene))
+            mtd_scene, mtd_ds_scene = parse_s2_scene_metadata(
+                in_dir=Path(s2_scene),
+                extract_datastrip=extract_datastrip
+            )
         except Exception as e:
             error_file.write(Path(s2_scene).name)
             error_file.flush()
             logger.error(f'Extraction of metadata failed {s2_scene}: {e}')
             continue
         metadata_scenes.append(mtd_scene)
+        ql_ds_scenes.append(mtd_ds_scene)
 
     # convert to pandas dataframe and return
-    return pd.DataFrame.from_dict(metadata_scenes)
+    return (pd.DataFrame.from_dict(metadata_scenes), pd.DataFrame.from_dict(ql_ds_scenes))
+
+
+if __name__ == '__main__':
+    
+    mtd_ds = Path('/mnt/ides/Lukas/04_Work/S2A_MSIL1C_20190130T103251_N0207_R108_T32TMT_20190130T110147.SAFE/DATASTRIP/DS_MTI__20190130T110147_S20190130T103254/MTD_DS.xml')
+    metadata = parse_MTD_DS(in_file=mtd_ds)
