@@ -14,10 +14,10 @@ if __name__ == '__main__':
     processing_levels = ['L1C']
     region = 'CH'
     # set to True if noise model parameters are required (slow!)
-    extract_datastrip = True
+    extract_datastrip = False
     # set to True to UPDATe existing entries in the database
     update_only = True
-    update_cols = ['datatakeidentifier']
+    update_cols = ['reflectance_conversion']
     
     for processing_level in processing_levels:
         for year in years:
@@ -43,7 +43,7 @@ if __name__ == '__main__':
                 meta_df_to_database(meta_df=metadata)
             else:
                 update_raw_metadata(
-                    meta_df=mmetadata,
+                    meta_df=metadata,
                     columns_to_update=update_cols
                 )
 

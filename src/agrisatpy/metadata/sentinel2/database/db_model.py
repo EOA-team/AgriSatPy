@@ -136,6 +136,9 @@ class S2_Raw_Metadata(Base):
     solar_irradiance_b11 = Column(Float, nullable=False)
     solar_irradiance_b12 = Column(Float, nullable=False)
 
+    # reflectance conversion factor to account for variations in the sun-earth distance
+    reflectance_conversion = Column(Float)
+
     # cloudy pixel percentage
     cloudy_pixel_percentage = Column(Float, nullable=False)
     degraded_msi_data_percentage = Column(Float, nullable=False)

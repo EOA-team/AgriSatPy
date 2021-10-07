@@ -293,6 +293,11 @@ def parse_MTD_MSI(
 
     metadata['datatakeIdentifier'] = datatakeIdentifier
 
+    # reflectance conversion factor (U)
+    reflectance_conversion_xml = xmldoc.getElementsByTagName('U')
+    reflectance_conversion = float(reflectance_conversion_xml[0].firstChild.nodeValue)
+    metadata['reflectance_conversion'] = reflectance_conversion
+
     # extract solar irradiance for the single bands
     bands = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09',
              'B10', 'B11', 'B12']
