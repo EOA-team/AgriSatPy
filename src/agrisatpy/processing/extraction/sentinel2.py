@@ -227,7 +227,7 @@ def S2singlebands2table(in_dir: Path,
             # out_transform[4] = resolution in y direction (resolution y)
             # out_transform[2] = upper left x coordinate (ulx)
             # out_transform[5] = upper left y coordinate (uly)
-            resolution_x  = out_transform[0]
+            resolution_x = out_transform[0]
             resolution_y = out_transform[4]
             ulx = out_transform[2]
             uly = out_transform[5]
@@ -429,132 +429,141 @@ def S2bandstack2table(in_file: Path,
         buffer=buffer
     )
 
-
-    # ========================== loop over IDs ==========================
-    full_DF = []
-    if is_l2a:
-        parcel_statistics = []  # SCL is available for L2A level, only
-   
-    for idx in bbox_parcels_buffered.index:
-
-        # unfortunately, geopandas still does not support iterrows() on geometries...
-        shape = bbox_parcels_buffered.loc[[idx]]
-        logger.info(f"Extracting field parcel with ID {shape[id_column]}")
-
-    # ========================== Loop over bands! ==========================
-        flat_band_rflt_per_ID = []
-        try:
-            out_band, out_transform = rio.mask.mask(
-                bandstack,
-                shape.geometry,
-                crop=True, 
-                all_touched=True, # IMPORTANT!
-                nodata = nodata_refl
-            )
-        except Exception as e:
-            logger.warning(f'Couldnot clip feature {shape[id_column]}: {e}')
-            # if the feature could not be clipped (e.g., because it is not located
-            # within the extent of the raster) flag the feature and continue with the next
-            continue
-       
-        for idx in range(len(bandlist)):
-            # flatten spectral values from 2d to 1d along columns (order=F(ortran))
-            flat_band_n = out_band[idx, :, :].flatten(order='F')
-            flat_band_rflt_per_ID.append(flat_band_n)
-      
-        # coerce to DF
-        per_ID_df = pd.DataFrame(flat_band_rflt_per_ID).transpose()
-        # add bandnames
-        per_ID_df.columns = bandlist
-        
-        # ========== Get coordinates ==========
-        # out_transform[0] = resolution in x direction (resolution_x)
-        # out_transform[4] = resolution in y direction (resolution y)
-        # out_transform[2] = upper left x coordinate (ulx)
-        # out_transform[5] = upper left y coordinate (uly)
-        resolution_x  = out_transform[0]
-        resolution_y = out_transform[4]
-        ulx = out_transform[2]
-        uly = out_transform[5]
-
-        # get rows and columns of extracted spatial subset of the image 
-        maxcol = out_band.shape[2]
-        maxrow = out_band.shape[1]
-
-        # get coordinates of every item in out_image
-        max_x_coord = ulx + maxcol * resolution_x
-        max_y_coord = uly + maxrow * resolution_y
-        x_coords = np.arange(ulx, max_x_coord, resolution_x)
-        y_coords = np.arange(uly, max_y_coord, resolution_y)
-
-        # flatten x coordinates along the y-axis
-        flat_x_coords = np.repeat(x_coords, maxrow)
-        # flatten y coordinates along the x-axis
-        flat_y_coords = np.tile(y_coords, maxcol)
-    
-        # add coordinates
-        per_ID_df["x_coord"] = flat_x_coords
-        per_ID_df["y_coord"] = flat_y_coords
-        
-        # ======== Get SCL class per pixel ==========
-        # works only for is_sentinel processing level
+    # if bbox_parcels_buffered is empty (due to a Multipolygon) the following block won't work
+    # try nevertheless and rais an exception if encountered
+    try:
+        # ========================== loop over IDs ==========================
+        full_DF = []
         if is_l2a:
-            with rio.open(scl_filepath) as src:
-                out_scl, out_transform = rio.mask.mask(
-                    src,
+            parcel_statistics = []  # SCL is available for L2A level, only
+
+        for idx in bbox_parcels_buffered.index:
+
+            # unfortunately, geopandas still does not support iterrows() on geometries...
+            shape = bbox_parcels_buffered.loc[[idx]]
+            logger.info(f"Extracting field parcel with ID {shape[id_column]}")
+
+        # ========================== Loop over bands! ==========================
+            flat_band_rflt_per_ID = []
+            try:
+                out_band, out_transform = rio.mask.mask(
+                    bandstack,
                     shape.geometry,
-                    crop=True, 
-                    all_touched=True,
-                    nodata=nodata_scl
+                    crop=True,
+                    all_touched=True, # IMPORTANT!
+                    nodata = nodata_refl
                 )
+            except Exception as e:
+                logger.warning(f'Couldnot clip feature {shape[id_column]}: {e}')
+                # if the feature could not be clipped (e.g., because it is not located
+                # within the extent of the raster) flag the feature and continue with the next
+                continue
 
-                # compute share of SCL classes for the current polygon
-                stats = compute_parcel_stat(
-                    in_array=out_scl,
-                    nodata_value=nodata_scl
-                )
+            for idx in range(len(bandlist)):
+                # flatten spectral values from 2d to 1d along columns (order=F(ortran))
+                flat_band_n = out_band[idx, :, :].flatten(order='F')
+                flat_band_rflt_per_ID.append(flat_band_n)
 
-                stats[id_column] = shape[id_column].values[0]
-                parcel_statistics.append(stats)
+            # coerce to DF
+            per_ID_df = pd.DataFrame(flat_band_rflt_per_ID).transpose()
+            # add bandnames
+            per_ID_df.columns = bandlist
 
-                # also flatten the SCL values to store them p er pixel
-                flat_scl_class = out_scl.flatten(order='F')
-            
-            # add SCL to ID_df out of rio scope
-                per_ID_df["scl_class"] = flat_scl_class
+            # ========== Get coordinates ==========
+            # out_transform[0] = resolution in x direction (resolution_x)
+            # out_transform[4] = resolution in y direction (resolution y)
+            # out_transform[2] = upper left x coordinate (ulx)
+            # out_transform[5] = upper left y coordinate (uly)
+            resolution_x  = out_transform[0]
+            resolution_y = out_transform[4]
+            ulx = out_transform[2]
+            uly = out_transform[5]
 
-        # add field ID
-        per_ID_df[id_column] = shape[id_column].values[0]
-        # add CRS in form of EPSG code
-        per_ID_df["epsg"] = bbox_parcels_buffered.crs.to_epsg()
-        # append to full DF holding all field_IDs
-        full_DF.append(per_ID_df)
-    
-    # coerce parcel statistic to Dataframe (L2A processing level, only)
-    if is_l2a:
+            # get rows and columns of extracted spatial subset of the image
+            maxcol = out_band.shape[2]
+            maxrow = out_band.shape[1]
 
-        stat_DF = pd.DataFrame(parcel_statistics)
-        stat_DF[id_column] = stat_DF[id_column]
+            # get coordinates of every item in out_image
+            max_x_coord = ulx + maxcol * resolution_x
+            max_y_coord = uly + maxrow * resolution_y
+            x_coords = np.arange(ulx, max_x_coord, resolution_x)
+            y_coords = np.arange(uly, max_y_coord, resolution_y)
 
-    else:
-        
-        stat_DF = None
+            # flatten x coordinates along the y-axis
+            flat_x_coords = np.repeat(x_coords, maxrow)
+            # flatten y coordinates along the x-axis
+            flat_y_coords = np.tile(y_coords, maxcol)
 
-    # convert full_DF from list to dataframe
-    out_DF = pd.concat(full_DF)
-    # drop no-data pixels (all reflectance values equal zero)
-    out_DF = out_DF.loc[(out_DF[bandlist] != nodata_refl).all(axis=1)]
+            # add coordinates
+            per_ID_df["x_coord"] = flat_x_coords
+            per_ID_df["y_coord"] = flat_y_coords
 
-    # ========= filter out clouds based on SCL ================
-    # works for is_sentinel-2 data only
-    if is_l2a:
-        out_DF = out_DF.loc[out_DF["scl_class"] != nodata_scl]
-    if filter_clouds and is_l2a:
-        out_DF = out_DF.loc[~out_DF["scl_class"].isin(scl_2_filterout)]
-    
-    # Append sensing product_date of S2 image
-    if product_date != '':
-        out_DF["date"] = product_date
-        if is_l2a: stat_DF["date"] = product_date
+            # ======== Get SCL class per pixel ==========
+            # works only for is_sentinel processing level
+            if is_l2a:
+                with rio.open(scl_filepath) as src:
+                    out_scl, out_transform = rio.mask.mask(
+                        src,
+                        shape.geometry,
+                        crop=True,
+                        all_touched=True,
+                        nodata=nodata_scl
+                    )
 
-    return out_DF, stat_DF
+                    # compute share of SCL classes for the current polygon
+                    stats = compute_parcel_stat(
+                        in_array=out_scl,
+                        nodata_value=nodata_scl
+                    )
+
+                    stats[id_column] = shape[id_column].values[0]
+                    parcel_statistics.append(stats)
+
+                    # also flatten the SCL values to store them p er pixel
+                    flat_scl_class = out_scl.flatten(order='F')
+
+                # add SCL to ID_df out of rio scope
+                    per_ID_df["scl_class"] = flat_scl_class
+
+            # add field ID
+            per_ID_df[id_column] = shape[id_column].values[0]
+            # add CRS in form of EPSG code
+            per_ID_df["epsg"] = bbox_parcels_buffered.crs.to_epsg()
+            # append to full DF holding all field_IDs
+            full_DF.append(per_ID_df)
+
+        # coerce parcel statistic to Dataframe (L2A processing level, only)
+        if is_l2a:
+
+            stat_DF = pd.DataFrame(parcel_statistics)
+            stat_DF[id_column] = stat_DF[id_column]
+
+        else:
+
+            stat_DF = None
+
+        # convert full_DF from list to dataframe
+        out_DF = pd.concat(full_DF)
+        # drop no-data pixels (all reflectance values equal zero)
+        out_DF = out_DF.loc[(out_DF[bandlist] != nodata_refl).all(axis=1)]
+
+        # ========= filter out clouds based on SCL ================
+        # works for is_sentinel-2 data only
+        if is_l2a:
+            out_DF = out_DF.loc[out_DF["scl_class"] != nodata_scl]
+        if filter_clouds and is_l2a:
+            out_DF = out_DF.loc[~out_DF["scl_class"].isin(scl_2_filterout)]
+
+        # Append sensing product_date of S2 image
+        if product_date != '':
+            out_DF["date"] = product_date
+            if is_l2a: stat_DF["date"] = product_date
+
+        return out_DF, stat_DF
+
+    except Exception as e:
+        if len(bbox_parcels_buffered.index) == 0:
+            logger.warning(f'Bounding box with {id_column} {bbox_parcels[id_column][0]} is '
+                           f'empty: possible Multipolygon detected!')
+        else:
+            logger.warning(f'Unknown error with buffering the bounding box.')
