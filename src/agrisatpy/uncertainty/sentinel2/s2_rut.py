@@ -1,11 +1,13 @@
 '''
 Created on Oct 6, 2021
 
-@author: graflu
+@author: Lukas Graf
 '''
 
 import math
 import numpy as np
+from typing import Optional
+from typing import List
 
 
 # define constants from S2-RUT
@@ -34,28 +36,99 @@ u_diff_temp_rate = {'Sentinel-2A': [0.15, 0.09, 0.04, 0.02, 0.01, 0.0, 0.0, 0.0,
 
 class S2RutAlgo:
     """
-    Algorithm for the Sentinel-2 Radiometric Uncertainty Tool (RUT)
+    Algorithm for the Sentinel-2 Radiometric Uncertainty Tool (RUT) developed
+    by Gorrono et al. (2017).
+
+    :param a:
+        physical gain factor for the selected spectral band from datastrip
+        metadata
+    :param e_sun:
+        solar irradiance in the selected spectral band at the corresponding
+        image acquisition date
+    :param u_sun:
+        conversion factor to account for variations in the sun-earth distance
+    :param tecta:
+        pixel solar zenith angle (deg)
+    :param alpha:
+        datastrip noise model parameter alpha
+    :param beta:
+        datastrip noise model parameter beta
+    :param u_diff_temp:
+        temporal degradation uncertainty contributor per band and acqiusition
+        date
+    :param k:
+        uncertainty coverage factor (number of standard uncertainties). Default
+        is 2 based on recommendations in GUM.
+    :param quant:
+        quantification value. Defaults to 10000.
+    :param u_diff_cos:
+        0.13° diffuser planarity/micro as in (AIRBUS 2015). Assumed same for S2A/S2B.
+    :param u_diff_k:
+        [%] as a conservative residual (AIRBUS 2015). Assumed same for S2A/S2B.
+    :param u_ADC:
+        analog-digital quantisation uncertainty contribution [DN] (rectangular distribution)
+    :param u_gamma:
+        gamma knowledge contributor. Default is 0.4.
+    :param unc_select:
+        list of booleans with user selected uncertainty sources. Order:
+        ["INSTRUMENT_NOISE", "OOF_STRAYLIGHT-SYSTEMATIC", "OOF_STRAYLIGHT-RANDOM", "CROSSTALK",
+        "ADC_QUANTISATION", "DS_STABILITY", "GAMMA_KNOWLEDGE", "DIFFUSER-ABSOLUTE_KNOWLEDGE",
+        "DIFFUSER-TEMPORAL_KNOWLEDGE", "DIFFUSER-COSINE_EFFECT", "DIFFUSER-STRAYLIGHT_RESIDUAL",
+        "L1C_IMAGE_QUANTISATION"]
     """
 
-    def __init__(self):
+    def __init__(
+            self,
+            a: float,
+            e_sun: float,
+            u_sun: float,
+            tecta: float,
+            alpha: float,
+            beta: float,
+            u_diff_temp: float,
+            k: Optional[int]=2,
+            quant: Optional[float]=10000.0,
+            u_diff_cos: Optional[float]=0.4,
+            u_diff_k: Optional[float]=0.3,
+            u_ADC: Optional[float]=0.5,
+            u_gamma: Optional[float]=0.4,
+            unc_select: Optional[List[bool]]=[True,
+                                              True,
+                                              True,
+                                              True,
+                                              True,
+                                              True,
+                                              True,
+                                              True,
+                                              True,
+                                              True,
+                                              True,
+                                              True]
+        ):
         # uncertainty values for DS and Abs.cal
-        self.a = 0.0
-        self.e_sun = 0.0
-        self.u_sun = 1.0
-        self.tecta = 0.0
-        self.quant = 10000.0
-        self.alpha = 0.0
-        self.beta = 0.0
-        self.u_diff_cos = 0.4  # [%]from 0.13° diffuser planarity/micro as in (AIRBUS 2015). Assumed same for S2A/S2B.
-        self.u_diff_k = 0.3  # [%] as a conservative residual (AIRBUS 2015). Assumed same for S2A/S2B.
-        self.u_diff_temp = 1.0  # This value is correctly redefined for specific satellite at the S2RutOp.
-        self.u_ADC = 0.5  # [DN](rectangular distribution, see combination)
-        self.u_gamma = 0.4
-        self.k = 1 # This value is correctly redefined for specific satellite at the S2RutOp.
-        self.unc_select = [True, True, True, True, True, True, True, True, True, True, True,
-                           True]  # list of booleans with user selected uncertainty sources(order as in interface)
+        self.a = a
+        self.e_sun = e_sun
+        self.u_sun = u_sun
+        self.tecta = tecta
+        self.alpha = alpha
+        self.beta = beta
+        self.u_diff_temp = u_diff_temp
 
-    def unc_calculation(self, band_data, band_id, spacecraft):
+        self.quant = quant
+        self.k = k
+        self.u_diff_cos = u_diff_cos
+        self.u_diff_k = u_diff_k
+        self.u_ADC = u_ADC
+        self.u_gamma = u_gamma
+        self.unc_select = unc_select
+
+
+    def unc_calculation(
+            self,
+            band_data: np.array,
+            band_id: int,
+            spacecraft: str
+        ) -> List[float]:
         """
         This function represents the core of the RUTv1.
         It takes as an input the pixel data of a specific band and tile in
@@ -66,21 +139,20 @@ class S2RutAlgo:
         can be found in the tool github. Also there a more detailed explanation
         of the theoretical background can be found.
 
-        :param band_data: list with the quantized L1C reflectance pixels of a band (flattened; 1-d)
-        :param band_id: zero-based index of the band
-        :param spacecraft: satellite for which uncertainty is calculated. Valid values: "Sentinel-2A" and "Sentinel-2B"
-        :return: list of u_int8 with uncertainty associated to each pixel.
+        :param band_data:
+            list with the quantized L1C reflectance pixels of a band (flattened; 1-d)
+        :param band_id:
+            zero-based index of the band
+        :param spacecraft:
+            satellite for which uncertainty is calculated. Valid values:
+            "Sentinel-2A" and "Sentinel-2B"
+        :return:
+            list of u_int8 with uncertainty associated to each pixel.
         """
 
         #######################################################################
         # 1.    Undo reflectance conversion
         #######################################################################
-        # a.    No action required
-        # b.    [product metadata] #issue: missing one band
-        #    General_Info/Product_Image_Characteristics/PHYSICAL_GAINS [bandId]
-        #    [datastrip metadata]
-        #    Image_Data_Info/Sensor_Configuration/Acquisition_Configuration/
-        #    Spectral_Band_Info/Spectral_Band_Information [bandId]/ PHYSICAL_GAINS
 
         # Replace the reflectance factors by CN values
         # cn = (self.a * self.e_sun * self.u_sun * math.cos(math.radians(self.tecta)) / math.pi) * band_data
