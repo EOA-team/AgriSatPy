@@ -40,6 +40,7 @@ date_start = '2018-01-01'
 date_end = '2018-12-31'
 
 processing_level = 'Level-2A'
+drop_multipolygon = True
 
 # loop over tiles
 for tile in tiles:
@@ -85,18 +86,26 @@ for tile in tiles:
         bandstack = Path(in_dir).joinpath(metadata.bandstack.iloc[idx])
 
         # extract the pixel values
-        refl, scl_stats = S2bandstack2table(in_file=bandstack,
-                                            in_file_scl=in_file_scl,
-                                            in_file_polys=in_file_polys,
-                                            buffer=buffer,
-                                            id_column=id_column,
-                                            product_date=date)
-        refl['scene_id'] = metadata.scene_id.iloc[idx]
-        refl['product_uri'] = metadata.product_uri.iloc[idx]
+        try:
+            refl, scl_stats = S2bandstack2table(in_file=bandstack,
+                                                in_file_scl=in_file_scl,
+                                                in_file_polys=in_file_polys,
+                                                buffer=buffer,
+                                                id_column=id_column,
+                                                product_date=date,
+                                                drop_multipolygon=drop_multipolygon
+            )
+            refl['scene_id'] = metadata.scene_id.iloc[idx]
+            refl['product_uri'] = metadata.product_uri.iloc[idx]
+    
+            # save data-frames to CSV files (if they contain data)
+            out_file = os.path.join(out_dir, f'{os.path.splitext(bandstack.name)[0]}.csv')
+            out_file_scl = os.path.join(out_dir, f'{os.path.splitext(bandstack.name)[0]}_SCL.csv')
 
-        # save data-frames to CSV files (if they contain data)
-        out_file = os.path.join(out_dir, f'{os.path.splitext(bandstack.name)[0]}.csv')
-        out_file_scl = os.path.join(out_dir, f'{os.path.splitext(bandstack.name)[0]}_SCL.csv')
-        if not refl.empty:
-            refl.to_csv(out_file, index=False)
-            scl_stats.to_csv(out_file_scl, index=False)
+            if not refl.empty:
+                refl.to_csv(out_file, index=False)
+                scl_stats.to_csv(out_file_scl, index=False)
+
+        except Exception as e:
+            print(f'Could not extract pixel values for {in_file_polys}')
+            continue
