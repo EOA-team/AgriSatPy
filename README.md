@@ -52,3 +52,35 @@ Before you start, please:
 - All changes must be submitted using `merge requests`. The merge request should also have a small message text where you explain what this merge will change.
 - make sure to follow the [coding style conventions](./CODE_STYLE.md).
 - provide test (pytest) cases whenever possible.
+
+## Versioning Rules
+
+We use [setuptools-scm](https://pypi.org/project/setuptools-scm/) with a post-release scheme for dynamic versioning based on git commit IDs and git tags.
+
+A **release** is a stable version of the package and should be used for operational purposes. Each release should have a version. The versioning system used is `vMajor.Minor (e.g., v1.1)`.
+In addition to releases we have `development versions`. This also receive version numbers based on a `post-release` versioning logic. This consists of the latest stable version (i.e., the base for the development), plus the number of the commit since the last release. An example for such a development version is:
+
+```bash
+v1.1.post44+gaaa8b16
+```
+
+In this example, `v1.1` indicates that v1.1 was the last stable release on which the current development version is based. `post` means that the current version was created *after* this release. `44` is the number of commits since the last release and `gaaa8b16` a shortened version of commit UID.
+
+To create a new release, commit and push all your changes into your development branch and merge them into the main project's master.
+
+Next, checkout the master branch and pull the merged changes locally. Then add a git tag (by increasing the version number):
+
+```bash
+git checkout master
+git pull upstream master
+git tag -a v<major>.<minor> -m "v<major>.<minor>"
+git push upstream master
+```
+Then publish the package to the PyPI package index by running `publish_pypi.sh` or `publish_pypi.bat` depending on your OS. Then checkout your development branch again.
+
+**IMPORTANT**:
+
+- New releases should always be discussed with the other developers.
+- Only the package administrator should be able to publish new releases.
+- Always add the most important changes to changelog so that it will be possible to track the development between the releases
+
