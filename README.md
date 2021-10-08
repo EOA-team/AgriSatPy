@@ -39,8 +39,11 @@ To come in the **future**:
 - improvement of the archive maintainability (updates, usage of other sensors)
 - more tests (yes, they are important :) )
 
-## Capabilities
+## Contributing
 Yes please :)
 
-Please make sure to follow the [coding style conventions](./CODE_STYLE.md).
-
+Before you start, please:
+- familiarize yourself working with `git` if you haven't used it before. Always work in **your own fork** and **never in the master branch**.
+- All changes must be submitted using `merge requests`.
+- make sure to follow the [coding style conventions](./CODE_STYLE.md).
+- provide test (pytest) cases whenever possible.

@@ -29,7 +29,7 @@ E.g.,
 class Class(object):
    pass
 
-clas MyClass(Class):
+class MyClass(Class):
    pass
 ```
 
