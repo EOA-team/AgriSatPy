@@ -76,7 +76,17 @@ git pull upstream master
 git tag -a v<major>.<minor> -m "v<major>.<minor>"
 git push upstream master
 ```
-Then publish the package to the PyPI package index by running `publish_pypi.sh` or `publish_pypi.bat` depending on your OS. Then checkout your development branch again.
+Then publish the package to the PyPI package index by running `publish_pypi.sh` or `publish_pypi.bat` depending on your OS.
+
+**NOTE**: git tags won't be fetched by simply pulling from the upstream's master branch. They must be fetched using
+
+```bash
+git fetch upstream
+```
+
+You can verify that you have received the tag by typing `git tag -l` to get a list of all available git tags.
+
+Then checkout your development branch again.
 
 **IMPORTANT**:
 
