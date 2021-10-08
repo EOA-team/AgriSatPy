@@ -9,6 +9,7 @@ import pandas as pd
 from pathlib import Path
 from typing import List
 from typing import Optional
+from typing import Union
 
 from agrisatpy.config import Sentinel2
 
@@ -16,9 +17,10 @@ from agrisatpy.config import Sentinel2
 s2 = Sentinel2()
 
 
-def get_S2_bandfiles(in_dir: Path,
-                     resolution: Optional[int]=None,
-                     ) -> List[Path]:
+def get_S2_bandfiles(
+        in_dir: Path,
+        resolution: Optional[int]=None,
+    ) -> List[Path]:
     '''
     returns all JPEG-2000 files (*.jp2) found in a dataset directory
     (.SAFE).
@@ -39,8 +41,9 @@ def get_S2_bandfiles(in_dir: Path,
     return [Path(x) for x in files]
 
 
-def get_S2_sclfile(in_dir: Path
-                   ) -> Path:
+def get_S2_sclfile(
+        in_dir: Path
+    ) -> Path:
     '''
     return the path to the S2 SCL (scene classification file) 20m resolution!
 
@@ -55,11 +58,12 @@ def get_S2_sclfile(in_dir: Path
     return Path(scl_file)
 
 
-def get_S2_bandfiles_with_res(in_dir: Path,
-                             resolution_selection: Optional[List[float]]=[10.0, 20.0],
-                             search_str: Optional[str]='*B*.jp2',
-                             is_L2A: Optional[bool]=True
-                             ) -> pd.DataFrame:
+def get_S2_bandfiles_with_res(
+        in_dir: Path,
+        resolution_selection: Optional[List[Union[int,float]]]=[10.0, 20.0],
+        search_str: Optional[str]='*B*.jp2',
+        is_L2A: Optional[bool]=True
+    ) -> pd.DataFrame:
     '''
     Returns a selection of native resolution Sentinel-2 bands (Def.: 10, 20 m).
     Works on MSIL2A data (sen2core derived) but also allows to work on Sentinel2
@@ -156,10 +160,10 @@ def get_S2_bandfiles_with_res(in_dir: Path,
         return native_band_df
 
 
-def get_S2_tci(in_dir: Path,
-               is_L2A: Optional[bool]=True,
-               ) -> Path:
-
+def get_S2_tci(
+        in_dir: Path,
+        is_L2A: Optional[bool]=True,
+    ) -> Path:
     '''
     Returns path to S2 TCI (quicklook) img (10m resolution). Works for both
     Sentinel-2 processing levels ('L2A' and 'L1C').

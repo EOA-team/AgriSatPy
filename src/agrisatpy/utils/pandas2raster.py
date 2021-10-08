@@ -26,6 +26,7 @@ from typing import List
 from typing import  Tuple
 from typing import TypeVar
 from typing import Optional
+from typing import Union
 from pathlib import Path
 from rasterio.profiles import Profile
 
@@ -52,14 +53,15 @@ def extract_epsg(df: pd.DataFrame,
     return df[col_crs].unique()[0]
 
 
-def construct_profile(epsg_int: int,
-                      ulx: float,
-                      uly: float,
-                      target_resolution: float,
-                      cols: int,
-                      rows: int, 
-                      bands: int
-                      ) -> dict:
+def construct_profile(
+        epsg_int: int,
+        ulx: Union[int,float],
+        uly: Union[int,float],
+        target_resolution: Union[int,float],
+        cols: int,
+        rows: int, 
+        bands: int
+    ) -> dict:
     """
     constructs a dict-like structure (profile) required by rasterio
     to georeference the output geoTiffs files
@@ -99,13 +101,14 @@ def construct_profile(epsg_int: int,
     return profile
 
 
-def polygon2raster(in_df: pd.DataFrame,
-                   epsg_int: int, 
-                   column_selection: List[str],
-                   target_resolution: float,
-                   colname_x: Optional[str]='x_coord',
-                   colname_y: Optional[str]='y_coord'
-                   ) -> Tuple[np.array, Profile]:
+def polygon2raster(
+        in_df: pd.DataFrame,
+        epsg_int: int, 
+        column_selection: List[str],
+        target_resolution: Union[int,float],
+        colname_x: Optional[str]='x_coord',
+        colname_y: Optional[str]='y_coord'
+    ) -> Tuple[np.array, Profile]:
     """
     helper method to convert a polygon or collection of polygons
     into a 3-dim raster (shape: bands, rows, cols) with proper geolocation
@@ -168,11 +171,12 @@ def polygon2raster(in_df: pd.DataFrame,
     return (img_arr, profile)
 
 
-def write_image(out_file: Path,
-                profile: Profile,
-                out_array: np.array,
-                column_selection: List[str]
-                ) -> None:
+def write_image(
+        out_file: Path,
+        profile: Profile,
+        out_array: np.array,
+        column_selection: List[str]
+    ) -> None:
     """
     helper function to write a 3-d array with shape (bands,rows,cols) to a georeferenced
     image using rasterio. The image band names are the same as the selected columns
@@ -198,15 +202,16 @@ def write_image(out_file: Path,
             dst.set_band_description(idx+1, column_selection[idx])
 
 
-def pandas2raster(in_df: pd.DataFrame,
-                  out_dir: str,
-                  column_selection: List[str],
-                  target_resolution: float,
-                  product_name: str,
-                  id_column: Optional[str]='polygon_ID',
-                  polygon_selection: Optional[List[TypeVar('T')]]=[],
-                  single_out_file: Optional[bool]=False,
-                  ) -> None:
+def pandas2raster(
+        in_df: pd.DataFrame,
+        out_dir: str,
+        column_selection: List[str],
+        target_resolution: Union[int,float],
+        product_name: str,
+        id_column: Optional[str]='polygon_ID',
+        polygon_selection: Optional[List[TypeVar('T')]]=[],
+        single_out_file: Optional[bool]=False,
+    ) -> None:
     """
     converts a pandas dataframe with field polygons (identified by the id_column
     variable) to a one or more geoTiff file(s) using a user-defined list of dataframe columns.

@@ -49,11 +49,12 @@ class MetadataNotFoundError(Exception):
     pass
 
 
-def do_parallel(in_df: pd.DataFrame,
-                loopcounter: int, 
-                out_dir: Path, 
-                **kwargs
-                ) -> dict:
+def do_parallel(
+        in_df: pd.DataFrame,
+        loopcounter: int, 
+        out_dir: Path, 
+        **kwargs
+    ) -> dict:
     """
     Wrapper function for (potential) parallel execution of S2 resampling & stacking, 
     SCL resampling and optionally per-polygon-ID pixel value extraction (per S2 scene)

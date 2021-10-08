@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import Optional
 
 
-def reconstruct_path(record: pd.Series,
-                     is_raw_data: Optional[bool]=True
-                    ) -> Path:
+def reconstruct_path(
+        record: pd.Series,
+        is_raw_data: Optional[bool]=True
+    ) -> Path:
     """
     auxiliary function to reconstruct the actual dataset location
     based on the entries in the metatdata base. Raises an error

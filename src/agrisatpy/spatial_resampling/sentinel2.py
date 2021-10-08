@@ -40,15 +40,16 @@ logger = Settings.logger
 s2 = Sentinel2()
 
 
-def resample_and_stack_S2(in_dir: Path,
-                          out_dir: Path,
-                          target_resolution: Optional[float]=10.0,
-                          interpolation: Optional[int]=Resampling.cubic,
-                          masking: Optional[bool]=False,
-                          pixel_division: Optional[bool]=False,
-                          is_L2A: Optional[bool]=True,
-                          **kwargs
-                         ) -> str:
+def resample_and_stack_S2(
+        in_dir: Path,
+        out_dir: Path,
+        target_resolution: Optional[float]=10.0,
+        interpolation: Optional[int]=Resampling.cubic,
+        masking: Optional[bool]=False,
+        pixel_division: Optional[bool]=False,
+        is_L2A: Optional[bool]=True,
+        **kwargs
+    ) -> Path:
     '''
     Function to resample S2 scenes and write them to a single stacked .tiff.
     Creates also a RGB preview png-file of each scene. These files are stored
@@ -88,6 +89,8 @@ def resample_and_stack_S2(in_dir: Path,
     :param kwargs:
         in_file_aoi: file containing the AOI to mask by
         resolution_selection: list of spatial resolution to process (10, 20, 60m)
+    :return:
+        filepath to resampled, bandstacked geoTiff file
     '''
     # read in S2 band and SCL file
     resolution_selection = kwargs.get('resolution_selection', [10., 20.])
@@ -352,11 +355,12 @@ def resample_and_stack_S2(in_dir: Path,
     return Path(out_dir).joinpath(out_file)
 
 
-def scl_10m_resampling(in_dir: Path,
-                       out_dir: Path,
-                       masking: Optional[bool]=False,
-                       **kwargs
-                       ) -> Path:
+def scl_10m_resampling(
+        in_dir: Path,
+        out_dir: Path,
+        masking: Optional[bool]=False,
+        **kwargs
+    ) -> Path:
     '''
     Resamples the scene classification layer (SCL) available for L2A Sentinel-2 data.
     Since the SCL is provided in 20 m spatial resolution, this function allows to
@@ -454,22 +458,22 @@ def scl_10m_resampling(in_dir: Path,
     return Path(scl_out_path)
 
 
-if __name__ == '__main__':
-    
-    in_dir = '/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L2A/CH/2018/S2A_MSIL2A_20180816T104021_N0208_R008_T32TLT_20180816T190612'
-    out_dir = '/mnt/ides/Lukas/03_Debug/Sentinel2/L1C/'
-    is_L2A = True
-    
-    out_file = resample_and_stack_S2(
-        in_dir=Path(in_dir),
-        out_dir=Path(out_dir),
-        is_L2A=is_L2A
-    )
-
-    if is_L2A:
-        out_file_scl = scl_10m_resampling(
-            in_dir=Path(in_dir),
-            out_dir=Path(out_dir)
-        )
-
-    print(out_file)
+# if __name__ == '__main__':
+#
+#     in_dir = '/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L2A/CH/2018/S2A_MSIL2A_20180816T104021_N0208_R008_T32TLT_20180816T190612'
+#     out_dir = '/mnt/ides/Lukas/03_Debug/Sentinel2/L1C/'
+#     is_L2A = True
+#
+#     out_file = resample_and_stack_S2(
+#         in_dir=Path(in_dir),
+#         out_dir=Path(out_dir),
+#         is_L2A=is_L2A
+#     )
+#
+#     if is_L2A:
+#         out_file_scl = scl_10m_resampling(
+#             in_dir=Path(in_dir),
+#             out_dir=Path(out_dir)
+#         )
+#
+#     print(out_file)

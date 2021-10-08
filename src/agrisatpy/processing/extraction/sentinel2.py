@@ -36,17 +36,18 @@ Settings = get_settings()
 logger = Settings.logger
 
 
-def S2singlebands2table(in_dir: Path,
-                        buffer: float, 
-                        id_column: str,
-                        product_date: str,
-                        resolution: int,
-                        in_file_polys: Optional[str]='',
-                        in_gdf_polys: Optional[gpd.GeoDataFrame]=None,
-                        filter_clouds: Optional[bool] = True,
-                        is_L2A: Optional[bool]=True,
-                        **kwargs
-                        ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def S2singlebands2table(
+        in_dir: Path,
+        buffer: float, 
+        id_column: str,
+        product_date: str,
+        resolution: int,
+        in_file_polys: Optional[str]='',
+        in_gdf_polys: Optional[gpd.GeoDataFrame]=None,
+        filter_clouds: Optional[bool] = True,
+        is_L2A: Optional[bool]=True,
+        **kwargs
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     extracts spectral values of all bands found in a Sentinel-2 granule folder
     (each band is stored as a separate JPEG-2000 file) for a series of field
@@ -319,18 +320,19 @@ def S2singlebands2table(in_dir: Path,
     return out_DF, stat_DF
 
 
-def S2bandstack2table(in_file: Path,
-                      buffer: float, 
-                      id_column: str,
-                      product_date: Optional[str]='',
-                      in_file_scl: Optional[Path]=None, 
-                      in_file_polys: Optional[str]='',
-                      in_gdf_polys: Optional[gpd.GeoDataFrame]=None,
-                      filter_clouds: Optional[bool]=True,
-                      is_l2a: Optional[bool]=True,
-                      out_colnames: Optional[List[str]]=None,
-                      **kwargs
-                      ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def S2bandstack2table(
+        in_file: Path,
+        buffer: float, 
+        id_column: str,
+        product_date: Optional[str]='',
+        in_file_scl: Optional[Path]=None, 
+        in_file_polys: Optional[str]='',
+        in_gdf_polys: Optional[gpd.GeoDataFrame]=None,
+        filter_clouds: Optional[bool]=True,
+        is_l2a: Optional[bool]=True,
+        out_colnames: Optional[List[str]]=None,
+        **kwargs
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     '''
     For a multiband (stacked .tiff) S2 scene: Extract pixel values for each
     polygon ID of the provided polygons

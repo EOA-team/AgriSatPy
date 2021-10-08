@@ -56,10 +56,11 @@ class SCL_Classes(object):
         return values
 
 
-def buffer_fieldpolygons(in_gdf: gpd.GeoDataFrame,
-                         buffer: float,
-                         drop_multipolygons: Optional[bool]=True
-                         ) -> gpd.GeoDataFrame:
+def buffer_fieldpolygons(
+        in_gdf: gpd.GeoDataFrame,
+        buffer: float,
+        drop_multipolygons: Optional[bool]=True
+    ) -> gpd.GeoDataFrame:
     '''
     creates a buffer for field polygons and returns a new geodataframe.
 
@@ -87,9 +88,10 @@ def buffer_fieldpolygons(in_gdf: gpd.GeoDataFrame,
     return buffered
 
 
-def compute_parcel_stat(in_array: np.array,
-                        nodata_value: int
-                        ) -> dict:
+def compute_parcel_stat(
+        in_array: np.array,
+        nodata_value: int
+    ) -> dict:
     """
     calculates the percentage of pixels per SCL class within a parcel (field)
     polygon. 100% equals the number of pixels that are located within the
@@ -275,18 +277,18 @@ def raster2table(
 
     return out_DF
 
-if __name__ == '__main__':
-
-    in_file = Path('/mnt/ides/Lukas/04_Work/DEM/hillshade_eschikon.tif')
-    in_file_polys = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/ZH_Polygons_2020_ESCH_EPSG32632.shp')
-    buffer = 0
-    id_column = 'GIS_ID'
-    out_colnames = ['hillshade']
-    out_df, _ = raster2table(
-        in_file=in_file,
-        buffer=buffer,
-        id_column=id_column,
-        in_file_polys=in_file_polys,
-        out_colnames=out_colnames
-    )
-    out_df.to_csv('/mnt/ides/Lukas/04_Work/DEM/test.csv')
+# if __name__ == '__main__':
+#
+#     in_file = Path('/mnt/ides/Lukas/04_Work/DEM/hillshade_eschikon.tif')
+#     in_file_polys = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/ZH_Polygons_2020_ESCH_EPSG32632.shp')
+#     buffer = 0
+#     id_column = 'GIS_ID'
+#     out_colnames = ['hillshade']
+#     out_df, _ = raster2table(
+#         in_file=in_file,
+#         buffer=buffer,
+#         id_column=id_column,
+#         in_file_polys=in_file_polys,
+#         out_colnames=out_colnames
+#     )
+#     out_df.to_csv('/mnt/ides/Lukas/04_Work/DEM/test.csv')

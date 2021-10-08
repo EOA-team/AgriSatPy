@@ -43,13 +43,14 @@ class Platforms(Enum):
     Sentinel3 = 'Sentinel-3'
 
 
-def query_from_copernicus(footprint_file: Path,
-                          date_start: date,
-                          date_end: date,
-                          platform: Platforms,
-                          cloud_cover_threshold: Optional[float]=80.,
-                          **kwargs
-                          ) -> pd.DataFrame:
+def query_from_copernicus(
+        footprint_file: Path,
+        date_start: date,
+        date_end: date,
+        platform: Platforms,
+        cloud_cover_threshold: Optional[float]=80.,
+        **kwargs
+    ) -> pd.DataFrame:
     """
     This method can be used to query Sentinel (1,2,3) data
     from Copernicus Scientific Data Hub (DHUS) using the user
@@ -134,9 +135,10 @@ def query_from_copernicus(footprint_file: Path,
         return product_cc_filtered
 
 
-def download_data(df: pd.DataFrame,
-                  download_dir: Path
-                  ) -> None:
+def download_data(
+        df: pd.DataFrame,
+        download_dir: Path
+    ) -> None:
     """
     downloads Sentinel products from Copernicus DHUS
     using the download API client implemented in Sentinelsat.
