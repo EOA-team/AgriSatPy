@@ -38,3 +38,9 @@ To come in the **future**:
 
 - improvement of the archive maintainability (updates, usage of other sensors)
 - more tests (yes, they are important :) )
+
+## Capabilities
+Yes please :)
+
+Please make sure to follow the [coding style conventions](./CODE_STYLE.md).
+

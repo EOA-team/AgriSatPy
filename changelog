@@ -2,5 +2,5 @@ Release v1.2
 ------------
 - some bugfixes in the processing of L1C data (spatial resampling and blackfill merging)
 - new generic function to extract raster values for polygon features for any single- or multi-band raster
-- 
+- bugfix in buffer polygon function regarding the handling of multi-polygons
 
