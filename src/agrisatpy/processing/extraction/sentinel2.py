@@ -101,6 +101,7 @@ def S2singlebands2table(
         scl_2_filterout = kwargs.get('scl_classes', [0, 1, 3, 8, 9, 10, 11])
         nodata_refl = kwargs.get('nodata_refl', 64537)
         nodata_scl = kwargs.get('nodata_scl', 254)
+        drop_multipolygons = kwargs.get('drop_multipolygons', True)
     """
 
     # check for the bands that match the selected spatial resolution
@@ -139,6 +140,8 @@ def S2singlebands2table(
     nodata_refl = kwargs.get('nodata_refl', S2.NODATA_REFLECTANCE)
     # no-data for scene classification
     nodata_scl = kwargs.get('nodata_scl', S2.NODATA_SCL)
+    # drop_multipolys for the buffer_fieldpolygons function
+    drop_multipolygons = kwargs.get('drop_multipolygons', True)
 
     bandlist = []
     for filename in jp2_files:
@@ -161,7 +164,8 @@ def S2singlebands2table(
 
     # calculate the buffer
     bbox_parcels_buffered = buffer_fieldpolygons(in_gdf=bbox_parcels, 
-                                                 buffer=buffer)
+                                                 buffer=buffer,
+                                                 drop_multipolygons = drop_multipolygons)
 
     # ========================== check CRS ==========================
 
@@ -368,7 +372,8 @@ def S2bandstack2table(
     :param **kwargs:
         scl_2_filterout = kwargs.get('scl_classes', [0, 1, 3, 8, 9, 10, 11])
         nodata_refl = kwargs.get('nodata_refl', 64537)
-        nodata_scl = kwargs.get('nodata_scl', 254).
+        nodata_scl = kwargs.get('nodata_scl', 254)
+        drop_multipolygons = kwargs.get('drop_multipolygons', True).
 
     :return out_DF:
         Extracted Pixel values including X & Y Coordinates, EPSG code, ingestionproduct_date, 
@@ -402,6 +407,8 @@ def S2bandstack2table(
     nodata_refl = kwargs.get('nodata_refl', S2.NODATA_REFLECTANCE)
     # nodata for scene classification
     nodata_scl = kwargs.get('nodata_scl', S2.NODATA_SCL)
+    # option to keep multipolygons in buffer_fieldpolys function
+    drop_multipolygons = kwargs.get('drop_multipolygons', True)
 
     # read in bandlist
     if out_colnames is None:
@@ -428,7 +435,8 @@ def S2bandstack2table(
     # calculate the buffer
     bbox_parcels_buffered = buffer_fieldpolygons(
         in_gdf=bbox_s2_crs, 
-        buffer=buffer
+        buffer=buffer,
+        drop_multipolygons=drop_multipolygons
     )
 
     # if bbox_parcels_buffered is empty (due to a Multipolygon) the following block won't work
