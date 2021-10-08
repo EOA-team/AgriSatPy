@@ -28,14 +28,6 @@ agrisatpy.utils.pandas2raster module
    :undoc-members:
    :show-inheritance:
 
-agrisatpy.utils.sentinel2\_merge\_blackfill module
---------------------------------------------------
-
-.. automodule:: agrisatpy.utils.sentinel2_merge_blackfill
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 agrisatpy.utils.sentinel2\_processed\_metadata\_creation module
 ---------------------------------------------------------------
 

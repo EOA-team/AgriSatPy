@@ -38,3 +38,17 @@ To come in the **future**:
 
 - improvement of the archive maintainability (updates, usage of other sensors)
 - more tests (yes, they are important :) )
+
+## Code Documentation
+
+We use [sphinx](https://www.sphinx-doc.org/en/master/) and the [autodoc-extension](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html) to generate a Read-The-Docs like documentation of our modules, classes and functions.
+
+## Contributing
+Yes please :)
+
+Before you start, please:
+- familiarize yourself working with `git` if you haven't used it before. Always work in **your own fork** and **never in the master branch**.
+- use meaningfull commit messages and try to commit your changes with a certain granularity (e.g, module-wise).
+- All changes must be submitted using `merge requests`. The merge request should also have a small message text where you explain what this merge will change.
+- make sure to follow the [coding style conventions](./CODE_STYLE.md).
+- provide test (pytest) cases whenever possible.
