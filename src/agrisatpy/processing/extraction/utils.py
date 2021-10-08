@@ -169,6 +169,9 @@ def raster2table(
     # check for user-defined nodata values for reflectance
     nodata_refl = kwargs.get('nodata', S2.NODATA_REFLECTANCE)
 
+    # Option to keep multipolygons
+    drop_multipolygons = kwargs.get('drop_multipolygons', True)
+
     # read in bandlist
     if out_colnames is None:
         bandlist = list(bandstack.descriptions)
@@ -194,7 +197,8 @@ def raster2table(
     # calculate the buffer
     bbox_parcels_buffered = buffer_fieldpolygons(
         in_gdf=bbox_s2_crs, 
-        buffer=buffer
+        buffer=buffer,
+        drop_multipolygons=drop_multipolygons
     )
 
     # ========================== loop over IDs ==========================
