@@ -9,9 +9,15 @@ from agrisatpy.config import get_settings
 from agrisatpy.config.sentinel2 import Sentinel2
 from agrisatpy.uncertainty import calc_temporal_degradation, S2RutAlgo
 
-
+# TODO: recalculate because B11 was forgotten!!
 S2 = Sentinel2()
 S2_Bands = S2.BAND_INDICES
+
+# remove those spectral bands not required
+S2_Bands.pop('B01')
+S2_Bands.pop('B09')
+S2_Bands.pop('B10')
+
 Settings = get_settings()
 DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
 engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
@@ -94,14 +100,9 @@ meta_df = pd.read_sql(sql=query, con=engine)
 df = pd.merge(toa_refl, meta_df, on='scene_id')
 
 # apply the uncertainty calculation
-S2_Bands.pop('B01')
-S2_Bands.pop('B09')
-S2_Bands.pop('B10')
-S2_Bands.pop('B11')
-
 # loop over rows in dataframe
-for _, record in df.iterrows():
-    
+for idx, record in df.iterrows():
+
     # calculate temporal degradation
     u_diff_temp = calc_temporal_degradation(
         sensing_time=str(record.sensing_time),
@@ -110,7 +111,7 @@ for _, record in df.iterrows():
 
     # radiometric uncertainty of the spectral bands
     for band_item in list(S2_Bands.items()):
-        
+
         band_name = band_item[0].lower()
         band_idx = band_item[1]
 
@@ -124,11 +125,74 @@ for _, record in df.iterrows():
             k=k,
             u_diff_temp=u_diff_temp[band_name.upper()]
         )
-        record[f'{band_name}_unc'] = s2rutalgo.unc_calculation(
+        df.loc[idx, f'{band_name}_unc'] = s2rutalgo.unc_calculation(
             band_data=record[f'{band_name}_toa'],
             band_id=band_idx,
             spacecraft=record.spacecraft_name
         )
 
-    # save outputs to DB -> TODO
-    print('a')
+# save outputs to  print('a')
+df.to_csv('/mnt/ides/Lukas/04_Work/Uncertainty/Radiometric_Uncertainty/radiometric_uncertainty.csv')
+# TODO write to database
+unc_cols = [f'{x.lower()}_unc' for x in list(S2_Bands.keys())]
+
+from phenomen.pheno_db import update_pixel_observations
+for _, record in df.iterrows():
+    fid = record.fid,
+    pixid = record.pixid,
+    date = record.date
+    value_dict = record[unc_cols].to_dict()
+    update_pixel_observations(
+        parcel_id=fid,
+        pixel_id=pixid,
+        date=date,
+        value_dict=value_dict
+    )
+    
+
+# analyze data
+# df = pd.read_csv('/mnt/ides/Lukas/04_Work/Uncertainty/Radiometric_Uncertainty/radiometric_uncertainty.csv')
+df.date = pd.to_datetime(df.date, format='%Y-%m-%d')
+min_date = df.date.min()
+max_date = df.date.max()
+
+# group data by date to get time series of uncertainty values
+unc_cols.append('date')
+grouped_unc = df[unc_cols].groupby(by='date').mean()
+
+# plotting
+import matplotlib.pyplot as plt
+from datetime import datetime
+plt.style.use('bmh')
+
+fig = plt.figure(figsize=(15,5))
+ax = fig.add_subplot(111)
+
+# get qualitative color map
+cmap = plt.cm.get_cmap('Set1')
+for idx, unc_col in enumerate(unc_cols):
+    if unc_col == 'date': continue
+    ax.plot(
+        grouped_unc.index,
+        grouped_unc[unc_col]*0.1, # values are scaled by 10
+        label=unc_col.split('_')[0].upper(),
+        marker='x',
+        color=cmap(idx)
+    )
+
+ax.tick_params(axis='both', which='major', labelsize=14)
+ax.set_xlabel('Time', fontsize=18)
+ax.set_ylabel('Expanded Radiometric Uncertainty [%]\n(k=2)', fontsize=18)
+ax.set_ylim(1, 5.5)
+ax.set_xlim(min_date, max_date)
+xlims = ax.get_xlim()
+ax.hlines(3, xlims[0], xlims[1], linestyle='dashed', label='Targeted Uncertainty', color='green')
+ax.hlines(5, xlims[0], xlims[1], linestyle='dashed', label='Max Accepted Uncertainty', color='red')
+plt.xticks(rotation=45)
+
+ax.legend(bbox_to_anchor=(1.01, 1.), fontsize=14)
+fig.savefig(
+    '/mnt/ides/Lukas/04_Work/Uncertainty/Radiometric_Uncertainty/radiomtric_unc.png',
+    bbox_inches='tight'
+)
+plt.show()
