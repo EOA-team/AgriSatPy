@@ -1,7 +1,9 @@
 '''
 Created on Aug 3, 2021
 
-@author: graflu
+@author: Lukas Graf
+
+THIS FUNCTION IS DEPRECATED!
 '''
 
 # TODO adopt to metadatabase
@@ -37,6 +39,7 @@ def create_processed_metadata(raw_data_archive: str,
     Sentinel-2 files, only. This function can be used to recreate metadata of the processed
     data (actually, the processing pipeline will create the metadata file anyways)
     """
+    raise DeprecationWarning('This module is deprecated!')
     # check the metadata in the raw data archive
     if not os.path.isdir(raw_data_archive):
         raise ArchiveNotFoundError(f'No such file or directory: {raw_data_archive}')

@@ -19,14 +19,15 @@ Settings = get_settings()
 logger = Settings.logger
 
 @check_processing_level
-def search_data(in_dir: Path,
-                processing_level: str,
-                start_date: str,
-                end_date: str,
-                search_pattern: str,
-                search_pattern_scl: str,
-                tile: str
-                ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def search_data(
+        in_dir: Path,
+        processing_level: str,
+        start_date: str,
+        end_date: str,
+        search_pattern: str,
+        search_pattern_scl: str,
+        tile: str
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     given a location where processed Sentinel-2 bandstacks are stored, a date range
     (between YYYY-MM-DD and YYYY-MM-DD) and a search pattern to identify CSV files

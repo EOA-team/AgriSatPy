@@ -16,13 +16,11 @@ from agrisatpy.config import get_settings
 
 logger = get_settings().logger
 
-# TODO: adopt to metadata usage (all required information is actually stored there
-# required for DB-query; sensing_date and tile_id
 
-
-def search_mtd_xml(raw_archive_path: Path,
-                   entry: pd.Series
-                   ) -> str:
+def search_mtd_xml(
+        raw_archive_path: Path,
+        entry: pd.Series
+    ) -> str:
     """
     searches for MTD_TL.xml of a Sentinel-2 scene and returns the full
     path to it
@@ -46,9 +44,10 @@ def search_mtd_xml(raw_archive_path: Path,
     return glob.glob(str(search_expression))[0]
 
 
-def get_grid_values_from_xml(tree_node,
-                             xpath_str
-                             ):
+def get_grid_values_from_xml(
+        tree_node,
+        xpath_str
+    ) -> float:
     '''
     Receives a XML tree node and a XPath parsing string
     and search for children matching the string.
@@ -72,10 +71,11 @@ def get_grid_values_from_xml(tree_node,
     return np.nanmean(arrays_lst, axis=0)
 
 
-def get_s2_pixel_angles(pixels: gpd.GeoDataFrame,
-                        meta_df: pd.DataFrame,
-                        raw_archive_path: Path
-                        ) -> gpd.GeoDataFrame:
+def get_s2_pixel_angles(
+        pixels: gpd.GeoDataFrame,
+        meta_df: pd.DataFrame,
+        raw_archive_path: Path
+    ) -> gpd.GeoDataFrame:
     """
     Function to extract the illumination and vieiwing angles from
     Sentinel-2 scenes on a per pixel basis (rather than taking a

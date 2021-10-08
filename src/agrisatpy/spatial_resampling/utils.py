@@ -9,9 +9,10 @@ import itertools
 import numpy as np
 
 
-def upsample_array(in_array: np.array,
-                   scaling_factor: int,
-                   ) -> np.array:
+def upsample_array(
+        in_array: np.array,
+        scaling_factor: int,
+    ) -> np.array:
     """
     takes a 2-dimensional input array (i.e., image matrix) and splits every
     array cell (i.e., pixel) into X smaller ones having all the same value
@@ -28,6 +29,8 @@ def upsample_array(in_array: np.array,
         2-d array (image matrix)
     :param scaling_factor:
         factor for increasing spatial resolution. Must be greater than/ equal to 1
+    :return out_array:
+        upsampled array with pixel values in target spatial resolution
     """
     # check inputs
     if scaling_factor < 1:

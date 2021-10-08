@@ -24,8 +24,9 @@ Settings = get_settings()
 logger = Settings.logger
 
 
-def identify_split_scenes(metadata_df: pd.DataFrame,
-                         ) -> pd.DataFrame:
+def identify_split_scenes(
+        metadata_df: pd.DataFrame,
+    ) -> pd.DataFrame:
     """
     Sentinel-2 records data in so-called datatakes. When a datatake is over and a new
     begins the acquired image data is written to different files (based on the datatake
@@ -46,8 +47,9 @@ def identify_split_scenes(metadata_df: pd.DataFrame,
     return metadata_df[metadata_df.sensing_date.duplicated(keep=False)]
 
 
-def find_rgb_preview(scene_out: Path
-                    ) -> Path:
+def find_rgb_preview(
+        scene_out: Path
+    ) -> Path:
     """
     returns the file path to the RGB preview created by raster_resampling for
     a given stacked, resampled Sentinel-2 scene
@@ -65,10 +67,11 @@ def find_rgb_preview(scene_out: Path
                      f'{os.path.splitext(os.path.basename(scene_out))[0]}.png')))
 
 
-def merge_split_files(in_file_1: Path,
-                      in_file_2: Path,
-                      is_blackfill: np.array
-                      ) -> Tuple[dict, np.array]:
+def merge_split_files(
+        in_file_1: Path,
+        in_file_2: Path,
+        is_blackfill: np.array
+    ) -> Tuple[dict, np.array]:
     """
     takes two image files and fills the blackfilled values from the first
     file with values from the second file.
@@ -103,8 +106,9 @@ def merge_split_files(in_file_1: Path,
     return (meta, img_data_1)
 
 
-def get_blackfill(in_file: Path
-                  ) -> np.array:
+def get_blackfill(
+        in_file: Path
+    ) -> np.array:
     """
     returns a bool array where each True elements indicates that
     pixel is blackfill. Using this information it is possible to
@@ -122,12 +126,13 @@ def get_blackfill(in_file: Path
     return is_blackfill
 
 
-def merge_split_scenes(scene_1: Path,
-                       scene_2: Path,
-                       out_dir: Path,
-                       is_L2A: bool,
-                       **kwargs
-                       ) -> dict:
+def merge_split_scenes(
+        scene_1: Path,
+       scene_2: Path,
+       out_dir: Path,
+       is_L2A: bool,
+       **kwargs
+    ) -> dict:
     """
     merges two datasets of the same sensing date and tile split by the datatake beginning/
     end.

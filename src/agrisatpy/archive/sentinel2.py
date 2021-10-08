@@ -26,12 +26,13 @@ class ArchiveCreationError(Exception):
 
 
 @check_processing_level
-def add_tile2archive(archive_dir: Path,
-                     processing_level: str,
-                     region: str,
-                     year: int,
-                     tile: str
-                     ) -> Path:
+def add_tile2archive(
+        archive_dir: Path,
+        processing_level: str,
+        region: str,
+        year: int,
+        tile: str
+    ) -> Path:
     """
     adds a new tile to an existing Sentinel-2 archive structure for
     storing bandstacked tiff files. Returns the path of the created
@@ -93,12 +94,13 @@ def add_tile2archive(archive_dir: Path,
     return tile_dir
   
 
-def create_archive_struct(in_dir: Path,
-                          processing_levels: List[str],
-                          regions: List[str],
-                          tile_selection: List[str],
-                          year_selection: List[int]
-                          ) -> None:
+def create_archive_struct(
+        in_dir: Path,
+        processing_levels: List[str],
+        regions: List[str],
+        tile_selection: List[str],
+        year_selection: List[int]
+    ) -> None:
     """
     creates an empty archive file system structure for storing Sentinel-2
     bandstacks per tile and year.

@@ -24,12 +24,13 @@ engine = create_engine(Settings.DB_URL, echo=Settings.ECHO_DB)
 session = sessionmaker(bind=engine)()
 
 
-def scene_selection(tile: str,
-                    cloudcover_threshold: float,
-                    date_start: date,
-                    date_end: date,
-                    out_dir: Path
-                    ) -> None:
+def scene_selection(
+        tile: str,
+        cloudcover_threshold: float,
+        date_start: date,
+        date_end: date,
+        out_dir: Path
+    ) -> None:
     """
     Function to query the metadata CSV file (generated using AgriSatpy) and extract
     a subset out of it fulfilling a range of criteria. It allows to filter the metadata
