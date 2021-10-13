@@ -13,6 +13,7 @@ SET CREODIAS_PASSWORD0<your-password>
 
 
 import geopandas as gpd
+from datetime import date
 from agrisatpy.downloader.sentinel2.creodias import query_creodias
 from agrisatpy.downloader.sentinel2.creodias import download_datasets
 from agrisatpy.downloader.sentinel2.creodias import ProcessingLevels
@@ -26,6 +27,7 @@ if __name__ == '__main__':
     # date range
     start_date = date(2019,1,1)
     end_date = date(2019,1,31)
+    year = start_date.year
     # max_records defines the maximum number of datasets to download, increase if
     # necessary; however, CREODIAS might impose a limitation...
     max_records = 200
@@ -48,5 +50,5 @@ if __name__ == '__main__':
         bounding_box
     )
 
-    download_dir = '/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L1C/CH/2019'
+    download_dir = r'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L1C/CH/{2019}'
     download_datasets(datasets, download_dir)
