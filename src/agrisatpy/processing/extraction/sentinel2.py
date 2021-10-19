@@ -447,6 +447,14 @@ def S2bandstack2table(
                        f'empty: possible Multipolygon detected!')
         raise MultiPolygonException()
 
+    # drop possible duplicates of field geometries originating from
+    # update runs
+    if bbox_parcels_buffered.geometry.shape[0] > len(bbox_parcels_buffered.geometry.unique()):
+        bbox_parcels_buffered = bbox_parcels_buffered.drop_duplicates(
+            subset='geom',
+            keep='last'
+    )
+
     # if bbox_parcels_buffered is empty (due to a Multipolygon) the following block won't work
     # try nevertheless and rais an exception if encountered
 

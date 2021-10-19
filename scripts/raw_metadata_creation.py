@@ -1,23 +1,28 @@
 
+from pathlib import Path
+from datetime import date
+
 from agrisatpy.metadata.sentinel2 import loop_s2_archive
 from agrisatpy.metadata.sentinel2.database import meta_df_to_database
 from agrisatpy.metadata.sentinel2.database import ql_info_to_database
 from agrisatpy.metadata.sentinel2.database import update_raw_metadata
-from pathlib import Path
-
 import agrisatpy
 
 
 if __name__ == '__main__':
 
-    years = [2019]
-    processing_levels = ['L1C']
+    years = [2018]
+    processing_levels = ['L2A']
     region = 'CH'
     # set to True if noise model parameters are required (slow!)
     extract_datastrip = False
     # set to True to UPDATe existing entries in the database
-    update_only = True
+    update_only = False
     update_cols = ['reflectance_conversion']
+
+    # only update latest datasets
+    last_execution_date = date(2021,10,10)
+    get_newest_datasets = True
     
     for processing_level in processing_levels:
         for year in years:
@@ -28,7 +33,9 @@ if __name__ == '__main__':
 
             metadata, datastrip_ql = loop_s2_archive(
                 in_dir=sat_dir,
-                extract_datastrip=extract_datastrip
+                extract_datastrip=extract_datastrip,
+                get_newest_datasets=get_newest_datasets,
+                last_execution_date=last_execution_date
             )
 
             metadata['storage_device_ip'] = '//hest.nas.ethz.ch/green_groups_kp_public'

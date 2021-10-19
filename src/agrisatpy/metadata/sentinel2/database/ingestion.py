@@ -90,18 +90,19 @@ def meta_df_to_database(
     """
 
     meta_df.columns = meta_df.columns.str.lower()
-    try:
-        for _, record in meta_df.iterrows():
-            metadata = record.to_dict()
+    for _, record in meta_df.iterrows():
+        metadata = record.to_dict()
+        try:
             if raw_metadata:
                 session.add(S2_Raw_Metadata(**metadata))
             else:
                 session.add(S2_Processed_Metadata(**metadata))
             session.flush()
-        session.commit()
-    except Exception as e:
-        logger.error(f'Database INSERT failed: {e}')
-        session.rollback()
+        except Exception as e:
+            logger.error(f'Database INSERT failed: {e}')
+            session.rollback()
+    session.commit()
+    
 
 
 def metadata_dict_to_database(

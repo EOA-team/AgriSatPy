@@ -14,6 +14,7 @@ L1C and L2A (sen2core-derived) processing level
 
 import os
 import glob
+import time
 import numpy as np
 from datetime import datetime
 from xml.dom import minidom
@@ -22,6 +23,7 @@ from pathlib import Path
 import pandas as pd
 from typing import Optional
 from typing import Tuple
+from datetime import date
 
 from agrisatpy.config import get_settings
 from agrisatpy.config.sentinel2 import Sentinel2
@@ -30,6 +32,12 @@ logger = get_settings().logger
 S2 = Sentinel2()
 
 class UnknownProcessingLevel(Exception):
+    pass
+
+class InputError(Exception):
+    pass
+
+class NothingToDo(Warning):
     pass
 
 
@@ -437,7 +445,9 @@ def parse_s2_scene_metadata(
 
 def loop_s2_archive(
         in_dir: Path,
-        extract_datastrip: Optional[bool] = False
+        extract_datastrip: Optional[bool] = False,
+        get_newest_datasets: Optional[bool]=False,
+        last_execution_date: Optional[date]=None
     ) -> Tuple[pd.DataFrame]:
     """
     wrapper function to loop over an entire archive (i.e., collection) of
@@ -454,21 +464,55 @@ def loop_s2_archive(
     :param extract_datastrip:
         If True reads also metadata from the datastrip xml file
         (MTD_DS.xml)
+    :param get_newest_datasets:
+        if set to True only datasets newer than a user-defined time stamp
+        will be considered for ingestion into the database. This is particularly
+        useful for updating the database after new scenes have been downloaded
+        or processed.
+    :param last_execution_date:
+        if get_newest_datasets is True this variable needs to be set. All
+        datasets younger than that date will be considered for ingestion
+        into the database.
     :return:
         dataframe with metadata of all scenes handled by the function
         call
     """
+
+    # check inputs if only latest datasets shall be considered
+    if get_newest_datasets:
+        if last_execution_date is None:
+            raise InputError(
+                'A timestamp must be provided when the only newest datasets shall be considered'
+            )
+
     # search for .SAFE subdirectories identifying the single scenes
     # some data providers, however, do not name their products following the
     # ESA convention (.SAFE is missing)
     s2_scenes = glob.glob(str(in_dir.joinpath('*.SAFE')))
     n_scenes = len(s2_scenes)
+
     if n_scenes == 0:
         s2_scenes = [f for f in in_dir.iterdir() if f.is_dir()]
         n_scenes = len(s2_scenes)
         if n_scenes == 0:
             raise UnknownProcessingLevel('No Sentinel-2 scenes were found')
-        
+
+    # if only scenes after a specific timestamp shall be considered drop
+    # those from the list which are "too old"
+    if get_newest_datasets:
+        filtered_scenes = []
+        # convert date to Unix timestamp
+        last_execution = time.mktime(last_execution_date.timetuple())
+        for s2_scene in s2_scenes:
+            s2_scene_path = Path(s2_scene)
+            if s2_scene_path.stat().st_ctime >= last_execution:
+                filtered_scenes.append(s2_scene)
+        s2_scenes = filtered_scenes
+        if len(s2_scenes) == 0:
+            raise NothingToDo(
+                f'No scenes younger than {datetime.strftime(last_execution_date, "%Y-%m-%d")} found'
+            )
+
     # loop over the scenes
     metadata_scenes = []
     ql_ds_scenes = []
