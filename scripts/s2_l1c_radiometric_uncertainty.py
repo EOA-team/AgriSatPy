@@ -136,20 +136,20 @@ S2_Bands.pop('B10')
 # # TODO write to database
 unc_cols = [f'{x.lower()}_unc' for x in list(S2_Bands.keys())]
 #
-# from phenomen.pheno_db import update_pixel_observations
-# for _, record in df.iterrows():
-#     fid = record.fid,
-#     pixid = record.pixid,
-#     date = record.date
-#     value_dict = record[unc_cols].to_dict()
-#     update_pixel_observations(
-#         parcel_id=fid,
-#         pixel_id=pixid,
-#         date=date,
-#         value_dict=value_dict
-#     )
-#
-#
+from phenomen.pheno_db import update_pixel_observations
+for _, record in df.iterrows():
+    fid = record.fid,
+    pixid = record.pixid,
+    date = record.date
+    value_dict = record[unc_cols].to_dict()
+    update_pixel_observations(
+        parcel_id=fid,
+        pixel_id=pixid,
+        date=date,
+        value_dict=value_dict
+    )
+
+
 # # analyze data
 df = pd.read_csv('/mnt/ides/Lukas/04_Work/Uncertainty/Radiometric_Uncertainty/radiometric_uncertainty.csv')
 df.date = pd.to_datetime(df.date, format='%Y-%m-%d')
@@ -169,7 +169,9 @@ fig = plt.figure(figsize=(15,5))
 ax = fig.add_subplot(111)
 
 # get qualitative color map
-cmap = plt.cm.get_cmap('Set1')
+cmap = ['rosybrown', 'indianred', 'chocolate', 'limegreen', 'darkgreen',
+        'cyan', 'steelblue', 'indigo', 'slategrey', 'goldenrod']
+num_colors = len(unc_cols)
 for idx, unc_col in enumerate(unc_cols):
     if unc_col == 'date': continue
     ax.plot(
@@ -177,7 +179,7 @@ for idx, unc_col in enumerate(unc_cols):
         grouped_unc[unc_col]*0.1, # values are scaled by 10
         label=unc_col.split('_')[0].upper(),
         marker='x',
-        color=cmap(idx)
+        color=cmap[idx]
     )
 
 ax.tick_params(axis='both', which='major', labelsize=14)
