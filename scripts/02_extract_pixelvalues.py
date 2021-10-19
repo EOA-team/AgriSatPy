@@ -18,15 +18,12 @@ from agrisatpy.config import get_settings
 from agrisatpy.utils import reconstruct_path
 
 Settings = get_settings()
+
+# connect to database for executing the metadata query
 DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
 engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
 
-# connect to database for executing the metadata query
-
-
 # filter DB by time, tile, processing_level
-
-
 # define inputs
 tiles = ['T32TLT']
 path_shp_file = "O:/Projects/KP0022_DeepField/Kapitel_02/01_Data/Erntedaten_shp_buffer20/20170705_P21_Wintergerste_utm32_buffer20.shp"
