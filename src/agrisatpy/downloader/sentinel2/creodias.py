@@ -10,6 +10,7 @@ import requests
 from datetime import date
 from enum import Enum
 from shapely.geometry import Polygon
+from typing import Optional
 import pandas as pd
 
 from agrisatpy.config import get_settings
@@ -30,7 +31,8 @@ def query_creodias(
         end_date: date,
         max_records: int,
         processing_level: ProcessingLevels,
-        bounding_box: Polygon
+        bounding_box: Polygon,
+        cloud_cover_threshold: Optional[int]=100
     ) -> pd.DataFrame:
     """
     queries the CREODIAS Finder API to obtain available
@@ -51,7 +53,12 @@ def query_creodias(
     :param bounding_box:
         polygon in geographic coordinates (WGS84) denoting
         the queried region
-    :return datasets:
+    :param cloud_cover_threshold:
+        cloudy pixel percentage threshold (0-100%) for filtering
+        scenes too cloudy for processing. All scenes with a cloud
+        cover lower than the threshold specified will be downloaded.
+        Per default all scenes are downloaded.
+    :return:
         results of the CREODIAS query (no downloaded data!)
         as pandas DataFrame
     """
@@ -71,10 +78,10 @@ def query_creodias(
 
     # get rid of the last %2C
     coord_str = coord_str[:-3]
-
     # construct the REST query
     query = CREODIAS_FINDER_URL + f'maxRecords={max_records}&'
     query += f'startDate={start_date_str}T00%3A00%3A00Z&completionDate={end_date_str}T23%3A59%3A59Z&'
+    query += f'cloudCover=%5B0%2C{cloud_cover_threshold}%5D&'
     query += f'processingLevel={processing_level.value}&'
     query += f'geometry=Polygon(({coord_str}))&'
     query += 'sortParam=startDate&sortOrder=descending&status=all&dataset=ESA-DATASET'
