@@ -301,6 +301,10 @@ def parse_MTD_MSI(
 
     metadata['datatakeIdentifier'] = datatakeIdentifier
 
+    # stupid Sen2Cor is not consistent here ...
+    if metadata['PROCESSING_LEVEL'] == 'Level-2Ap':
+        metadata['PROCESSING_LEVEL'] = 'Level-2A'
+
     # reflectance conversion factor (U)
     reflectance_conversion_xml = xmldoc.getElementsByTagName('U')
     reflectance_conversion = float(reflectance_conversion_xml[0].firstChild.nodeValue)

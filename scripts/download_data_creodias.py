@@ -32,6 +32,10 @@ if __name__ == '__main__':
     # necessary; however, CREODIAS might impose a limitation...
     max_records = 200
 
+    # filter by cloud cover (all scenes with a cloud cover lower than the threshold
+    # will be downloaded)
+    cloud_cover_threshold = 75
+
     # shapefile defining the bounds of your region of interest
     aoi_file = '/home/graflu/public/Evaluation/Projects/KP0031_lgraf_PhenomEn/02_Uncertainty/STUDY_AREA/AOI_Esch_EPSG32632.shp'
     bbox_data = gpd.read_file(aoi_file)
@@ -43,11 +47,12 @@ if __name__ == '__main__':
 
     # check for available datasets
     datasets = query_creodias(
-        start_date,
-        end_date,
-        max_records,
-        processing_level,
-        bounding_box
+        start_date=start_date,
+        end_date=end_date,
+        max_records=max_records,
+        processing_level=processing_level,
+        bounding_box=bounding_box,
+        cloud_cover_threshold=cloud_cover_threshold
     )
 
     download_dir = r'/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L1C/CH/{2019}'
