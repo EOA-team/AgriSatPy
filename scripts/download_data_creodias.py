@@ -25,8 +25,8 @@ if __name__ == '__main__':
     # processing level
     processing_level = ProcessingLevels.L1C
     # date range
-    start_date = date(2019,1,1)
-    end_date = date(2019,1,31)
+    start_date = date(2019,5,30)
+    end_date = date(2019,5,30)
     # max_records defines the maximum number of datasets to download, increase if
     # necessary; however, CREODIAS might impose a limitation...
     max_records = 200
@@ -36,7 +36,7 @@ if __name__ == '__main__':
     cloud_cover_threshold = 75
 
     # shapefile defining the bounds of your region of interest
-    aoi_file = '/home/graflu/public/Evaluation/Projects/KP0031_lgraf_PhenomEn/02_Uncertainty/STUDY_AREA/AOI_Esch_EPSG32632.shp'
+    aoi_file = '/home/graflu/public/Evaluation/Projects/KP0031_lgraf_PhenomEn/Uncertainty/STUDY_AREA/AOI_Esch_EPSG32632.shp'
     bbox_data = gpd.read_file(aoi_file)
 
     # project to geographic coordinates (required for API query)
@@ -54,5 +54,5 @@ if __name__ == '__main__':
         cloud_cover_threshold=cloud_cover_threshold
     )
 
-    download_dir = '/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L1C/CH/2019'
+    download_dir = '/run/media/graflu/ETH-KP-SSD6/SAT/S2A_MSIL1C_orig'
     download_datasets(datasets, download_dir)
