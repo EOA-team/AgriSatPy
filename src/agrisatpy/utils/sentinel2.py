@@ -20,6 +20,7 @@ s2 = Sentinel2()
 def get_S2_bandfiles(
         in_dir: Path,
         resolution: Optional[int]=None,
+        is_L2A: Optional[bool]=True
     ) -> List[Path]:
     '''
     returns all JPEG-2000 files (*.jp2) found in a dataset directory
@@ -36,7 +37,10 @@ def get_S2_bandfiles(
     if resolution is None:
         search_pattern = 'GRANULE/*/IM*/*/*B*.jp2'
     else:
-        search_pattern = f'GRANULE/*/IM*/R{int(resolution)}m/*B*.jp2'
+        if is_L2A:
+            search_pattern = f'GRANULE/*/IM*/R{int(resolution)}m/*B*.jp2'
+        else:
+            search_pattern = f'GRANULE/*/IM*/*B*.jp2'
     files = glob.glob(str(in_dir.joinpath(search_pattern)))
     return [Path(x) for x in files]
 
