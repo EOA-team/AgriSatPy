@@ -102,7 +102,6 @@ def meta_df_to_database(
             logger.error(f'Database INSERT failed: {e}')
             session.rollback()
     session.commit()
-    
 
 
 def metadata_dict_to_database(
