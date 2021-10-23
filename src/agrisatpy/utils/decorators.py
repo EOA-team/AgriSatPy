@@ -29,3 +29,13 @@ def check_processing_level(f):
         return f(*args, **kwargs)
 
     return wrapper
+
+
+def string_to_path(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if isinstance('', str):
+            pass
+        # TODO
+        
+        
