@@ -7,11 +7,10 @@ Created on 16.11.2021 11:36
 
 """
 
-import os
 from pathlib import Path
 from agrisatpy.archive.sentinel2 import pull_from_creodias
 from agrisatpy.downloader.sentinel2.creodias import ProcessingLevels
-from datetime import datetime
+from datetime import date
 
 # ================= Loop over existing folders ===============
 processing_level = ProcessingLevels.L2A
@@ -25,7 +24,7 @@ for path in Path(in_dir).iterdir():
     if path.is_dir():
 
         # get year automatically
-        year = path.name
+        year = int(path.name)
 
         # create temp download dir
         path_out = path.joinpath("tempDL")
@@ -34,8 +33,8 @@ for path in Path(in_dir).iterdir():
             path_out.mkdir()
 
         pull_from_creodias(
-            start_date=datetime.date(year, 1, 1),
-            end_date=datetime.date(year, 12, 31),
+            start_date=date(year, 1, 1),
+            end_date=date(year, 12, 31),
             processing_level=processing_level,
             path_out=path_out,
             aoi_file=aoi_file
