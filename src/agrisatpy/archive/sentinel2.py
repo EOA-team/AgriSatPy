@@ -216,7 +216,7 @@ def pull_from_creodias(
         WHERE
             sensing_time between '{start_date}' and '{end_date}'
         AND
-            processing_level = '{processing_level_db.value}'
+            processing_level = '{processing_level_db}'
         AND
             ST_Intersects(
                 geom,
