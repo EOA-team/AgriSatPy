@@ -95,20 +95,19 @@ def get_S2_bandfiles_with_res(
                 str(in_dir.joinpath(f'GRANULE/*/IM*/*{int(x)}*/{search_str}')))
             for x in resolution_selection
         ]
+        # convert list of list to dictionary using resolutions as keys
+        band_dict = dict.fromkeys(resolution_selection)
+        for idx, key in enumerate(band_dict.keys()):
+            band_dict[key] = band_list[idx]
     else:
-        band_list = []
+        band_dict = {}
         for spatial_resolution in s2.SPATIAL_RESOLUTIONS.keys():
             if spatial_resolution not in resolution_selection: continue
             tmp_list = []
             for band_name in s2.SPATIAL_RESOLUTIONS[spatial_resolution]:
                 tmp_list.extend(glob.glob(
                     str(in_dir.joinpath(f'GRANULE/*/IMG_DATA/*_{band_name}.jp2'))))
-            band_list.append(tmp_list)
-                
-    # convert list of list to dictionary using resolutions as keys
-    band_dict = dict.fromkeys(resolution_selection)
-    for idx, key in enumerate(band_dict.keys()):
-        band_dict[key] = band_list[idx]
+            band_dict[spatial_resolution] = tmp_list
 
     # find the highest resolution
     highest_resolution = min(resolution_selection)

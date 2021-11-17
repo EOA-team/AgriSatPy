@@ -19,12 +19,12 @@ from agrisatpy.metadata.sentinel2.database import meta_df_to_database
 if __name__ == '__main__':
 
     # define tile, region, processing level and date range
-    tile = 'T32TMT'
+    tile = 'T32TLT'
     region = 'CH'
-    processing_level = 'L1C'
+    processing_level = 'L2A'
     
-    date_start = date(2019,3,8)
-    date_end = date(2019,3,8)
+    date_start = date(2018,1,1)
+    date_end = date(2018,3,31)
     
     # specify the number of threads
     n_threads = 1
@@ -85,3 +85,8 @@ if __name__ == '__main__':
 
     # save to CSV in addition
     metadata.to_csv(target_s2_archive.joinpath('metadata.csv'))
+
+    # debug
+    # fpath = target_s2_archive.joinpath('metadata.csv')
+    # import pandas as pd
+    # metadata = pd.read_csv(fpath)
