@@ -226,11 +226,17 @@ def pull_from_creodias(
     meta_db_df = pd.read_sql(query, engine)
 
     # determine max_records and cloudy_pixel_perecentage thresholds from local DB
-    max_records = 2 * meta_db_df.shape[0]
-    logger.info(f'Set number of maximum records for Creodias query to {max_records}')
+    max_records = 1.25 * meta_db_df.shape[0]
+    # Creodias has a hard cap of 2001 max_records
+    if max_records > 2000:
+        max_records = 2000
+        logger.info(f"No. of max. records greater than the allowed max of 2001. "
+                    f"Query set to {max_records}")
+    else:
+        logger.info(f'Set number of maximum records for Creodias query to {max_records}')
 
-    cloud_cover_threshold = meta_db_df['cloudy_pixel_percentage'].max()
-    logger.info(f'Set cloudy pixel perecntage for Creodias query to {cloud_cover_threshold}')
+    cloud_cover_threshold = int(meta_db_df['cloudy_pixel_percentage'].max())
+    logger.info(f'Set cloudy pixel percentage for Creodias query to {cloud_cover_threshold}')
 
     # check for available datasets
     datasets = query_creodias(
