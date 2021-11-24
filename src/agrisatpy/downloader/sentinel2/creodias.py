@@ -5,15 +5,15 @@ Created on Sep 20, 2021
 '''
 
 import os
-import json
 import requests
 from datetime import date
-from enum import Enum
 from shapely.geometry import Polygon
 from typing import Optional
 import pandas as pd
 
 from agrisatpy.config import get_settings
+from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
+
 
 Settings = get_settings()
 logger = Settings.logger
@@ -21,10 +21,6 @@ logger = Settings.logger
 CREODIAS_FINDER_URL = 'https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?'
 CHUNK_SIZE = 2096
 
-
-class ProcessingLevels(Enum):
-    L1C = 'LEVEL1C'
-    L2A = 'LEVEL2A'
 
 def query_creodias(
         start_date: date,
