@@ -36,7 +36,6 @@ from pickle import FALSE
 Settings = get_settings()
 logger = Settings.logger
 
-
 # global definition of spectral bands and their spatial resolution
 s2 = Sentinel2()
 
