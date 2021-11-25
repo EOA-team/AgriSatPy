@@ -11,13 +11,15 @@ import rasterio.mask
 
 from rasterio.coords import BoundingBox
 from shapely.geometry import box
+from geopandas.geodataframe import GeoDataFrame
 from pathlib import Path
 from typing import Optional
 from typing import Dict
-from typing import Union
 from typing import List
 
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
+from agrisatpy.utils.reprojection import check_aoi_geoms
+from pickle import FALSE
 
 
 s2_band_mapping = {
@@ -35,6 +37,25 @@ s2_band_mapping = {
 
 # S2 data is stored as uint16
 s2_gain_factor = 0.0001
+
+
+def _check_band_selection(
+        band_selection: List[str]
+    ) -> Dict[str, str]:
+    """
+    Returns the band mapping dictionary including only the
+    user-selected bands
+
+    :param band_selection:
+        list of selected bands
+    :return:
+        band mapping dict with selected bands
+    """
+
+    # check how many bands were selected
+    band_selection_dict = dict((k, s2_band_mapping[k]) for k in band_selection)
+    return dict.fromkeys(band_selection_dict.values())
+
 
 
 def read_from_bandstack(
@@ -75,28 +96,18 @@ def read_from_bandstack(
         box in the projection of the input satellite data
     """
 
-    s2_band_data = dict.fromkeys(s2_band_mapping.values())
+    # check which bands were selected
+    s2_band_data = _check_band_selection(band_selection=band_selection)
 
-    # check for vector file defining AOI
+    # check bounding box
     masking = False
     if in_file_aoi is not None:
-
-        # read AOI into a geodataframe
-        gdf_aoi = gpd.read_file(in_file_aoi)
-        # check if the spatial reference systems match
-        sat_crs = rio.open(fname_bandstack).crs
-        # reproject vector data if necessary
-        if gdf_aoi.crs != sat_crs:
-            gdf_aoi.to_crs(sat_crs, inplace=True)
-        # consequently, masking is necessary
         masking = True
-
-        # if the the entire bounding box shall be extracted
-        # we need the hull encompassing all geometries in gdf_aoi
-        if full_bounding_box_only:
-            bbox = box(*gdf_aoi.total_bounds)
-            gdf_aoi = gpd.GeoDataFrame(geometry=gpd.GeoSeries(bbox))
-
+        gdf_aoi = check_aoi_geoms(
+            in_file_aoi=in_file_aoi,
+            fname_sat=fname_bandstack,
+            full_bounding_box_only=full_bounding_box_only
+        )
 
     with rio.open(fname_bandstack, 'r') as src:
         # get geo-referencation information
@@ -106,7 +117,7 @@ def read_from_bandstack(
         # read relevant bands and store them in dict
         band_names = src.descriptions
         for idx, band_name in enumerate(band_names):
-            if band_name in list(s2_band_mapping.keys()):
+            if band_name in band_selection:
                 if not masking:
                     s2_band_data[s2_band_mapping[band_name]] = src.read(idx+1)
                 else:
@@ -152,7 +163,6 @@ def read_from_bandstack(
 def read_from_safe(
         fname_safe: Path,
         processing_level: ProcessingLevels,
-        spatial_resolution: Optional[Union[int, float]] = 10,
         in_file_aoi: Optional[Path] = None,
         full_bounding_box_only: Optional[bool] = False,
         int16_to_float: Optional[bool] = True,
@@ -161,8 +171,8 @@ def read_from_safe(
     """
     Reads Sentinel-2 spectral bands from a band-stacked geoTiff file
     using the band description to extract the required spectral band
-    and store them in a dict with the required band names.
-    
+    and store them in a dict with the required band names. The spectral
+    bands are kept in the original spatial resolution.
 
     :param fname_safe:
         file-path to the .SAFE directory containing Sentinel-2 data in
@@ -191,8 +201,9 @@ def read_from_safe(
         VIS bands.
     :return:
         dictionary with numpy arrays of the spectral bands as well as
-        two entries denoting the geo-referencation information and bounding
-        box in the projection of the input satellite data
+        three entries denoting the geo-referencation information and bounding
+        box in the projection of the input satellite data as well as the
+        spatial resolution information of the extracted bands
     """
 
     # TODO
@@ -200,13 +211,15 @@ def read_from_safe(
 
 if __name__ == '__main__':
 
-    in_file_aoi = Path('/run/media/graflu/ETH-KP-SSD6/SAT/Uncertainty/scripts_paper_uncertainty/shp/ZH_Polygons_2019_EPSG32632_selected-crops.shp')
+    in_file_aoi = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/ZH_Polygons_2020_ESCH_EPSG32632.shp')
 
     # read bands from bandstack
+    band_selection = ['B02','B03', 'B04']
     testdata = Path('/mnt/ides/Lukas/04_Work/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
     band_dict = read_from_bandstack(
         fname_bandstack=testdata,
-        in_file_aoi=None
+        in_file_aoi=in_file_aoi,
+        band_selection=band_selection
     )
 
     # read bands from .SAFE directories
