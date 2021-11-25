@@ -15,7 +15,6 @@ Created on Jul 9, 2021
 
 import os
 import glob
-import geopandas as gpd
 import rasterio as rio
 import rasterio.mask
 from rasterio.enums import Resampling
@@ -25,12 +24,14 @@ import numpy as np
 from typing import Optional
 from pathlib import Path
 
+from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.spatial_resampling import upsample_array
 from agrisatpy.utils import get_S2_sclfile
 from agrisatpy.utils import get_S2_bandfiles_with_res
 from agrisatpy.utils import get_S2_tci
 from agrisatpy.config import Sentinel2
 from agrisatpy.config import get_settings
+from pickle import FALSE
 
 Settings = get_settings()
 logger = Settings.logger
@@ -109,18 +110,12 @@ def resample_and_stack_S2(
     # If masking is chosen
     if masking:
         in_file_aoi = kwargs.get("in_file_aoi", str)
-        mask = gpd.read_file(in_file_aoi)
-        # check CRS of mask
-        crs_s2 = rio.open(s2bands["band_path"].iloc[0]).crs
-        crs_mask = mask.crs
-        # re-project data if needed    
-        if crs_s2 != crs_mask:
-            logger.warning(
-                "CRS mismatch between satellite image and mask layer!" \
-                + "Reprojecting mask CRS to S2 CRS."
-            )
-            mask = mask.to_crs(crs_s2)
-    
+        mask = check_aoi_geoms(
+            in_file_aoi=in_file_aoi,
+            fname_sat=s2bands["band_path"].iloc[0],
+            full_bounding_box_only=False
+        )
+
     # get metadata of for a file with the highest resolution (here 10m)
     hires_bands = s2bands[s2bands["band_resolution"] == target_resolution]
 
@@ -378,7 +373,7 @@ def scl_10m_resampling(
         Path to the directory you want the SCL_subfolder created. Should be 
         the same as the out_dir of the "resample_and_stack_S2" function.
     :param masking
-        SHould masking be applied. The default is False.
+        Should masking be applied. The default is False.
     :param kwargs:
         in_file_aoi = filepath to the mask (AOI file).
     :return scl_out_path:
@@ -403,17 +398,11 @@ def scl_10m_resampling(
     # read in mask & check CRS
     if masking:
         in_file_aoi = kwargs.get("in_file_aoi", Path)
-        mask = gpd.read_file(Path(in_file_aoi))
-        # check CRS of mask
-        crs_scl = rio.open(scl_file).crs
-        crs_mask = mask.crs
-        # reproject if needed    
-        if crs_scl != crs_mask:
-            logger.warning(
-                "CRS mismatch between SCL and mask layer!" \
-                + "Reprojecting mask CRS to SCL CRS."
-            )
-            mask = mask.to_crs(crs_scl)
+        mask = check_aoi_geoms(
+            in_file_aoi=in_file_aoi,
+            fname_sat=scl_file,
+            full_bounding_box_only=FALSE
+        )
 
     with rio.open(scl_file) as src:
         meta = src.meta
