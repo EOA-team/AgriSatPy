@@ -19,7 +19,8 @@ from typing import List
 
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.reprojection import check_aoi_geoms
-from pickle import FALSE
+from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res
+from agrisatpy.utils.constants.sentinel2 import band_resolution
 
 
 s2_band_mapping = {
@@ -91,9 +92,10 @@ def read_from_bandstack(
         band names accordingly, e.g., ['B02','B03','B04'] to read only the
         VIS bands.
     :return:
-        dictionary with numpy arrays of the spectral bands as well as
-        two entries denoting the geo-referencation information and bounding
-        box in the projection of the input satellite data
+        Dictionary with the following items:
+            <name-of-the-band>: <np.array> denoting the spectral band data
+            <meta>:<rasterio meta> denoting the georeferencation
+            <bounds>: <BoundingBox> denoting the bounding box of the band data
     """
 
     # check which bands were selected
@@ -161,7 +163,7 @@ def read_from_bandstack(
 
 
 def read_from_safe(
-        fname_safe: Path,
+        in_dir: Path,
         processing_level: ProcessingLevels,
         in_file_aoi: Optional[Path] = None,
         full_bounding_box_only: Optional[bool] = False,
@@ -174,7 +176,7 @@ def read_from_safe(
     and store them in a dict with the required band names. The spectral
     bands are kept in the original spatial resolution.
 
-    :param fname_safe:
+    :param in_dir:
         file-path to the .SAFE directory containing Sentinel-2 data in
         L1C or L2A processing level
     :param processing_level:
@@ -200,30 +202,133 @@ def read_from_safe(
         band names accordingly, e.g., ['B02','B03','B04'] to read only the
         VIS bands.
     :return:
-        dictionary with numpy arrays of the spectral bands as well as
-        three entries denoting the geo-referencation information and bounding
-        box in the projection of the input satellite data as well as the
-        spatial resolution information of the extracted bands
+        Dictionary with the following items:
+            <name-of-the-band>: <np.array> denoting the spectral band data
+            <meta>:<rasterio meta> denoting the georeferencation per band
+            <bounds>: <BoundingBox> denoting the bounding box of the data per band
     """
 
-    # TODO
-    pass
+    # check which bands were selected
+    s2_band_data = _check_band_selection(band_selection=band_selection)
+
+    # determine which spatial resolutions are selected
+    # (based on the native spatial resolution of Sentinel-2 bands)
+    band_selection_spatial_res = [x[1] for x in band_resolution.items() if x[0] in band_selection]
+    resolution_selection = list(np.unique(band_selection_spatial_res))
+
+    # check processing level
+    is_L2A = True
+    if processing_level == ProcessingLevels.L1C:
+        is_L2A = False
+
+    # search band files depending on processing level and spatial resolution(s)
+    band_df_safe = get_S2_bandfiles_with_res(
+        in_dir=in_dir,
+        resolution_selection=resolution_selection,
+        is_L2A=is_L2A
+    )
+
+    # check bounding box
+    masking = False
+    if in_file_aoi is not None:
+        masking = True
+        gdf_aoi = check_aoi_geoms(
+            in_file_aoi=in_file_aoi,
+            fname_sat=band_df_safe.band_path.iloc[0],
+            full_bounding_box_only=full_bounding_box_only
+        )
+
+    # loop over selected bands and read the data into a dict
+    meta_bands = {}
+    bounds_bands = {}
+    for band_name in band_selection:
+
+        # get entry from dataframe with file-path of band
+        band_safe = band_df_safe[band_df_safe.band_name == band_name]
+        band_fpath = band_safe.band_path.values[0]
+        
+        with rio.open(band_fpath, 'r') as src:
+
+            meta = src.meta
+            # and bounds which are helpful for plotting
+            bounds = src.bounds
+            
+            if not masking:
+                s2_band_data[s2_band_mapping[band_name]] = src.read(1)
+            else:
+                s2_band_data[s2_band_mapping[band_name]], out_transform = rio.mask.mask(
+                    src,
+                    gdf_aoi.geometry,
+                    crop=True, 
+                    all_touched=True, # IMPORTANT!
+                    indexes=1,
+                    filled=False
+                )
+                # update meta dict to the subset
+                meta.update(
+                    {
+                        'height': s2_band_data[s2_band_mapping[band_name]].shape[0],
+                        'width': s2_band_data[s2_band_mapping[band_name]].shape[1], 
+                        'transform': out_transform
+                     }
+                )
+                # and bounds
+                left = out_transform[2]
+                top = out_transform[5]
+                right = left + meta['width'] * out_transform[0]
+                bottom = top + meta['height'] * out_transform[4]
+                bounds = BoundingBox(left=left, bottom=bottom, right=right, top=top)
+ 
+                # convert and rescale to float if selected
+                if int16_to_float:
+                    s2_band_data[s2_band_mapping[band_name]] = \
+                        s2_band_data[s2_band_mapping[band_name]].astype(float) * \
+                        s2_gain_factor
+
+        # store georeferencation and bounding box per band
+        meta_bands[s2_band_mapping[band_name]] = meta
+        bounds_bands[s2_band_mapping[band_name]] = bounds
+
+    s2_band_data['meta'] = meta_bands
+    s2_band_data['bounds'] = bounds_bands
+
+    return s2_band_data
+ 
 
 if __name__ == '__main__':
 
     in_file_aoi = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/ZH_Polygons_2020_ESCH_EPSG32632.shp')
 
     # read bands from bandstack
-    band_selection = ['B02','B03', 'B04']
-    testdata = Path('/mnt/ides/Lukas/04_Work/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
-    band_dict = read_from_bandstack(
-        fname_bandstack=testdata,
-        in_file_aoi=in_file_aoi,
-        band_selection=band_selection
-    )
+    band_selection = ['B02','B03', 'B08']
+    # band_selection = None
+    # testdata = Path('/mnt/ides/Lukas/04_Work/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
+    # band_dict = read_from_bandstack(
+    #     fname_bandstack=testdata,
+    #     in_file_aoi=in_file_aoi,
+    #     band_selection=band_selection
+    # )
 
     # read bands from .SAFE directories
     # L1C case
-    testdata = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/S2A/S2A_MSIL1C_20180326T103021_N0206_R108_T31TGL_20180326T155240.SAFE')
-    
+    testdata = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/S2A/ESCH/S2A_MSIL1C_20210615T102021_N0300_R065_T32TMT_20210615T122505.SAFE')
+    processing_level = ProcessingLevels.L1C
+
+    # band_dict = read_from_safe(
+    #     in_dir=testdata,
+    #     processing_level=processing_level,
+    #     in_file_aoi=in_file_aoi,
+    #     band_selection=band_selection
+    # )
+
+    # L2A testcase
+    testdata = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/S2A/ESCH/S2A_MSIL2A_20210615T102021_N0300_R065_T32TMT_20210615T131659.SAFE')
+    processing_level = ProcessingLevels.L2A
+
+    band_dict = read_from_safe(
+        in_dir=testdata,
+        processing_level=processing_level,
+        in_file_aoi=in_file_aoi,
+        band_selection=band_selection
+    )
     
