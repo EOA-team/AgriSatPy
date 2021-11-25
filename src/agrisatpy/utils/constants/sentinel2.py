@@ -29,3 +29,19 @@ band_resolution = {
     'B12': 20
         
 }
+
+s2_band_mapping = {
+        'B02': 'blue',
+        'B03': 'green',
+        'B04': 'red',
+        'B05': 'red_edge_1',
+        'B06': 'red_edge_2',
+        'B07': 'red_edge_3',
+        'B08': 'nir_1',
+        'B8A': 'nir_2',
+        'B11': 'swir_1',
+        'B12': 'swir_2'
+}
+
+# S2 data is stored as uint16
+s2_gain_factor = 0.0001
