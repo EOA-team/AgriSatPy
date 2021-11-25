@@ -26,6 +26,7 @@ from agrisatpy.utils.constants.sentinel2 import s2_gain_factor
 from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res
 from agrisatpy.utils.constants.sentinel2 import band_resolution
+from agrisatpy.utils.io import Sat_Data_Reader
 
 
 
@@ -48,15 +49,14 @@ def _check_band_selection(
 
 
 
-class S2_Band_Reader(object):
+class S2_Band_Reader(Sat_Data_Reader):
     """
     Class for storing Sentinel-2 band data read from bandstacks or
     .SAFE archives (L1C and L2A level)
     """
 
-    def __init__(self):
-        self.data = {}
-        self._from_bandstack = False
+    def __init__(self, *args, **kwargs):
+        Sat_Data_Reader.__init__(self, *args, **kwargs)
 
     def from_bandstack(self) -> bool:
         """checks if the data was read from bandstack or .SAFE archive"""
@@ -67,6 +67,14 @@ class S2_Band_Reader(object):
         resamples data from .SAFE archive on the fly if required
         into a user-definded spatial resolution
         """
+        # TODO
+        pass
+
+    def plot_band(self, band_name: str):
+        """
+        plots a custom band
+        """
+        # TODO
         pass
 
     def read_from_bandstack(
