@@ -27,18 +27,12 @@ from datetime import date
 
 from agrisatpy.config import get_settings
 from agrisatpy.config.sentinel2 import Sentinel2
+from agrisatpy.utils.exceptions import UnknownProcessingLevel
+from agrisatpy.utils.exceptions import InputError
+from agrisatpy.utils.warnings import NothingToDo
 
 logger = get_settings().logger
 S2 = Sentinel2()
-
-class UnknownProcessingLevel(Exception):
-    pass
-
-class InputError(Exception):
-    pass
-
-class NothingToDo(Warning):
-    pass
 
 
 def parse_MTD_DS(

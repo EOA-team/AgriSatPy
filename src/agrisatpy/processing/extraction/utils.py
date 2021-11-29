@@ -19,41 +19,12 @@ from pathlib import Path
 
 from agrisatpy.config.sentinel2 import Sentinel2
 from agrisatpy.config import get_settings
+from agrisatpy.utils.exceptions import DataNotFoundError
+from agrisatpy.utils.constants.sentinel2 import SCL_Classes
 
 S2 = Sentinel2()
 Settings = get_settings()
 logger = Settings.logger
-
-
-class DataNotFoundError(Exception):
-    pass
-
-
-class SCL_Classes(object):
-    """
-    class defining all possible SCL values and their meaning
-    (SCL=Sentinel-2 scene classification)
-    Class names follow the official ESA documentation available
-    here:
-    https://sentinels.copernicus.eu/web/sentinel/technical-guides/sentinel-2-msi/level-2a/algorithm
-    (last access on 27.05.2021)
-    """
-    def values(self):
-        values = {
-            0 : 'no_data',
-            1 : 'saturated_or_defective',
-            2 : 'dark_area_pixels',
-            3 : 'cloud_shadows',
-            4 : 'vegetation',
-            5 : 'non_vegetated',
-            6 : 'water',
-            7 : 'unclassified',
-            8 : 'cloud_medium_probability',
-            9 : 'cloud_high_probability',
-            10: 'thin_cirrus',
-            11: 'snow'
-            }
-        return values
 
 
 def buffer_fieldpolygons(
@@ -280,19 +251,3 @@ def raster2table(
     out_DF = out_DF.loc[(out_DF[bandlist] != nodata_refl).all(axis=1)]
 
     return out_DF
-
-# if __name__ == '__main__':
-#
-#     in_file = Path('/mnt/ides/Lukas/04_Work/DEM/hillshade_eschikon.tif')
-#     in_file_polys = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/ZH_Polygons_2020_ESCH_EPSG32632.shp')
-#     buffer = 0
-#     id_column = 'GIS_ID'
-#     out_colnames = ['hillshade']
-#     out_df, _ = raster2table(
-#         in_file=in_file,
-#         buffer=buffer,
-#         id_column=id_column,
-#         in_file_polys=in_file_polys,
-#         out_colnames=out_colnames
-#     )
-#     out_df.to_csv('/mnt/ides/Lukas/04_Work/DEM/test.csv')

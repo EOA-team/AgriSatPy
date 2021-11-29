@@ -1,20 +1,30 @@
 '''
 Created on Sep 2, 2021
 
-@author: graflu
+@author:      Lukas Graf (D-USYS, ETHZ)
+
+@purpose:     Sentinel-2 specific helper functions.
 '''
 
+import os
 import glob
 import pandas as pd
+
+from datetime import date
+from datetime import datetime
 from pathlib import Path
 from typing import List
 from typing import Optional
 from typing import Union
 
+from agrisatpy.config import get_settings
 from agrisatpy.config import Sentinel2
+from agrisatpy.utils.exceptions import ArchiveNotFoundError
+from agrisatpy.utils.exceptions import MetadataNotFoundError
 
 # global definition of spectral bands and their spatial resolution
 s2 = Sentinel2()
+Settings = get_settings()
 
 
 def get_S2_bandfiles(
@@ -185,3 +195,93 @@ def get_S2_tci(
     else:
         file_tci = glob.glob(str(in_dir.joinpath('GRANULE/*/IM*/*TCI*')))[0]
     return Path(file_tci)
+
+
+def create_processed_metadata(
+        
+        raw_data_archive: str,
+        target_s2_archive: str,
+        out_file: str,
+        date_start: date,
+        date_end: date,
+        tile: str,
+        additional_columns: List[str]=['SCENE_ID','SENSING_DATE','PRODUCT_URI', 'TILE'],
+    ) -> None:
+    """
+    Helper function to create metadata files for the spatially resampled, band-stacked
+    Sentinel-2 files, only. This function can be used to recreate metadata of the processed
+    data (actually, the processing pipeline will create the metadata file anyways)
+
+    IMPORTANT: This function is deprecated is maintained for legacy reasons, only
+    """
+
+    raise DeprecationWarning('This function is deprecated!')
+    # check the metadata in the raw data archive
+    if not os.path.isdir(raw_data_archive):
+        raise ArchiveNotFoundError(f'No such file or directory: {raw_data_archive}')
+
+    # cd into raw_data_archive
+    os.chdir(raw_data_archive)
+    try:
+        metadata_file = glob.glob(os.path.join(raw_data_archive, 'metadata*.csv'))[0]
+    except Exception as e:
+        raise MetadataNotFoundError(
+            f'Could not find metadata*.csv file in {raw_data_archive}: {e}'
+    )
+
+    metadata_full = pd.read_csv(metadata_file)
+
+    # filter by S2 tile
+    metadata = metadata_full[metadata_full.TILE == tile].copy()
+
+    # filter metadata by provided date range and tile
+    metadata.SENSING_DATE = pd.to_datetime(metadata.SENSING_DATE)
+    date_start = datetime.strptime(date_start, '%Y-%m-%d')
+    date_end = datetime.strptime(date_end, '%Y-%m-%d')
+    metadata = metadata[pd.to_datetime(metadata.SENSING_DATE).between(date_start,
+                                                                      date_end,
+                                                                      inclusive=True)]
+    metadata = metadata.sort_values(by='SENSING_DATE')
+
+    # drop duplicates based on the dates -> these are the so-called 'split-scenes'
+    # because of the datastrip issue
+    metadata = metadata.drop_duplicates(subset='SENSING_DATE', keep="last")
+
+    # keep only those columns specified
+    metadata = metadata[additional_columns]
+
+    # search for band stacks in the target archive
+    bandstacks = glob.glob(os.path.join(target_s2_archive, '*.tiff'))
+    bandstacks = [os.path.basename(x) for x in bandstacks]
+    bandstack_dates = [datetime.strptime(x.split('_')[0],'%Y%m%d') for x in bandstacks]
+    bandstack_df = pd.DataFrame({'FPATH_BANDSTACK': bandstacks, 'DATE_BANDSTACK': bandstack_dates})
+
+    # reconstruct the file names of the processed data
+    metadata['FPATH_BANDSTACK'] = ''
+    metadata['FPATH_RGB_PREVIEW'] = ''
+    metadata['FPATH_SCL'] = ''
+    for idx, record in metadata.iterrows():
+
+        # find the resampled band stack
+        try:
+            fname_bandstack = bandstack_df[bandstack_df.DATE_BANDSTACK == record.SENSING_DATE] \
+                ['FPATH_BANDSTACK'].values[0]
+        except Exception as e:
+            print(e)
+            continue
+        splitted = fname_bandstack.split('_')
+        fname_scl = f'{splitted[0]}_{splitted[1]}_{splitted[3]}_SCL_{splitted[-1]}'
+        
+        metadata.loc[idx,'FPATH_BANDSTACK'] = fname_bandstack
+        
+        metadata.loc[idx,'FPATH_SCL'] = os.path.join(
+                 Settings.SUBDIR_SCL_FILES,
+                 fname_scl
+        )
+        metadata.loc[idx,'FPATH_RGB_PREVIEW'] = os.path.join(
+            Settings.SUBDIR_RGB_PREVIEWS,
+            f'{os.path.splitext(fname_bandstack)[0]}.png'
+        )
+    
+    metadata.to_csv(os.path.join(target_s2_archive, out_file), index=False)
+

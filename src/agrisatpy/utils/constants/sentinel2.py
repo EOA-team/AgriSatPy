@@ -45,3 +45,31 @@ s2_band_mapping = {
 
 # S2 data is stored as uint16
 s2_gain_factor = 0.0001
+
+# scene classification layer (Sen2Cor)
+class SCL_Classes(object):
+    """
+    class defining all possible SCL values and their meaning
+    (SCL=Sentinel-2 scene classification)
+    Class names follow the official ESA documentation available
+    here:
+    https://sentinels.copernicus.eu/web/sentinel/technical-guides/sentinel-2-msi/level-2a/algorithm
+    (last access on 27.05.2021)
+    """
+    def values(self):
+        values = {
+            0 : 'no_data',
+            1 : 'saturated_or_defective',
+            2 : 'dark_area_pixels',
+            3 : 'cloud_shadows',
+            4 : 'vegetation',
+            5 : 'non_vegetated',
+            6 : 'water',
+            7 : 'unclassified',
+            8 : 'cloud_medium_probability',
+            9 : 'cloud_high_probability',
+            10: 'thin_cirrus',
+            11: 'snow'
+            }
+        return values
+
