@@ -1,13 +1,13 @@
 '''
 Created on Jul 9, 2021
 
-@author: graflu
+@author: Lukas Graf (D-USYS, ETHZ)
 '''
 
 from pydantic.main import BaseModel
 from typing import List
 
-
+# TODO integrate this module into the constants submodule in agrisatpy.utils
 class Sentinel2(BaseModel):
     """
     base class defining Sentinel-2 product, archive and sensor details

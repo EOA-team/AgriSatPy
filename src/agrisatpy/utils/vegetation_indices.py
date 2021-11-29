@@ -9,7 +9,6 @@ Created on Nov 24, 2021
 '''
 
 import numpy as np
-from typing import Dict
 
 from agrisatpy.utils.io import Sat_Data_Reader
 
