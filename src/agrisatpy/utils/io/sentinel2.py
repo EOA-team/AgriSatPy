@@ -10,15 +10,18 @@ Created on Nov 24, 2021
             level
 '''
 
+import cv2
 import numpy as np
 import rasterio as rio
 import rasterio.mask
 
 from rasterio.coords import BoundingBox
+from rasterio import Affine
 from pathlib import Path
 from typing import Optional
 from typing import Dict
 from typing import List
+from typing import Union
 
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
@@ -27,6 +30,8 @@ from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res
 from agrisatpy.utils.constants.sentinel2 import band_resolution
 from agrisatpy.utils.io import Sat_Data_Reader
+from agrisatpy.utils.exceptions import NotProjectedError, ResamplingFailedError
+from copy import deepcopy
 
 
 
@@ -62,13 +67,123 @@ class S2_Band_Reader(Sat_Data_Reader):
         """checks if the data was read from bandstack or .SAFE archive"""
         return self._from_bandstack
 
-    def resample(self, target_resolution):
+    def resample(
+            self,
+            target_resolution: Union[int,float],
+            resampling_method: Optional[int] = cv2.INTER_LINEAR,
+            band_selection: Optional[List[str]] = []
+        ) -> None:
         """
         resamples data from .SAFE archive on the fly if required
-        into a user-definded spatial resolution
+        into a user-definded spatial resolution. The resampling
+        algorithm used is cv2.resize and allows the following options:
+
+        INTER_NEAREST - a nearest-neighbor interpolation
+        INTER_LINEAR - a bilinear interpolation (used by default)
+        INTER_AREA - resampling using pixel area relation.
+        INTER_CUBIC - a bicubic interpolation over 4x4 pixel neighborhood
+        INTER_LANCZOS4 -  a Lanczos interpolation over 8x8 pixel neighborhood
+
+        IMPORTANT: The method overwrites the original band data when resampling
+        is required!
+
+        :param target_resolution:
+            target spatial resolution in image projection (i.e., pixel size
+            in meters)
+        :param resampling_method:
+            opencv resampling method. Per default linear interpolation is used
+        :param band_selection:
+            list of bands to consider. Per default all bands are used but
+            not processed if the bands already have the desired spatial
+            resolution
         """
-        # TODO
-        pass
+
+        # loop over bands and resample those bands not in the desired
+        # spatial resolution
+
+        if len(band_selection) == 0:
+            band_selection = list(self.data.keys())
+            # remove those items not containing band data
+            band_selection.remove('meta')
+            band_selection.remove('bounds')
+
+        # if the data comes from a bandstack then the spatial resolution is
+        # the same for all bands     
+        if self.from_bandstack():
+            meta = self.data['meta']
+            bounds = self.data['bounds']
+
+        for idx, band in enumerate(band_selection):
+
+            if not self.from_bandstack():
+                meta = self.data['meta'][band]
+                bounds = self.data['bounds'][band]
+
+            # get original spatial resolution
+            pixres = meta['transform'][0]
+
+            # check if resampling is required
+            if pixres == target_resolution:
+                continue
+
+            # check if coordinate system is projected, geographic
+            # coordinate systems are not supported
+            if not meta['crs'].is_projected:
+                raise NotProjectedError(
+                    'Resampling from geographic coordinates is not supported'
+            )
+
+            # calculate new size of the raster
+            ncols_resampled = int(np.ceil((bounds.right - bounds.left) / target_resolution))
+            nrows_resampled = int(np.ceil((bounds.top - bounds.bottom) / target_resolution))
+            dim_resampled = (ncols_resampled, nrows_resampled)
+
+            band_data = self.data[band]
+
+            # check if the band data is stored in a masked array
+            # if so, replace the masked values with NaN
+            if isinstance(band_data, np.ma.core.MaskedArray):
+                band_data = band_data.filled(np.nan)
+
+            # resample the array using opencv resize
+            try:
+                res = cv2.resize(
+                    band_data,
+                    dsize=dim_resampled,
+                    interpolation=resampling_method
+                )
+            except Exception as e:
+                raise ResamplingFailedError(e)
+
+            # overwrite entries in self.data
+            self.data[band] = res
+
+            # for data from bandstacks updating meta is required only once
+            # since all bands have the same spatial resolution
+            if self.from_bandstack() and idx > 0:
+                continue
+
+            meta_resampled = deepcopy(meta)
+            # update width, height and the transformation
+            meta_resampled['width'] = ncols_resampled
+            meta_resampled['height'] = nrows_resampled
+            affine_orig = meta_resampled['transform']
+            affine_resampled = Affine(
+                a=target_resolution,
+                b=affine_orig.b,
+                c=affine_orig.c,
+                d=affine_orig.d,
+                e=-target_resolution,
+                f=affine_orig.f
+            )
+            meta_resampled['transform'] = affine_resampled
+
+            if not self.from_bandstack():
+                self.data['meta'][band] = meta_resampled
+
+        if self.from_bandstack():
+            self.data['meta'] = meta_resampled
+ 
 
     def plot_band(self, band_name: str):
         """
@@ -331,7 +446,9 @@ if __name__ == '__main__':
         in_file_aoi=in_file_aoi,
         band_selection=band_selection
     )
-    # check reader.data
+    # check reader.data for results
+    # resample all bands to 30 m spatial resolution
+    reader.resample(target_resolution=30)
 
     # read bands from .SAFE directories
     # L1C case
@@ -344,6 +461,8 @@ if __name__ == '__main__':
         in_file_aoi=in_file_aoi,
         band_selection=band_selection
     )
+    # resample all bands to 30 m spatial resolution
+    reader.resample(target_resolution=30)
 
     # L2A testcase
     # TODO: resampling of data if required/selected -> resampling module
