@@ -1,3 +1,12 @@
+'''
+Created on Nov 29, 2021
+
+@author:    Lukas Graf (D-USYS, ETHZ)
+
+@purpose:   Abstract class definition for reading data from
+            band-stacked files. Sensor-specific classes should
+            inherit from this class!
+'''
 
 import cv2
 import numpy as np
@@ -24,7 +33,7 @@ from agrisatpy.utils.reprojection import check_aoi_geoms
 
 
 class Sat_Data_Reader(object):
-    """abstract class from which to sensor-specific classes inherit"""
+    """abstract class from which sensor-specific classes inherit"""
 
     def __init__(self):
         self.data = {}
@@ -51,6 +60,7 @@ class Sat_Data_Reader(object):
         :param band_data:
             band data to add; corresponds to the dict value
         """
+
         band_dict = {band_name: band_data}
         self.data.update(band_dict)
 
@@ -69,6 +79,7 @@ class Sat_Data_Reader(object):
             either the same array (if input was ndarray) or an
             array where masked values were replaced with NaNs
         """
+
         if isinstance(band_data, np.ma.core.MaskedArray):
             return band_data.filled(np.nan)
         else:
