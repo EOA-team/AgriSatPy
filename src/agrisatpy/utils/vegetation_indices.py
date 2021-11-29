@@ -29,7 +29,6 @@ class VegetationIndices(object):
     swir_1 = 'swir_1'
     swir_2 = 'swir_2'
 
-
     def __init__(self, reader: Sat_Data_Reader):
         """
         :param reader:
@@ -41,15 +40,21 @@ class VegetationIndices(object):
     def calc_vi(self, vi: str) -> np.array:
         """
         Calculates the selected vegetation index (VI) for
-        spectral band data derived from agrisatpy.utils.io
+        spectral band data derived from `~agrisatpy.utils.io`.
+        The resulting vi is returned as numpy array.
 
         :param vi:
-            name of the selected vegetation index (e.g., NDVI)
+            name of the selected vegetation index (e.g., NDVI). Raises
+            an error if the vegetation index is not implemented/ found.
         :return:
-            vegetation index values
+            2d numpy array with VI values
         """
-        
-        return eval(f'self.{vi.upper()}(**self._band_data)')
+
+        try:
+            vi = eval(f'self.{vi.upper()}(**self._band_data)')
+        except Exception as e:
+            raise NotImplementedError(e)
+        return vi
 
 
     @classmethod
@@ -244,6 +249,7 @@ class VegetationIndices(object):
 
 if __name__ == '__main__':
 
+    import cv2
     from pathlib import Path
     from agrisatpy.utils.io.sentinel2 import S2_Band_Reader
     
@@ -256,7 +262,19 @@ if __name__ == '__main__':
         in_file_aoi=in_file_aoi
     )
 
+    # resample to 10m spatial resolution using cubic interpolation
+    # reader.resample(target_resolution=10, resampling_method=cv2.INTER_CUBIC)
+
+    # calculate the NDVI
+    # no resampling is required since we already work on resampled data
     vi_s2 = VegetationIndices(reader=reader)
-    reader.data['ndvi'] = vi_s2.calc_vi('NDVI')
-    reader.data['evi'] = vi_s2.calc_vi('EVI')
+
+    vi_name = 'NDVI' # name is not case-sensitive but it must be consistent
+    ndvi = vi_s2.calc_vi(vi_name)
+
+    # add to reader
+    reader.add_band(band_name=vi_name, band_data=ndvi)
+
+    # plot the results
+    reader.plot_band(band_name=vi_name, colormap='summer')
 
