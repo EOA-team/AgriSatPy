@@ -4,3 +4,6 @@ class NotProjectedError(Exception):
 
 class ResamplingFailedError(Exception):
     pass
+
+class BandNotFoundError(Exception):
+    pass
