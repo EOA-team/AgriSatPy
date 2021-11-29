@@ -12,4 +12,5 @@ sphinx_rtd_theme
 matplotlib
 lxml
 joblib
-psycopg2
+psycopg2-binary
+opencv-python
