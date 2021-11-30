@@ -312,7 +312,7 @@ if __name__ == '__main__':
     in_file_aoi = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/ZH_Polygons_2020_ESCH_EPSG32632.shp')
 
     # read bands from bandstack
-    band_selection = ['B02','B03', 'B08']
+    band_selection = ['B02','B03', 'B04', 'B08']
     # band_selection = None
     testdata = Path('/mnt/ides/Lukas/04_Work/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
     reader = S2_Band_Reader()
@@ -324,7 +324,8 @@ if __name__ == '__main__':
     # check reader.data for results
     # resample all bands to 30 m spatial resolution
     reader.resample(target_resolution=30)
-    fig = reader.plot_band(band_name='blue')
+    fig_rgb = reader.plot_rgb()
+    fig_rgb = reader.plot_false_color_infrared()
 
     # read bands from .SAFE directories
     # L1C case
