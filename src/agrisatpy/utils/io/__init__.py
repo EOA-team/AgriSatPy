@@ -164,7 +164,7 @@ class Sat_Data_Reader(object):
 
         # adjust transparency in case of RGBA arrays
         if len(band_data.shape) == 3:
-            tmp = band_data[:,:,0]
+            tmp = deepcopy(band_data[:,:,0])
             tmp[~np.isnan(tmp)] = 1.
             tmp[np.isnan(tmp)] = 0.
             band_data[:,:,3] = tmp
