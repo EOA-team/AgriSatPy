@@ -35,11 +35,12 @@ def reconstruct_path(
         response = subprocess.getoutput(exe)
         lines = response.split('\n')
         for line in lines:
-            if line.find(ip.strip()) >= 0:
+            if line.find(str(ip).strip()) >= 0:
                 # data is on mounted share -> get local file system mapping
-                local_path = response[response.find(ip.strip()):].split()[1]
+                local_path = response[response.find(str(ip).strip()):].split()[1]
                 del ip
                 ip = Path(local_path)
+                break
 
     share = ip.joinpath(record.storage_share)
 
