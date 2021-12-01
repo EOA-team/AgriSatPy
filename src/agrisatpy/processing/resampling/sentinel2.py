@@ -152,8 +152,10 @@ def do_parallel(
     scenes_log_file = out_dir.joinpath('log').joinpath(Settings.PROCESSING_CHECK_FILE_NO_BF)
     creation_time = datetime.now().strftime('%Y%m%d-%H%M%S')
     with open(scenes_log_file, 'a+') as src:
-        line = f"{in_dir}, {innerdict['bandstack']}, {innerdict['scl']}, {innerdict['preview']}, {creation_time}"
-        src.write(line + '\n')
+        # only write to the file if the bandstack is not empty
+        if innerdict['bandstack'] != '':
+            line = f"{in_dir}, {innerdict['bandstack']}, {innerdict['scl']}, {innerdict['preview']}, {creation_time}"
+            src.write(line + '\n')
 
     return innerdict
 
@@ -414,7 +416,9 @@ def exec_parallel(target_s2_archive: Path,
 
     # check for any empty bandstack paths (indicates that something went wrong
     # during the processing
-    emtpy_bandstacks = bandstack_meta.loc[bandstack_meta.bandstack == None]
+    emtpy_bandstacks = bandstack_meta.loc[
+        (bandstack_meta.bandstack == None) | (bandstack_meta.bandstack == '')
+    ]
 
     # in this remove the errored records from bandstack_meta and reported the
     # failed records
