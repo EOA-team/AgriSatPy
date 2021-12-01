@@ -85,6 +85,25 @@ class Sat_Data_Reader(object):
         else:
             return band_data
 
+
+    def plot_rgb(self) -> Figure:
+        """
+        Plots a RGB image of the loaded band data providing a simple
+        wrapper around the `~plot_band` method. Requires the
+        'red', 'green' and 'blue' bands.
+        """
+        return self.plot_band(band_name='RGB')
+
+
+    def plot_false_color_infrared(self) -> Figure:
+        """
+        Plots a false color infrared image of the loaded band data providing
+        a simple wrapper around the `~plot_band` method. Requires the
+        'nir_1', 'green' and 'red' bands.
+        """
+        return self.plot_band(band_name='False-Color')
+
+
     def plot_band(
             self,
             band_name: str,
@@ -93,7 +112,9 @@ class Sat_Data_Reader(object):
         """
         plots a custom band using matplotlib.pyplot.imshow and the
         extent in the projection of the image data. Returns
-        a figure object with the plot
+        a figure object with the plot.
+
+        To get a RGB preview of your data, pass band_name='RGB'
 
         :param band_name:
             name of the band to plot
@@ -105,12 +126,48 @@ class Sat_Data_Reader(object):
             plotted as map
         """
 
-        if band_name not in list(self.data.keys()):
-            raise BandNotFoundError(f'{band_name} not found in data')
-        band_data = self.data[band_name]
+        # custom band or RGB or False-Color NIR plot?
+        rgb_plot, nir_plot = False, False
+        if band_name.upper() == 'RGB':
+            band_names = ['red', 'green', 'blue']
+            rgb_plot = True
+        elif band_name.upper() == 'FALSE-COLOR':
+            nir_plot = True
+            band_names = ['nir_1', 'green', 'red']
+        else:  
+            if band_name not in list(self.data.keys()):
+                raise BandNotFoundError(f'{band_name} not found in data')
+            band_data = self.data[band_name]
+
+        # read band data in case of RGB or false color NIR plot
+        if band_name.upper() == 'RGB' or band_name.upper() == 'FALSE-COLOR':
+            diff = list(set(band_names) - set(list(self.data.keys())))
+            # check if all required bands are available
+            if len(diff) > 0:
+                raise BandNotFoundError(f'band "{diff[0]}" not found in band data')
+
+            # get all RGB bands
+            band_data_list = []
+            for band_name in band_names:
+                band_data_list.append(self.data[band_name])
+            # add transparency layer
+            band_data_list.append(np.zeros_like(band_data_list[0]))
+            band_data = np.dstack(band_data_list)
+
+            # use 'green' henceforth to extract the corresponding meta-data
+            band_name = 'green'
+            # no colormap required
+            colormap = None
 
         # check if band data is a masked array
         band_data = self._masked_array_to_nan(band_data=band_data)
+
+        # adjust transparency in case of RGBA arrays
+        if len(band_data.shape) == 3:
+            tmp = deepcopy(band_data[:,:,0])
+            tmp[~np.isnan(tmp)] = 1.
+            tmp[np.isnan(tmp)] = 0.
+            band_data[:,:,3] = tmp
 
         # get bounds amd EPSG code
         if self.from_bandstack():
@@ -154,11 +211,19 @@ class Sat_Data_Reader(object):
             extent=[bounds.left, bounds.right, bounds.bottom, bounds.top],
             cmap=colormap
         )
-        # add colorbar
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes('right', size='5%', pad=0.05)
-        fig.colorbar(img, cax=cax, orientation='vertical')
-        ax.title.set_text(f'Band: {band_name.upper()}')
+        # add colorbar (does not apply in RGB case)
+        if colormap is not None:
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes('right', size='5%', pad=0.05)
+            fig.colorbar(img, cax=cax, orientation='vertical')
+
+        if colormap is None:
+            if rgb_plot:
+                ax.title.set_text('True Color Image')
+            elif nir_plot:
+                ax.title.set_text('False Color Nir-Infrared Image')
+        else:
+            ax.title.set_text(f'Band: {band_name.upper()}')
 
         # add axes labels
         ax.set_xlabel(f'X [m] (EPSG:{epsg})', fontsize=12)
