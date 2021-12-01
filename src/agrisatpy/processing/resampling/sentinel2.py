@@ -25,6 +25,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import sessionmaker
 from rasterio.enums import Resampling
 from typing import Optional
+from typing import Tuple
 from datetime import datetime
 
 from agrisatpy.spatial_resampling import resample_and_stack_S2
@@ -151,8 +152,10 @@ def do_parallel(
     scenes_log_file = out_dir.joinpath('log').joinpath(Settings.PROCESSING_CHECK_FILE_NO_BF)
     creation_time = datetime.now().strftime('%Y%m%d-%H%M%S')
     with open(scenes_log_file, 'a+') as src:
-        line = f"{in_dir}, {innerdict['bandstack']}, {innerdict['scl']}, {innerdict['preview']}, {creation_time}"
-        src.write(line + '\n')
+        # only write to the file if the bandstack is not empty
+        if innerdict['bandstack'] != '':
+            line = f"{in_dir}, {innerdict['bandstack']}, {innerdict['scl']}, {innerdict['preview']}, {creation_time}"
+            src.write(line + '\n')
 
     return innerdict
 
@@ -164,7 +167,7 @@ def exec_parallel(target_s2_archive: Path,
                   tile: str,
                   use_database: Optional[bool]=True,
                   **kwargs
-                  ) -> pd.DataFrame:
+                  ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     parallel execution of the Sentinel-2 pre-processing pipeline, including:
     
@@ -192,8 +195,9 @@ def exec_parallel(target_s2_archive: Path,
         your computer hardware.
     :param kwargs:
         kwargs to pass to resample_and_stack_S2 and scl_10m_resampling (L2A, only)
-    :return bandstack_meta:
-        metadata of the processed datasets
+    :return:
+        tuple containing metadata of the processed datasets [0] and eventually
+        failed datasets in the second tuple item
     """
 
     # check processing level; default is L2A
@@ -409,6 +413,21 @@ def exec_parallel(target_s2_archive: Path,
         # bandstack_meta['storage_share'] = target_s2_archive
 
         logger.info('Finished merging of blackfill scenes')
-    
-    # write metadata of all stacked files to CSV
-    return bandstack_meta
+
+    # check for any empty bandstack paths (indicates that something went wrong
+    # during the processing
+    emtpy_bandstacks = bandstack_meta.loc[
+        (bandstack_meta.bandstack == None) | (bandstack_meta.bandstack == '')
+    ]
+
+    # in this remove the errored records from bandstack_meta and reported the
+    # failed records
+    if not emtpy_bandstacks.empty:
+        logger.error(f'Resampling failed for {emtpy_bandstacks.shape[0]} datasets')
+        errored_records = pd.merge(
+            bandstack_meta, emtpy_bandstacks, how='inner', on=['scene_id']
+        )['scene_id']
+        bandstack_meta = bandstack_meta[~bandstack_meta['scene_id'].isin(errored_records)]
+
+    # save metadata of all stacked files and return
+    return bandstack_meta, emtpy_bandstacks
