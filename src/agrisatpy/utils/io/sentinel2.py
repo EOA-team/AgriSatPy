@@ -104,7 +104,7 @@ class S2_Band_Reader(Sat_Data_Reader):
         masked_values = [3, 8, 9, 10]
         mask_band = 'scl'
         try:
-            reader.mask(
+            self.mask(
                 name_mask_band=mask_band,
                 mask_values=masked_values,
                 bands_to_mask=bands_to_mask
@@ -112,6 +112,20 @@ class S2_Band_Reader(Sat_Data_Reader):
         except Exception as e:
             raise Exception(f'Could not apply cloud mask: {e}')
 
+
+    def get_cloudy_pixel_percentage(self):
+        """
+        Calculates the cloudy pixel percentage for the read AOI
+        (L2A processing level, only). The cloudy pixel percentage is
+        the number of pixels classified as clouds or cloud shadows
+        (using SCL) compared to overall number of non-masked pixels
+        (masked, e.g., because they do not belong to the selected
+        polygons). This method can be used to select S2 scenes based on the
+        cloud-coverage in the AOI rather than using the scene-wide cloud
+        coverage from the scene metadata.
+        """
+        # TODO
+        pass
 
     def read_from_bandstack(
             self,
@@ -153,6 +167,8 @@ class S2_Band_Reader(Sat_Data_Reader):
             band names accordingly, e.g., ['B02','B03','B04'] to read only the
             VIS bands.
         """
+
+        # TODO: add SCL reader functionality according to the one implemented in the .SAFE case
     
         # check which bands were selected
         self.data = self._check_band_selection(band_selection=band_selection)
