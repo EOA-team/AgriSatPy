@@ -403,6 +403,6 @@ if __name__ == '__main__':
     # check the scene classification layer
     fig_scl = reader.plot_scl()
 
-    reader.resample(target_resolution=10, resampling_method=cv2.INTER_CUBIC)
+    reader.resample(target_resolution=10, resampling_method=cv2.INTER_CUBIC, bands_to_exclude=['scl'])
     reader.calc_vi(vi='TCARI_OSAVI')
 

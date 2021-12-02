@@ -316,7 +316,8 @@ class Sat_Data_Reader(object):
             self,
             target_resolution: Union[int,float],
             resampling_method: Optional[int] = cv2.INTER_LINEAR,
-            band_selection: Optional[List[str]] = []
+            band_selection: Optional[List[str]] = [],
+            bands_to_exclude: Optional[List[str]] = []
         ) -> None:
         """
         resamples band data on the fly if required into a user-definded spatial
@@ -341,6 +342,9 @@ class Sat_Data_Reader(object):
             list of bands to consider. Per default all bands are used but
             not processed if the bands already have the desired spatial
             resolution
+        :param bands_to_exclude:
+            list of bands NOT to consider for resampling. Per default all
+            bands are considered for resampling (see band_selection).
         """
 
         # loop over bands and resample those bands not in the desired
@@ -351,6 +355,11 @@ class Sat_Data_Reader(object):
             # remove those items not containing band data
             band_selection.remove('meta')
             band_selection.remove('bounds')
+
+        # check if bands are to exclude
+        if len(bands_to_exclude) > 0:
+            set_to_exclude = set(bands_to_exclude)
+            band_selection = [x for x in band_selection if x not in set_to_exclude]
 
         # if the data comes from a bandstack then the spatial resolution is
         # the same for all bands     
