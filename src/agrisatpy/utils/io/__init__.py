@@ -473,6 +473,8 @@ class Sat_Data_Reader(object):
         be an entry in the data dict (using `add_band`) if it is not yet part
         of it.
 
+        Masking currently only support floating data types.
+
         :param name_mask_band:
             name of the band (key in data dict) that contains the mask
         :param mask_values:
@@ -503,8 +505,8 @@ class Sat_Data_Reader(object):
         for band_to_mask in bands_to_mask:
             if band_to_mask not in self.data.keys():
                 raise BandNotFoundError(f'{band_to_mask} is not in data dict')
-            # TODO set to NaN!
-            self.data[band_to_mask] *= tmp
+            # set values to NaN where tmp is zero
+            self.data[band_to_mask][tmp == 0] = np.nan
         
 
     def read_from_bandstack(
