@@ -86,6 +86,33 @@ class S2_Band_Reader(Sat_Data_Reader):
             raise BandNotFoundError(f'Could not plot SCL: {e}')
 
 
+    def mask_clouds_and_shadows(
+            self,
+            bands_to_mask: List[str]
+        ):
+        """
+        A Wrapper around the inherited `mask` method to mask clouds and
+        shadows based on the SCL band. Works therefore on L2A data only where
+        SCL data is available. Masks the SCL classes 3, 8, 9, 10.
+        If another class selection is desired consider using the mask function
+        from `agrisatpy.utils.io` directly.
+
+        :param bands_to_mask:
+            list of bands on which to apply the SCL mask
+        """
+
+        masked_values = [3, 8, 9, 10]
+        mask_band = 'scl'
+        try:
+            reader.mask(
+                name_mask_band=mask_band,
+                mask_values=masked_values,
+                bands_to_mask=bands_to_mask
+            )
+        except Exception as e:
+            raise Exception(f'Could not apply cloud mask: {e}')
+
+
     def read_from_bandstack(
             self,
             fname_bandstack: Path,
@@ -404,8 +431,6 @@ if __name__ == '__main__':
     # resample SCL
     reader.resample(target_resolution=10, resampling_method=cv2.INTER_NEAREST)
 
-    # mask the clouds (SCL classes 8,9,10)
-    masked_values = [8, 9, 10]
-    mask_band = 'scl'
-    reader.mask(name_mask_band=mask_band, mask_values=masked_values, bands_to_mask=['TCARI_OSAVI'])
-    reader.plot_band('TCARI_OSAVI')
+    # mask the clouds (SCL classes 8,9,10) and cloud shadows (class 3)
+    reader.mask_clouds_and_shadows(bands_to_mask=['TCARI_OSAVI'])
+    reader.plot_band('TCARI_OSAVI', colormap='summer')
