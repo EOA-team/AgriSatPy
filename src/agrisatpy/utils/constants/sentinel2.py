@@ -40,7 +40,8 @@ s2_band_mapping = {
         'B08': 'nir_1',
         'B8A': 'nir_2',
         'B11': 'swir_1',
-        'B12': 'swir_2'
+        'B12': 'swir_2',
+        'SCL': 'scl'
 }
 
 # S2 data is stored as uint16
