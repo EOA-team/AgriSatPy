@@ -458,12 +458,61 @@ class Sat_Data_Reader(object):
                 self.data['meta'] = meta_resampled
 
 
+    def mask(
+            self,
+            name_mask_band: str,
+            mask_values: List[Union[int,float]],
+            bands_to_mask: List[str],
+            keep_mask_values: Optional[bool]=False
+        ) -> None:
+        """
+        Allows to mask parts of an image (i.e., single bands) based
+        on a mask band. The mask band must have the same spatial extent and
+        resolution as the bands to mask (you might have to consider
+        spatial resampling using the `resampling` method) and must
+        be an entry in the data dict (using `add_band`) if it is not yet part
+        of it.
+
+        :param name_mask_band:
+            name of the band (key in data dict) that contains the mask
+        :param mask_values:
+            specify those value(s) of the mask that denote VALID or INVALID
+            categories (per default: INVALID, but it can be switched by
+            using the `keep_mask_values=True` option)
+        :param bands_to_mask:
+            list of bands to which to apply the mask. The bands must have the same
+            extent and resolution as the mask layer.
+        :param keep_mask_values:
+            if False (Def) the provided `mask_values` are assumed to represent
+            INVALID classes, if True the opposite is the case
+        """
+
+        # check if mask band is available
+        if not name_mask_band in self.data.keys():
+            raise BandNotFoundError(f'{name_mask_band} is not in data dict')
+
+        # convert the mask to a temporary binary mask
+        tmp = np.zeros_like(self.data[name_mask_band])
+        # set valid classes to 1, the other ones are zero
+        if keep_mask_values:
+            tmp[np.isin(self.data[name_mask_band], mask_values)] = 1
+        else:
+            tmp[~np.isin(self.data[name_mask_band], mask_values)] = 1
+
+        # loop over bands specified and mask the invalid pixels
+        for band_to_mask in bands_to_mask:
+            if band_to_mask not in self.data.keys():
+                raise BandNotFoundError(f'{band_to_mask} is not in data dict')
+            # TODO set to NaN!
+            self.data[band_to_mask] *= tmp
+        
+
     def read_from_bandstack(
             self,
             fname_bandstack: Path,
             in_file_aoi: Optional[Path] = None,
             full_bounding_box_only: Optional[bool] = False
-        ) -> Dict[str, np.array]:
+        ) -> None:
         """
         Reads spectral bands from a band-stacked geoTiff file
         using the band description to extract the required spectral band
@@ -494,11 +543,6 @@ class Sat_Data_Reader(object):
             if set to False, will only extract the data for those geometry/ies
             defined in in_file_aoi. If set to False, returns the data for the
             full extent (hull) of all features (geometries) in in_file_aoi.
-        :return:
-            dictionary with band names and corresponding band data as np.array.
-            In addition, two entries in the dict provide information about the
-            geo-localization ('meta') and the bounding box ('bounds') in image
-            coordinates
         """
 
         # check bounding box

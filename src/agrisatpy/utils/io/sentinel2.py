@@ -93,7 +93,7 @@ class S2_Band_Reader(Sat_Data_Reader):
             full_bounding_box_only: Optional[bool] = False,
             int16_to_float: Optional[bool] = True,
             band_selection: Optional[List[str]] = list(s2_band_mapping.keys())
-        ) -> Dict[str, np.array]:
+        ):
         """
         Reads Sentinel-2 spectral bands from a band-stacked geoTiff file
         using the band description to extract the required spectral band
@@ -125,16 +125,11 @@ class S2_Band_Reader(Sat_Data_Reader):
             20m bands are processed. If you wish to read less, specify the
             band names accordingly, e.g., ['B02','B03','B04'] to read only the
             VIS bands.
-        :return:
-            dictionary with band names and corresponding band data as np.array.
-            In addition, two entries in the dict provide information about the
-            geo-localization ('meta') and the bounding box ('bounds') in image
-            coordinates
         """
     
         # check which bands were selected
         self.data = self._check_band_selection(band_selection=band_selection)
-    
+
         # check bounding box
         masking = False
         if in_file_aoi is not None:
@@ -364,7 +359,7 @@ if __name__ == '__main__':
 
     reader = S2_Band_Reader()
     band_selection = ['B02', 'B03', 'B04', 'B05', 'B07', 'B08']
-    in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/BY_AOI_2019_MNI_EPSG32632.shp')
+    in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/BY_AOI_2019_CLOUDS_EPSG32632.shp')
 
     # L2A testcase
     url = 'https://data.mendeley.com/public-files/datasets/ckcxh6jskz/files/e97b9543-b8d8-436e-b967-7e64fe7be62c/file_downloaded'
@@ -406,3 +401,11 @@ if __name__ == '__main__':
     reader.resample(target_resolution=10, resampling_method=cv2.INTER_CUBIC, bands_to_exclude=['scl'])
     reader.calc_vi(vi='TCARI_OSAVI')
 
+    # resample SCL
+    reader.resample(target_resolution=10, resampling_method=cv2.INTER_NEAREST)
+
+    # mask the clouds (SCL classes 8,9,10)
+    masked_values = [8, 9, 10]
+    mask_band = 'scl'
+    reader.mask(name_mask_band=mask_band, mask_values=masked_values, bands_to_mask=['TCARI_OSAVI'])
+    reader.plot_band('TCARI_OSAVI')
