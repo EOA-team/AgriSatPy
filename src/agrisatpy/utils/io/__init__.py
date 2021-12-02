@@ -10,6 +10,7 @@ Created on Nov 29, 2021
 
 import cv2
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import rasterio as rio
@@ -25,9 +26,10 @@ from typing import Union
 from matplotlib.pyplot import Figure
 from matplotlib.figure import figaspect
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from agrisatpy.utils.exceptions import NotProjectedError, ResamplingFailedError
 from copy import deepcopy
 
+from agrisatpy.analysis.vegetation_indices import VegetationIndices
+from agrisatpy.utils.exceptions import NotProjectedError, ResamplingFailedError
 from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.utils.reprojection import check_aoi_geoms
 
@@ -64,6 +66,23 @@ class Sat_Data_Reader(object):
         band_dict = {band_name: band_data}
         self.data.update(band_dict)
 
+        # check if the data comes from a bandstack (nothing to do)
+        # or from single band files where the metadata needs to be added
+        # for each band
+        if not self.from_bandstack():
+            # find out, which band has the same shape (x, y dim) and copy
+            # the 'meta' and 'bounds' from that band for the band to add
+            band_data_shape = band_data.shape
+            for other_band in self.data.keys():
+                if other_band == 'meta' or other_band == 'bounds':
+                    continue
+                if self.data[other_band].shape == band_data_shape:
+                    self.data['meta'][band_name] = self.data['meta'][other_band]
+                    self.data['bounds'][band_name] = self.data['bounds'][other_band]
+                    # leave loop and return
+                    break
+
+                
     @staticmethod
     def _masked_array_to_nan(band_data: np.array) -> np.array:
         """
@@ -81,9 +100,11 @@ class Sat_Data_Reader(object):
         """
 
         if isinstance(band_data, np.ma.core.MaskedArray):
-            return band_data.filled(np.nan)
-        else:
-            return band_data
+            # check if datatype of the array supports NaN (int does not)
+            if band_data.dtype != np.uint8 and band_data.dtype != np.uint16:
+                return band_data.filled(np.nan)
+        # otherwise return the input
+        return band_data
 
 
     def plot_rgb(self) -> Figure:
@@ -91,6 +112,10 @@ class Sat_Data_Reader(object):
         Plots a RGB image of the loaded band data providing a simple
         wrapper around the `~plot_band` method. Requires the
         'red', 'green' and 'blue' bands.
+
+        :return:
+            matplotlib figure object with the band data
+            plotted as map
         """
         return self.plot_band(band_name='RGB')
 
@@ -100,6 +125,10 @@ class Sat_Data_Reader(object):
         Plots a false color infrared image of the loaded band data providing
         a simple wrapper around the `~plot_band` method. Requires the
         'nir_1', 'green' and 'red' bands.
+
+        :return:
+            matplotlib figure object with the band data
+            plotted as map
         """
         return self.plot_band(band_name='False-Color')
 
@@ -107,20 +136,29 @@ class Sat_Data_Reader(object):
     def plot_band(
             self,
             band_name: str,
-            colormap: Optional[str]='gray'
+            colormap: Optional[str]='gray',
+            discrete_values: Optional[bool]=False
         ) -> Figure:
         """
         plots a custom band using matplotlib.pyplot.imshow and the
         extent in the projection of the image data. Returns
         a figure object with the plot.
 
-        To get a RGB preview of your data, pass band_name='RGB'
+        To get a RGB preview of your data, pass band_name='RGB'.
+        To get a false color NIR preview, pass band_name='FALSE-COLOR'
+        If the band takes discrete values, only (e.g., classification)
+        set `discrete_values` to False
 
         :param band_name:
             name of the band to plot
         :param colormap:
             String identifying one of matplotlib's colormaps.
             The default will plot the band in gray values.
+        :param discrete_values:
+            if True (Default) assumes that the band has continuous values
+            (i.e., ordinary spectral data). If False assumes that the
+            data only takes a limited set of discrete values (e.g., in case
+            of a classification or mask layer).
         :return:
             matplotlib figure object with the band data
             plotted as map
@@ -200,17 +238,34 @@ class Sat_Data_Reader(object):
             clear=True
         )
 
-        # clip data for displaying to central 90%, i.e., discard upper and
-        # lower 5% of the data
-        lower_bound = np.nanquantile(band_data, 0.05)
-        upper_bound = np.nanquantile(band_data, 0.95)
-        img = ax.imshow(
-            band_data,
-            vmin=lower_bound,
-            vmax=upper_bound,
-            extent=[bounds.left, bounds.right, bounds.bottom, bounds.top],
-            cmap=colormap
-        )
+        # check if data is continuous (spectral) or discrete (np.unit8)
+        if discrete_values:
+
+            cmap = plt.cm.get_cmap(colormap)
+            # define the bins and normalize
+            unique_values = np.unique(band_data)
+            norm = mpl.colors.BoundaryNorm(unique_values, cmap.N)
+            img = ax.imshow(
+                band_data,
+                cmap=cmap,
+                norm=norm,
+                extent=[bounds.left, bounds.right, bounds.bottom, bounds.top]
+            )
+
+        else:
+
+            # clip data for displaying to central 90%, i.e., discard upper and
+            # lower 5% of the data
+            lower_bound = np.nanquantile(band_data, 0.05)
+            upper_bound = np.nanquantile(band_data, 0.95)
+            img = ax.imshow(
+                band_data,
+                vmin=lower_bound,
+                vmax=upper_bound,
+                extent=[bounds.left, bounds.right, bounds.bottom, bounds.top],
+                cmap=colormap
+            )
+
         # add colorbar (does not apply in RGB case)
         if colormap is not None:
             divider = make_axes_locatable(ax)
@@ -234,6 +289,27 @@ class Sat_Data_Reader(object):
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0f'))
 
         return fig
+
+
+    def calc_vi(
+            self,
+            vi: str
+        ) -> None:
+        """
+        Calculates a vegetation index implemented in `agrisatpy.analysis.vegetation_indices`
+        and adds the vegetation index as a new band to the data dict.
+
+        Raises an error if the index calculation fails.
+
+        :param vi:
+            name of the vegetation index to calculate (e.g., NDVI)
+        """
+        try:
+            vi_obj = VegetationIndices(reader=self)
+            vi_data = vi_obj.calc_vi(vi)
+            self.add_band(band_name=vi, band_data=vi_data)
+        except Exception as e:
+            raise Exception(f'Could not calculate vegetation index "{vi}": {e}')
 
 
     def resample(
@@ -282,6 +358,7 @@ class Sat_Data_Reader(object):
             meta = self.data['meta']
             bounds = self.data['bounds']
 
+        snap_band_available = False
         for idx, band in enumerate(band_selection):
 
             if not self.from_bandstack():
@@ -291,8 +368,13 @@ class Sat_Data_Reader(object):
             # get original spatial resolution
             pixres = meta['transform'][0]
 
-            # check if resampling is required
+            # check if resampling is required, if the band has
+            # already the target resolution use its extent to snap
+            # the other rasters too
             if pixres == target_resolution:
+                snap_band_available = True
+                snap_shape = self.data[band].shape
+                snap_meta = self.data['meta'][band]
                 continue
 
             # check if coordinate system is projected, geographic
@@ -302,11 +384,18 @@ class Sat_Data_Reader(object):
                     'Resampling from geographic coordinates is not supported'
             )
 
-            # calculate new size of the raster
-            ncols_resampled = int(np.ceil((bounds.right - bounds.left) / target_resolution))
-            nrows_resampled = int(np.ceil((bounds.top - bounds.bottom) / target_resolution))
-            dim_resampled = (ncols_resampled, nrows_resampled)
+            # check if a 'snap' band is available
+            if snap_band_available:
+                nrows_resampled = snap_shape[0]
+                ncols_resampled = snap_shape[1]
+            # if not determine the extent from the bounds
+            else:
+                # calculate new size of the raster
+                ncols_resampled = int(np.ceil((bounds.right - bounds.left) / target_resolution))
+                nrows_resampled = int(np.ceil((bounds.top - bounds.bottom) / target_resolution))
 
+            # opencv2 switches the axes order!
+            dim_resampled = (ncols_resampled, nrows_resampled)
             band_data = self.data[band]
 
             # check if the band data is stored in a masked array
@@ -331,20 +420,25 @@ class Sat_Data_Reader(object):
             if self.from_bandstack() and idx > 0:
                 continue
 
-            meta_resampled = deepcopy(meta)
-            # update width, height and the transformation
-            meta_resampled['width'] = ncols_resampled
-            meta_resampled['height'] = nrows_resampled
-            affine_orig = meta_resampled['transform']
-            affine_resampled = Affine(
-                a=target_resolution,
-                b=affine_orig.b,
-                c=affine_orig.c,
-                d=affine_orig.d,
-                e=-target_resolution,
-                f=affine_orig.f
-            )
-            meta_resampled['transform'] = affine_resampled
+            # check if meta is available from band in target resolution
+            # or has to be calculated
+            if snap_band_available:
+                meta_resampled = snap_meta
+            else:
+                meta_resampled = deepcopy(meta)
+                # update width, height and the transformation
+                meta_resampled['width'] = ncols_resampled
+                meta_resampled['height'] = nrows_resampled
+                affine_orig = meta_resampled['transform']
+                affine_resampled = Affine(
+                    a=target_resolution,
+                    b=affine_orig.b,
+                    c=affine_orig.c,
+                    d=affine_orig.d,
+                    e=-target_resolution,
+                    f=affine_orig.f
+                )
+                meta_resampled['transform'] = affine_resampled
 
             if not self.from_bandstack():
                 self.data['meta'][band] = meta_resampled

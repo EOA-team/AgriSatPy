@@ -14,6 +14,7 @@ import numpy as np
 import rasterio as rio
 import rasterio.mask
 
+from matplotlib.pyplot import Figure
 from rasterio.coords import BoundingBox
 from pathlib import Path
 from typing import Optional
@@ -25,8 +26,10 @@ from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
 from agrisatpy.utils.constants.sentinel2 import s2_gain_factor
 from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res
+from agrisatpy.utils.sentinel2 import get_S2_sclfile
 from agrisatpy.utils.constants.sentinel2 import band_resolution
 from agrisatpy.utils.io import Sat_Data_Reader
+from agrisatpy.utils.exceptions import BandNotFoundError
 
 
 class S2_Band_Reader(Sat_Data_Reader):
@@ -56,6 +59,32 @@ class S2_Band_Reader(Sat_Data_Reader):
         # check how many bands were selected
         band_selection_dict = dict((k, s2_band_mapping[k]) for k in band_selection)
         return dict.fromkeys(band_selection_dict.values())
+
+    def plot_scl(
+            self,
+            colormap: Optional[str]='Accent'
+        ) -> Figure:
+        """
+        Wrapper around `agrisatpy.utils.io` to plot the Scene Classification
+        Layer available from the L2A processing level. Raises an error if
+        the band is not available
+
+        :param colormap:
+            matplotlib named colormap to use for visualization (Def: 'Accent')
+        :return:
+            matplotlib figure object with the SCL band data
+            plotted as map
+        """
+
+        try:
+            return self.plot_band(
+                band_name='scl',
+                colormap=colormap,
+                discrete_values=True
+            )
+        except Exception as e:
+            raise BandNotFoundError(f'Could not plot SCL: {e}')
+
 
     def read_from_bandstack(
             self,
@@ -174,7 +203,8 @@ class S2_Band_Reader(Sat_Data_Reader):
             in_file_aoi: Optional[Path] = None,
             full_bounding_box_only: Optional[bool] = False,
             int16_to_float: Optional[bool] = True,
-            band_selection: Optional[List[str]] = list(s2_band_mapping.keys())
+            band_selection: Optional[List[str]] = list(s2_band_mapping.keys()),
+            read_scl: Optional[bool] = True
         ) -> Dict[str, np.array]:
         """
         Reads Sentinel-2 spectral bands from a band-stacked geoTiff file
@@ -213,6 +243,10 @@ class S2_Band_Reader(Sat_Data_Reader):
             20m bands are processed. If you wish to read less, specify the
             band names accordingly, e.g., ['B02','B03','B04'] to read only the
             VIS bands.
+        :param read_scl:
+            if True (Default), reads the scene classification layer available in
+            L2A processing level. If the processing level is lower (L1C) this
+            option is ignored
         :return:
             dictionary with band names and corresponding band data as np.array.
             In addition, two entries in the dict provide information about the
@@ -239,6 +273,18 @@ class S2_Band_Reader(Sat_Data_Reader):
             resolution_selection=resolution_selection,
             is_L2A=is_L2A
         )
+
+        # search SCL file if selected and processing level is L2A
+        if is_L2A and read_scl:
+            band_selection.append('SCL')
+            scl_file = get_S2_sclfile(in_dir)
+            # append to dataframe
+            record = {
+                'band_name': 'SCL',
+                'band_path': str(scl_file),
+                'band_resolution': 20
+            }
+            band_df_safe = band_df_safe.append(record, ignore_index=True)
     
         # check bounding box
         masking = False
@@ -293,9 +339,11 @@ class S2_Band_Reader(Sat_Data_Reader):
      
                     # convert and rescale to float if selected
                     if int16_to_float:
-                        self.data[s2_band_mapping[band_name]] = \
-                            self.data[s2_band_mapping[band_name]].astype(float) * \
-                            s2_gain_factor
+                        # if SCL is selected, do not apply the conversion
+                        if not band_name.upper() == 'SCL':
+                            self.data[s2_band_mapping[band_name]] = \
+                                self.data[s2_band_mapping[band_name]].astype(float) * \
+                                s2_gain_factor
     
             # store georeferencation and bounding box per band
             meta_bands[s2_band_mapping[band_name]] = meta
@@ -309,45 +357,52 @@ class S2_Band_Reader(Sat_Data_Reader):
 
 if __name__ == '__main__':
 
-    in_file_aoi = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/ZH_Polygons_2020_ESCH_EPSG32632.shp')
+    # download test data (if not done yet)
+    import cv2
+    import requests
+    from agrisatpy.downloader.sentinel2.utils import unzip_datasets
 
-    # read bands from bandstack
-    band_selection = ['B02','B03', 'B04', 'B08']
-    # band_selection = None
-    testdata = Path('/mnt/ides/Lukas/04_Work/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
     reader = S2_Band_Reader()
-    reader.read_from_bandstack(
-        fname_bandstack=testdata,
-        in_file_aoi=in_file_aoi,
-        band_selection=band_selection
-    )
-    # check reader.data for results
-    # resample all bands to 30 m spatial resolution
-    reader.resample(target_resolution=30)
-    fig_rgb = reader.plot_rgb()
-    fig_rgb = reader.plot_false_color_infrared()
-
-    # read bands from .SAFE directories
-    # L1C case
-    testdata = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/S2A/ESCH/S2A_MSIL1C_20210615T102021_N0300_R065_T32TMT_20210615T122505.SAFE')
-    processing_level = ProcessingLevels.L1C
-
-    reader.read_from_safe(
-        in_dir=testdata,
-        processing_level=processing_level,
-        in_file_aoi=in_file_aoi,
-        band_selection=band_selection
-    )
-    # resample all bands to 30 m spatial resolution
-    reader.resample(target_resolution=30)
+    band_selection = ['B02', 'B03', 'B04', 'B05', 'B07', 'B08']
+    in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/BY_AOI_2019_MNI_EPSG32632.shp')
 
     # L2A testcase
-    testdata = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/S2A/ESCH/S2A_MSIL2A_20210615T102021_N0300_R065_T32TMT_20210615T131659.SAFE')
+    url = 'https://data.mendeley.com/public-files/datasets/ckcxh6jskz/files/e97b9543-b8d8-436e-b967-7e64fe7be62c/file_downloaded'
+    
+    testdata_dir = Path('/mnt/ides/Lukas/debug/S2_Data')
+    testdata_fname = testdata_dir.joinpath('S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.zip')
+    testdata_fname_unzipped = Path(testdata_fname.as_posix().replace('.zip', '.SAFE'))
+
+    if not testdata_fname_unzipped.exists():
+        
+        # download dataset
+        r = requests.get(url, stream=True)
+        r.raise_for_status()
+        with open(testdata_fname, 'wb') as fd:
+            for chunk in r.iter_content(chunk_size=5096):
+                fd.write(chunk)
+
+        # unzip dataset
+        unzip_datasets(download_dir=testdata_dir)
+
     processing_level = ProcessingLevels.L2A
 
     reader.read_from_safe(
-        in_dir=testdata,
+        in_dir=testdata_fname_unzipped,
         processing_level=processing_level,
         in_file_aoi=in_file_aoi,
         band_selection=band_selection
     )
+
+    # check the RGB
+    fig_rgb = reader.plot_rgb()
+
+    # and the false-color near-infrared
+    fig_nir = reader.plot_false_color_infrared()
+
+    # check the scene classification layer
+    fig_scl = reader.plot_scl()
+
+    reader.resample(target_resolution=10, resampling_method=cv2.INTER_CUBIC)
+    reader.calc_vi(vi='TCARI_OSAVI')
+

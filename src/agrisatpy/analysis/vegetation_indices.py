@@ -10,8 +10,6 @@ Created on Nov 24, 2021
 
 import numpy as np
 
-from agrisatpy.utils.io import Sat_Data_Reader
-
 
 class VegetationIndices(object):
     """generic vegetation indices"""
@@ -28,7 +26,7 @@ class VegetationIndices(object):
     swir_1 = 'swir_1'
     swir_2 = 'swir_2'
 
-    def __init__(self, reader: Sat_Data_Reader):
+    def __init__(self, reader):
         """
         :param reader:
             any class inheriting from Sat_Data_Reader
