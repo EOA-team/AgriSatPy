@@ -11,6 +11,12 @@ class ProcessingLevels(Enum):
     L1C = 'LEVEL1C'
     L2A = 'LEVEL2A'
 
+# Sentinel-2 processing levels as defined in the metadatabase
+ProcessingLevelsDB = {
+    'L1C' : 'Level-1C',
+    'L2A' : 'Level-2A'
+}
+
 
 # native spatial resolution of the S2 bands
 band_resolution = {

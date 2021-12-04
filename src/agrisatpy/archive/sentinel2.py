@@ -22,9 +22,12 @@ from pathlib import Path
 
 from agrisatpy.config import Sentinel2
 from agrisatpy.utils.decorators import check_processing_level
+from agrisatpy.utils.exceptions import RegionNotFoundError
+from agrisatpy.utils.exceptions import ArchiveCreationError
 from agrisatpy.downloader.sentinel2.creodias import query_creodias
 from agrisatpy.downloader.sentinel2.creodias import download_datasets
 from agrisatpy.downloader.sentinel2.creodias import ProcessingLevels
+from agrisatpy.utils.constants.sentinel2 import ProcessingLevelsDB
 from agrisatpy.config import get_settings
 
 
@@ -35,18 +38,8 @@ logger = Settings.logger
 DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
 engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
 
-# Sentinel-2 processing levels as defined in the metadatabase
-ProcessingLevelsDB = {
-    'L1C' : 'Level-1C',
-    'L2A' : 'Level-2A'
-}
-
 # object with information about Sentinel-2
 s2 = Sentinel2()
-
-
-class ArchiveCreationError(Exception):
-    pass
 
 
 @check_processing_level
@@ -176,9 +169,11 @@ def pull_from_creodias(
         end_date: date,
         processing_level: ProcessingLevels,
         path_out: Path,
-        aoi_file: Path
-) -> None:
+        region: str
+    ) -> pd.DataFrame:
     '''
+    Checks if CREODIAS has Sentinel-2 datasets not yet available locally
+    and downloads these datasets.
 
     :param start_date:
         Start date of the database & creodias query
@@ -188,23 +183,29 @@ def pull_from_creodias(
         Select S2 processing level L1C or L2A
     :param path_out:
         Out directory where the additional data from creodias should be downloaded
-    :param aoi_file:
-        Bounding box file. Gets automatically projected to WGS84 in well-known-text (WKT)
+    :param region:
+        Region identifier of the Sentinel-2 archive. By region we mean a
+        geographic extent (bounding box) in which the data is organized. The bounding
+        box extent is taken from the metadata base based on the region identifier.
     :return:
-        None; automatically downloads the found Datasets on Creodias that are not yet in local DB.
+        dataframe with downloaded datasets
     '''
 
     # select processing level for DB query
     processing_level_db = ProcessingLevelsDB[processing_level.name]
 
-    # read shapefile defining the bounds of your region of interest
-    bbox_data = gpd.read_file(aoi_file)
+    # query database to get the bounding box of the selected region
+    query = f"""
+    SELECT
+        region_geom AS geom
+    WHERE
+        region_identifier = {region};
+    """
+    region_gdf = gpd.read_postgis(query, engine)
+    if region_gdf.empty:
+        raise RegionNotFoundError(f'{region} is not defined in the metadata base!')
 
-    # project to geographic coordinates (required for API query)
-    bbox_data.to_crs(4326, inplace=True)
-    # use the first feature (all others are ignored)
-    bounding_box = bbox_data.geometry.iloc[0]
-
+    bounding_box = region_gdf.geometry.iloc[0]
     bounding_box_wkt = bounding_box.to_wkt()
 
     # local database query
@@ -258,3 +259,5 @@ def pull_from_creodias(
 
     # download those scenes not available in the local database from Creodias
     download_datasets(datasets_filtered, path_out)
+
+    return datasets_filtered

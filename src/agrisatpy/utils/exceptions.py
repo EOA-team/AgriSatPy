@@ -29,3 +29,11 @@ class ArchiveNotFoundError(Exception):
 
 class MetadataNotFoundError(Exception):
     pass
+
+class RegionNotFoundError(Exception):
+    pass
+
+class ArchiveCreationError(Exception):
+    pass
+
+
