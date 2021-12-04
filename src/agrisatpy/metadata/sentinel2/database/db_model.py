@@ -29,7 +29,7 @@ class Regions(Base):
     __tablename__ = 'sentinel2_regions'
 
     region_uid = Column(String, nullable=False, primary_key=True)
-    region_geom = Column(Geometry(geometry_type='POLYGON',srid=4326), nullable=False)
+    geom = Column(Geometry(geometry_type='POLYGON',srid=4326), nullable=False)
 
 
 class S2_Raw_Metadata(Base):
