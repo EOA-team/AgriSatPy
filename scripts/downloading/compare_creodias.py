@@ -120,12 +120,12 @@ def compare_creodias(
 
 if __name__ == '__main__':
 
-    # debug
-    from agrisatpy.metadata.sentinel2.database import add_region
-
-    aoi_file = Path("/home/graflu/public/Evaluation/Sentinel-2/Documentation/CH_Polygon/CH_bounding_box_wgs84.shp")
-    region = 'CH'
-    add_region(region_identifier=region, region_file=aoi_file)
+    # TODO -> move to archive creation
+    # from agrisatpy.metadata.sentinel2.database import add_region
+    #
+    # aoi_file = Path("/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Documentation/CH_Polygon/CH_bounding_box_wgs84.shp")
+    # region = 'CH'
+    # add_region(region_identifier=region, region_file=aoi_file)
 
     # define inputs
     processing_level = ProcessingLevels.L2A

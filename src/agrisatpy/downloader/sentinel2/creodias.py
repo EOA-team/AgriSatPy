@@ -93,7 +93,7 @@ def query_creodias(
 
     # get *.SAFE dataset names
     datasets['dataset_name'] = datasets.properties.apply(
-        lambda x: x['productIdentifier'].split('/')[-1].replace('SAFE', 'zip')
+        lambda x: x['productIdentifier'].split('/')[-1]
     )
 
     return datasets
@@ -166,7 +166,7 @@ def download_datasets(
         response.raise_for_status()
 
         # download the data using the iter_content method (writes chunks to disk)
-        fname = dataset.dataset_name
+        fname = dataset.dataset_name.replace('SAFE', 'zip')
         logger.info(f'Starting downloading {fname} ({idx+1}/{datasets.shape[0]})')
         with open(fname, 'wb') as fd:
             for chunk in response.iter_content(chunk_size=CHUNK_SIZE):

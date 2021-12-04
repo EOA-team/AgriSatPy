@@ -28,6 +28,8 @@ from agrisatpy.downloader.sentinel2.creodias import query_creodias
 from agrisatpy.downloader.sentinel2.creodias import download_datasets
 from agrisatpy.downloader.sentinel2.creodias import ProcessingLevels
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevelsDB
+from agrisatpy.metadata.sentinel2.database import Regions
+from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
 from agrisatpy.config import get_settings
 
 
@@ -197,23 +199,25 @@ def pull_from_creodias(
     # query database to get the bounding box of the selected region
     query = f"""
     SELECT
-        region_geom AS geom
+        geom
+    FROM
+        {Regions.__tablename__}
     WHERE
-        region_identifier = {region};
+        region_uid = '{region}';
     """
     region_gdf = gpd.read_postgis(query, engine)
     if region_gdf.empty:
         raise RegionNotFoundError(f'{region} is not defined in the metadata base!')
 
     bounding_box = region_gdf.geometry.iloc[0]
-    bounding_box_wkt = bounding_box.to_wkt()
+    bounding_box_wkt = bounding_box.wkt
 
     # local database query
     query = f"""
         SELECT
             product_uri, cloudy_pixel_percentage
         FROM
-            sentinel2_raw_metadata
+            {S2_Raw_Metadata.__tablename__}
         WHERE
             sensing_time between '{start_date}' and '{end_date}'
         AND
@@ -258,6 +262,7 @@ def pull_from_creodias(
     datasets_filtered = datasets[datasets.product_uri.isin(missing_datasets)]
 
     # download those scenes not available in the local database from Creodias
+    # TODO: debug from here
     download_datasets(datasets_filtered, path_out)
 
     return datasets_filtered
