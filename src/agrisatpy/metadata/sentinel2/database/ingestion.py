@@ -53,7 +53,7 @@ def add_region(
     # use the first feature (all others are ignored)
     bounding_box = region_data.geometry.iloc[0]
     # the insert requires extended Well Know Text (eWKT)
-    bounding_box_ewkt = f'SRID=4326;{bounding_box.to_wkt()}'
+    bounding_box_ewkt = f'SRID=4326;{bounding_box.wkt}'
 
     insert_dict = {
         'region_uid': region_identifier,

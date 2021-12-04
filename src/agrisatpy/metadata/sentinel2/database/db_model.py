@@ -169,5 +169,5 @@ def create_tables() -> None:
 
 
 if __name__ == '__main__':
-    
+
     create_tables()
