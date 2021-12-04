@@ -57,7 +57,8 @@ class SCL_Classes(object):
     https://sentinels.copernicus.eu/web/sentinel/technical-guides/sentinel-2-msi/level-2a/algorithm
     (last access on 27.05.2021)
     """
-    def values(self):
+    @classmethod
+    def values(cls):
         values = {
             0 : 'no_data',
             1 : 'saturated_or_defective',
@@ -73,4 +74,26 @@ class SCL_Classes(object):
             11: 'snow'
             }
         return values
+
+    @classmethod
+    def colors(cls):
+        """
+        Scene Classification Layer colors trying to mimic the default
+        color map from ESA
+        """
+        scl_colors = [
+                'black',            # nodata
+                'red',              # saturated or defective
+                'dimgrey',          # dark area pixels
+                'chocolate',        # cloud shadows
+                'yellowgreen',      # vegetation
+                'yellow',           # bare soil
+                'blue',             # open water
+                'gray',             # unclassified
+                'darkgrey',         # clouds medium probability
+                'gainsboro',        # clouds high probability
+                'mediumturquoise',  # thin cirrus
+                'magenta'           # snow
+            ]
+        return scl_colors
 
