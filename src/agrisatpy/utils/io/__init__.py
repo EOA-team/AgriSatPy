@@ -23,6 +23,7 @@ from typing import Optional
 from typing import Dict
 from typing import List
 from typing import Union
+from matplotlib.colors import ListedColormap
 from matplotlib.pyplot import Figure
 from matplotlib.figure import figaspect
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -32,6 +33,7 @@ from agrisatpy.analysis.vegetation_indices import VegetationIndices
 from agrisatpy.utils.exceptions import NotProjectedError, ResamplingFailedError
 from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.utils.reprojection import check_aoi_geoms
+from enum import unique
 
 
 class Sat_Data_Reader(object):
@@ -136,8 +138,10 @@ class Sat_Data_Reader(object):
     def plot_band(
             self,
             band_name: str,
-            colormap: Optional[str]='gray',
-            discrete_values: Optional[bool]=False
+            colormap: Optional[str] = 'gray',
+            discrete_values: Optional[bool] = False,
+            user_defined_colors: Optional[ListedColormap] = None,
+            user_defined_ticks: Optional[List[Union[str,int,float]]] = None
         ) -> Figure:
         """
         plots a custom band using matplotlib.pyplot.imshow and the
@@ -159,6 +163,12 @@ class Sat_Data_Reader(object):
             (i.e., ordinary spectral data). If False assumes that the
             data only takes a limited set of discrete values (e.g., in case
             of a classification or mask layer).
+        :param user_defined_colors:
+            possibility to pass a custom, i.e., user-created color map object
+            not part of the standard matplotlib color maps. If passed, the
+            ``colormap`` argument is ignored.
+        :param user_defined_ticks:
+            list of ticks to overwrite matplotlib derived defaults (optional).
         :return:
             matplotlib figure object with the band data
             plotted as map
@@ -238,10 +248,13 @@ class Sat_Data_Reader(object):
             clear=True
         )
 
+        # get colormap
+        cmap = user_defined_colors
+        if cmap is None:
+            cmap = plt.cm.get_cmap(colormap)
+
         # check if data is continuous (spectral) or discrete (np.unit8)
         if discrete_values:
-
-            cmap = plt.cm.get_cmap(colormap)
             # define the bins and normalize
             unique_values = np.unique(band_data)
             norm = mpl.colors.BoundaryNorm(unique_values, cmap.N)
@@ -263,14 +276,18 @@ class Sat_Data_Reader(object):
                 vmin=lower_bound,
                 vmax=upper_bound,
                 extent=[bounds.left, bounds.right, bounds.bottom, bounds.top],
-                cmap=colormap
+                cmap=cmap
             )
 
         # add colorbar (does not apply in RGB case)
         if colormap is not None:
             divider = make_axes_locatable(ax)
             cax = divider.append_axes('right', size='5%', pad=0.05)
-            fig.colorbar(img, cax=cax, orientation='vertical')
+            cb = fig.colorbar(img, cax=cax, orientation='vertical')
+            # overwrite ticker if user defined ticks provided
+            if user_defined_ticks is not None:
+                cb.ax.locator_params(nbins=len(user_defined_ticks))
+                cb.set_ticklabels(user_defined_ticks)     
 
         if colormap is None:
             if rgb_plot:
