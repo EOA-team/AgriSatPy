@@ -19,7 +19,7 @@ from typing import Union
 
 from agrisatpy.config import get_settings
 from agrisatpy.config import Sentinel2
-from agrisatpy.utils.exceptions import ArchiveNotFoundError
+from agrisatpy.utils.exceptions import ArchiveNotFoundError, BandNotFoundError
 from agrisatpy.utils.exceptions import MetadataNotFoundError
 
 # global definition of spectral bands and their spatial resolution
@@ -56,19 +56,56 @@ def get_S2_bandfiles(
 
 
 def get_S2_sclfile(
-        in_dir: Path
+        in_dir: Path,
+        from_bandstack: Optional[bool]=False,
+        in_file_bandstack: Optional[Path]=None
     ) -> Path:
     '''
-    return the path to the S2 SCL (scene classification file) 20m resolution!
+    return the path to the S2 SCL (scene classification file). The method
+    either searches for the SCL file in .SAFE structure (default, returning
+    SCL file in 20m spatial resolution) or the resampled SCL file in case
+    a ``agrisatpy.processing.resampling`` derived band-stack was passed. 
 
-    :param search_dir 
-        directory containing the SCL band files (jp2000 file).
+    :param in_dir:
+        either .SAFE directory (default use case) or the the directory
+        containing the band-stacked geoTiff files (must have a sub-directory
+        where the SCL files are stored)
+    :param from_bandstack:
+        if False (Default) assumes the data to be in .SAFE format. If True
+        the data must be band-stacked resampled geoTiffs derived from
+        AgriSatPy's processing pipeline
+    :param in_file_bandstack:
+        file name of the bandstack for which to search the SCL file. Must be
+        passed if ``from_bandstack=True``
     :return scl_file:
         SCL file-path
     '''
-    search_pattern = "GRANULE/*/IM*/*/*_SCL_20m.jp2"
-    scl_file = glob.glob(str(in_dir.joinpath(search_pattern)))[0]
-    glob.glob(str(in_dir.joinpath(search_pattern)))[0]
+
+    if not from_bandstack:
+        # take SCL file in 20m spatial resolution
+        search_pattern = str(in_dir.joinpath('GRANULE/*/IM*/*/*_SCL_20m.jp2'))
+
+    else:
+        # check if bandstack file was passed correctly
+        if in_file_bandstack is None:
+            raise ValueError(
+                'If from_banstack then `in_file_bandstack` must not be None'
+            )
+
+        fname_splitted = in_file_bandstack.name.split('_')
+        file_pattern_date = fname_splitted[0]
+        file_pattern_tile = fname_splitted[1]
+        sensor = fname_splitted[3]
+        file_pattern = f'{file_pattern_date}_{file_pattern_tile}_{sensor}_SCL_*.tiff'
+        search_pattern = str(in_dir.joinpath(Settings.SUBDIR_SCL_FILES).joinpath(file_pattern))
+
+    try:
+        scl_file = glob.glob(search_pattern)[0]
+    except Exception as e:
+        raise BandNotFoundError(
+            f'Could not find SCL file based on "{search_pattern}": {e}'
+        )
+        
     return Path(scl_file)
 
 
