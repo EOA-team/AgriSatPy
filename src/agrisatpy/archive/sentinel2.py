@@ -232,6 +232,7 @@ def pull_from_creodias(
 
     # determine max_records and cloudy_pixel_perecentage thresholds from local DB
     max_records = 1.25 * meta_db_df.shape[0]
+    max_records = int(np.round(max_records,0))
     # Creodias has a hard cap of 2001 max_records
     if max_records > 2000:
         max_records = 2000
