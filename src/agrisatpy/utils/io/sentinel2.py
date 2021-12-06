@@ -66,6 +66,7 @@ class S2_Band_Reader(Sat_Data_Reader):
         band_selection_dict = dict((k, s2_band_mapping[k]) for k in band_selection)
         return dict.fromkeys(band_selection_dict.values())
 
+
     def plot_scl(
             self,
             colormap: Optional[str]=''
@@ -525,6 +526,8 @@ if __name__ == '__main__':
     url = 'https://data.mendeley.com/public-files/datasets/ckcxh6jskz/files/e97b9543-b8d8-436e-b967-7e64fe7be62c/file_downloaded'
     
     testdata_dir = Path('/mnt/ides/Lukas/debug/S2_Data')
+    in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/BY_AOI_2019_MNI_EPSG32632.shp')
+
     testdata_fname = testdata_dir.joinpath('S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.zip')
     testdata_fname_unzipped = Path(testdata_fname.as_posix().replace('.zip', '.SAFE'))
 
@@ -545,7 +548,6 @@ if __name__ == '__main__':
     reader.read_from_safe(
         in_dir=testdata_fname_unzipped,
         processing_level=processing_level,
-        in_file_aoi=in_file_aoi,
         band_selection=band_selection
     )
 
@@ -563,7 +565,7 @@ if __name__ == '__main__':
     cloudy_pixels = reader.get_cloudy_pixel_percentage()
 
     # resample SCL
-    reader.resample(target_resolution=10, resampling_method=cv2.INTER_NEAREST)
+    reader.resample(target_resolution=10, pixel_division=True)
 
     # mask the clouds (SCL classes 8,9,10) and cloud shadows (class 3)
     reader.mask_clouds_and_shadows(bands_to_mask=['TCARI_OSAVI'])

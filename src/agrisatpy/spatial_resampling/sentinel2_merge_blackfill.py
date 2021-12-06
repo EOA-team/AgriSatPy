@@ -128,10 +128,10 @@ def get_blackfill(
 
 def merge_split_scenes(
         scene_1: Path,
-       scene_2: Path,
-       out_dir: Path,
-       is_L2A: bool,
-       **kwargs
+        scene_2: Path,
+        out_dir: Path,
+        is_L2A: bool,
+        **kwargs
     ) -> dict:
     """
     merges two datasets of the same sensing date and tile split by the datatake beginning/

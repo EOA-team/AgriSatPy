@@ -167,8 +167,7 @@ def resample_and_stack_S2(
     out_sensor = s2_uid.split("_")[0] # sensor (S2A / S2B)
     out_method = str(interpolation).split(".")[-1] # resampling method
     out_resolution = str(int(target_resolution)) + "m" # resolution
-    out_file = out_date + "_" + out_tile + "_" + out_level + "_" + \
-        out_sensor + "_" + out_method + "_" + out_resolution + ".tiff"
+    out_file = 
 
     # create sub-folder for RGB preview images
     rgb_subdir = os.path.join(out_dir, "rgb_previews")

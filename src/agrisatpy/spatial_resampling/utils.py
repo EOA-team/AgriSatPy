@@ -2,6 +2,7 @@
 Created on Jul 9, 2021
 
 @author:     Lukas Graf (D-USYS, ETHZ)
+
 @purpose:    Some auxiliary functions for spatial resampling of raster data
 '''
 
@@ -32,6 +33,7 @@ def upsample_array(
     :return out_array:
         upsampled array with pixel values in target spatial resolution
     """
+
     # check inputs
     if scaling_factor < 1:
         raise ValueError('scaling_factor must be greater/equal 1')

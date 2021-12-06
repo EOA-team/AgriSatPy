@@ -21,10 +21,33 @@ from agrisatpy.config import get_settings
 from agrisatpy.config import Sentinel2
 from agrisatpy.utils.exceptions import ArchiveNotFoundError, BandNotFoundError
 from agrisatpy.utils.exceptions import MetadataNotFoundError
+from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 
 # global definition of spectral bands and their spatial resolution
 s2 = Sentinel2()
 Settings = get_settings()
+
+
+def get_S2_processing_level(
+        dot_safe_name: str
+    ) -> ProcessingLevels:
+    """
+    Determines the processing level of a dataset in .SAFE format
+    based on the file naming
+
+    :param dot_safe_name:
+        name of the .SAFE dataset
+    :return:
+        processing level of the dataset
+    """
+    if dot_safe_name.find('MSIL1C'):
+        return ProcessingLevels.L1C
+    elif dot_safe_name.find('MSIL2A'):
+        return ProcessingLevels.L2A
+    else:
+        raise ValueError(
+            f'Could not determine processing level for {dot_safe_name}'
+        )
 
 
 def get_S2_bandfiles(

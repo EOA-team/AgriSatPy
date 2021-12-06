@@ -33,7 +33,7 @@ from agrisatpy.analysis.vegetation_indices import VegetationIndices
 from agrisatpy.utils.exceptions import NotProjectedError, ResamplingFailedError
 from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.utils.reprojection import check_aoi_geoms
-from enum import unique
+from agrisatpy.spatial_resampling import upsample_array
 
 
 class Sat_Data_Reader(object):
@@ -53,6 +53,7 @@ class Sat_Data_Reader(object):
         """
 
         return self._from_bandstack
+
 
     def add_band(self, band_name: str, band_data: np.array):
         """
@@ -370,7 +371,8 @@ class Sat_Data_Reader(object):
     def resample(
             self,
             target_resolution: Union[int,float],
-            resampling_method: Optional[int] = cv2.INTER_LINEAR,
+            resampling_method: Optional[int] = cv2.INTER_CUBIC,
+            pixel_division: Optional[bool] = False,
             band_selection: Optional[List[str]] = [],
             bands_to_exclude: Optional[List[str]] = []
         ) -> None:
@@ -392,7 +394,16 @@ class Sat_Data_Reader(object):
             target spatial resolution in image projection (i.e., pixel size
             in meters)
         :param resampling_method:
-            opencv resampling method. Per default linear interpolation is used
+            opencv resampling method. Per default bicubic interpolation is used
+            (``cv2.INTER_CUBIC``)
+        :param pixel_division:
+            if set to True then pixel values will be divided into n*n subpixels 
+            (only even numbers) depending on the target resolution. Takes the 
+            current band resolution (for example 20m) and checks against the desired
+            target_resolution and applies a scaling_factor. 
+            This works, however, only if the spatial resolution is increased, e.g.
+            from 20 to 10m. The ``resampling_method`` argument is ignored then.
+            Default value is False.
         :param band_selection:
             list of bands to consider. Per default all bands are used but
             not processed if the bands already have the desired spatial
@@ -466,15 +477,25 @@ class Sat_Data_Reader(object):
             # if so, replace the masked values with NaN
             band_data = self._masked_array_to_nan(band_data=band_data)
 
-            # resample the array using opencv resize
-            try:
-                res = cv2.resize(
-                    band_data,
-                    dsize=dim_resampled,
-                    interpolation=resampling_method
+            # resample the array using opencv resize or pixel_division
+            # TODO: this might cause minor shape mis-matches based when
+            # working on an AOI
+            if pixel_division:
+                nrows_current = int(np.round((bounds.top - bounds.bottom) / meta['transform'].a,0))
+                scaling_factor = int(np.ceil(nrows_resampled / nrows_current))
+                res = upsample_array(
+                    in_array=band_data,
+                    scaling_factor=scaling_factor
                 )
-            except Exception as e:
-                raise ResamplingFailedError(e)
+            else:
+                try:
+                    res = cv2.resize(
+                        band_data,
+                        dsize=dim_resampled,
+                        interpolation=resampling_method
+                    )
+                except Exception as e:
+                    raise ResamplingFailedError(e)
 
             # overwrite entries in self.data
             self.data[band] = res
