@@ -157,13 +157,17 @@ def download_datasets(
 
     # loop over datasets to download them sequentially
     for idx, dataset in datasets.iterrows():
-        dataset_url = dataset.properties['services']['download']['url']
-        response = requests.get(
-            dataset_url,
-            headers={'Authorization': f'Bearer {keycloak_token}'},
-            stream=True
-        )
-        response.raise_for_status()
+        try:
+            dataset_url = dataset.properties['services']['download']['url']
+            response = requests.get(
+                dataset_url,
+                headers={'Authorization': f'Bearer {keycloak_token}'},
+                stream=True
+            )
+            response.raise_for_status()
+        except Exception as e:
+            logger.error(f'Could not download {dataset.product_uri}: {e}')
+            continue
 
         # download the data using the iter_content method (writes chunks to disk)
         fname = dataset.dataset_name.replace('SAFE', 'zip')
