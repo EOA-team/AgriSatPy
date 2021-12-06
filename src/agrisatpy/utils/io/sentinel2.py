@@ -84,6 +84,12 @@ class S2_Band_Reader(Sat_Data_Reader):
             plotted as map
         """
 
+        # check if SCL is a masked array
+        # if so, fill masked values with no-data class
+        if isinstance(self.data['scl'], np.ma.core.MaskedArray):
+            self.data['scl'] = self.data['scl'].filled(
+                [k for k, v in SCL_Classes.values().items() if v == 'no_data'])
+
         # make a color map of fixed colors
         if colormap == '':
             
@@ -316,7 +322,7 @@ class S2_Band_Reader(Sat_Data_Reader):
                         gdf_aoi.geometry,
                         crop=True, 
                         all_touched=True, # IMPORTANT!
-                        indexes=idx+1,
+                        indexes=1,
                         filled=False
                     )
 
@@ -487,7 +493,7 @@ if __name__ == '__main__':
 
     reader = S2_Band_Reader()
     band_selection = ['B02', 'B03', 'B04', 'B05', 'B07', 'B08']
-    in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/BY_AOI_2019_CLOUDS_EPSG32632.shp')
+    in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
 
     # bandstack testcase
     fname_bandstack = Path('/home/graflu/git/agrisatpy/data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
@@ -496,7 +502,7 @@ if __name__ == '__main__':
     reader.read_from_bandstack(
         fname_bandstack=fname_bandstack,
         processing_level=processing_level,
-        band_selection=band_selection
+        in_file_aoi=in_file_aoi
     )
     fig_scl = reader.plot_scl()
     fig_blue = reader.plot_band('blue')
