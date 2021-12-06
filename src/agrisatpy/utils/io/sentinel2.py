@@ -148,16 +148,15 @@ class S2_Band_Reader(Sat_Data_Reader):
         ) -> float:
         """
         Calculates the cloudy pixel percentage [0-100] for the current AOI
-        (L2A processing level, only). The cloudy pixel percentage is
-        the number of pixels classified as clouds or cloud shadows
-        (using SCL) compared to the overall number of pixels. The cloudy
-        pixel percentage does not take into account pixels set to NaN!
+        (L2A processing level, only) considering all SCL classes that are
+        not NoData.
 
         :param cloud_classes:
             list of SCL values to be considered as clouds. By default,
             all three cloud classes and cloud shadows are considered.
         :return:
-            cloudy pixel percentage in the AOI [0-100%]
+            cloudy pixel percentage in the AOI [0-100%] related to the
+            overall number of valid pixels (SCL != no_data)
         """
 
         # check if SCL is available
@@ -166,15 +165,26 @@ class S2_Band_Reader(Sat_Data_Reader):
                 'Could not find scene classification layer. Is scene L2A?'
             )
 
+        # check if SCL is a masked array
+        # if so, fill masked values with no-data class
+        if isinstance(self.data['scl'], np.ma.core.MaskedArray):
+            self.data['scl'] = self.data['scl'].filled(
+                [k for k, v in SCL_Classes.values().items() if v == 'no_data'])
+
         # sum up pixels labeled as clouds or cloud shadows
         unique, counts = np.unique(self.data['scl'], return_counts=True)
         class_occurence = dict(zip(unique, counts))
         cloudy_pixels = [x[1] for x in class_occurence.items() if x[0] in cloud_classes]
+        scl_nodata = 0
+        non_cloudy_pixels = [
+            x[1] for x in class_occurence.items() if x[0] not in cloud_classes \
+            and x[0] != scl_nodata
+        ]
         num_cloudy_pixels = sum(cloudy_pixels)
+        num_noncloudy_pixels = sum(non_cloudy_pixels)
 
-        # relate it to the overall number of pixels in the AOI
-        nrows, ncols = self.data['scl'].shape
-        cloudy_pixel_percentage = num_cloudy_pixels / (nrows *ncols) * 100
+        # relate it to the overall number of valid pixels in the AOI
+        cloudy_pixel_percentage = (num_cloudy_pixels / num_noncloudy_pixels) * 100
 
         return cloudy_pixel_percentage
         
@@ -505,6 +515,7 @@ if __name__ == '__main__':
         in_file_aoi=in_file_aoi
     )
     fig_scl = reader.plot_scl()
+    cc = reader.get_cloudy_pixel_percentage()
     fig_blue = reader.plot_band('blue')
 
     # L2A testcase
