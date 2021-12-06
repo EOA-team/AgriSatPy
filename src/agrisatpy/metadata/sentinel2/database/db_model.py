@@ -116,8 +116,8 @@ class S2_Raw_Metadata(Base):
     mtd_msi_xml = Column(Text, nullable=False)
 
     # storage location
-    storage_device_ip = Column(String, nullable=False)
-    storage_device_ip_alias = Column(String, nullable=False) # Linux
+    storage_device_ip = Column(String)
+    storage_device_ip_alias = Column(String) # might be necessary
     storage_share = Column(String, nullable=False)
     path_type = Column(String, nullable=False, comment='type of the path (e.g., POSIX-Path)')
 
