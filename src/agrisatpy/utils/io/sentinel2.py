@@ -517,6 +517,9 @@ if __name__ == '__main__':
     fig_scl = reader.plot_scl()
     cc = reader.get_cloudy_pixel_percentage()
     fig_blue = reader.plot_band('blue')
+    
+    blue_band = reader.get_band(band_name='blue')
+    band_names = reader.get_bandnames()
 
     # L2A testcase
     url = 'https://data.mendeley.com/public-files/datasets/ckcxh6jskz/files/e97b9543-b8d8-436e-b967-7e64fe7be62c/file_downloaded'

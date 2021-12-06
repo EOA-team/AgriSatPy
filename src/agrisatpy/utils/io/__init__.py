@@ -84,7 +84,45 @@ class Sat_Data_Reader(object):
                     # leave loop and return
                     break
 
-                
+
+    def get_band(
+            self,
+            band_name
+        ) -> np.array:
+        """
+        Returns the ``numpy.array`` containing the data for one band
+
+        :param band_name:
+            name of the band to extract
+        :return:
+            band data as ``numpy.array`` (two dimensional)
+        """
+
+        # check if band_name is available
+        if not band_name in self.data.keys():
+            raise BandNotFoundError(f'{band_name} not found in data dict')
+
+        # return np array
+        return self.data[band_name]
+
+
+    def get_bandnames(self) -> List[str]:
+        """
+        Returns a list of all available band names. It is assumed that
+        a numpy array attribute indicates a band
+
+        :return:
+            list of available band names
+        """
+
+        band_names = []
+        for key, value in self.data.items():
+            if isinstance(value, np.ndarray):
+                band_names.append(key)
+
+        return band_names
+
+      
     @staticmethod
     def _masked_array_to_nan(band_data: np.array) -> np.array:
         """
@@ -521,7 +559,7 @@ class Sat_Data_Reader(object):
         # loop over bands specified and mask the invalid pixels
         for band_to_mask in bands_to_mask:
             if band_to_mask not in self.data.keys():
-                 raise BandNotFoundError(f'{band_to_mask} is not in data dict')
+                raise BandNotFoundError(f'{band_to_mask} is not in data dict')
             # set values to NaN where tmp is zero
             self.data[band_to_mask][tmp == 0] = np.nan
         
