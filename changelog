@@ -4,3 +4,7 @@ Release v1.2
 - new generic function to extract raster values for polygon features for any single- or multi-band raster
 - bugfix in buffer polygon function regarding the handling of multi-polygons
 - improved filtering functionality for the CREODIAS downloader (filter by cloud cover threshold)
+- new features for reading Sentinel-2 and other image data into a dict-like structure supporting AgriSatPy-derived bandstacks and .SAFE datasets
+- added fast and generic vegetation index calculation
+- added fast and generic plotting of spectral and discrete raster band data using matplotlib
+- database model has been extended to support concept of geographic regions for organizing the SAT archive by geographic extent
