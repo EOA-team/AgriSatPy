@@ -24,57 +24,12 @@ DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{
 engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
 
 
-class S2_Raw_Metadata_QL(Base):
+class Regions(Base):
 
-    __tablename__ = 'sentinel2_raw_metadata_ql'
-    
-    # Noise Model Information per band (required for uncertainty)
-    # parameter alpha
-    datatakeidentifier = Column(String, nullable=False, primary_key=True)
+    __tablename__ = 'sentinel2_regions'
 
-    alpha_b01 = Column(Float)
-    alpha_b02 = Column(Float)
-    alpha_b03 = Column(Float)
-    alpha_b04 = Column(Float)
-    alpha_b05 = Column(Float)
-    alpha_b06 = Column(Float)
-    alpha_b07 = Column(Float)
-    alpha_b08 = Column(Float)
-    alpha_b8a = Column(Float)
-    alpha_b09 = Column(Float)
-    alpha_b10 = Column(Float)
-    alpha_b11 = Column(Float)
-    alpha_b12 = Column(Float)
-
-    # parameter beta
-    beta_b01 = Column(Float)
-    beta_b02 = Column(Float)
-    beta_b03 = Column(Float)
-    beta_b04 = Column(Float)
-    beta_b05 = Column(Float)
-    beta_b06 = Column(Float)
-    beta_b07 = Column(Float)
-    beta_b08 = Column(Float)
-    beta_b8a = Column(Float)
-    beta_b09 = Column(Float)
-    beta_b10 = Column(Float)
-    beta_b11 = Column(Float)
-    beta_b12 = Column(Float)
-
-    # physical gain factors per spectral band
-    physical_gain_b01 = Column(Float)
-    physical_gain_b02 = Column(Float)
-    physical_gain_b03 = Column(Float)
-    physical_gain_b04 = Column(Float)
-    physical_gain_b05 = Column(Float)
-    physical_gain_b06 = Column(Float)
-    physical_gain_b07 = Column(Float)
-    physical_gain_b08 = Column(Float)
-    physical_gain_b8a = Column(Float)
-    physical_gain_b09 = Column(Float)
-    physical_gain_b10 = Column(Float)
-    physical_gain_b11 = Column(Float)
-    physical_gain_b12 = Column(Float)
+    region_uid = Column(String, nullable=False, primary_key=True)
+    geom = Column(Geometry(geometry_type='POLYGON',srid=4326), nullable=False)
 
 
 class S2_Raw_Metadata(Base):
@@ -161,8 +116,8 @@ class S2_Raw_Metadata(Base):
     mtd_msi_xml = Column(Text, nullable=False)
 
     # storage location
-    storage_device_ip = Column(String, nullable=False)
-    storage_device_ip_alias = Column(String, nullable=False) # Linux
+    storage_device_ip = Column(String)
+    storage_device_ip_alias = Column(String) # might be necessary
     storage_share = Column(String, nullable=False)
     path_type = Column(String, nullable=False, comment='type of the path (e.g., POSIX-Path)')
 
@@ -214,5 +169,5 @@ def create_tables() -> None:
 
 
 if __name__ == '__main__':
-    
+
     create_tables()

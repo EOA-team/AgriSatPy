@@ -6,8 +6,22 @@ Created on Oct 6, 2021
 
 import math
 import numpy as np
+import pandas as pd
 from typing import Optional
 from typing import List
+from pathlib import Path
+import rasterio as rio
+from sqlalchemy import create_engine
+import glob
+
+from agrisatpy.config import get_settings
+from agrisatpy.uncertainty.sentinel2 import calc_temporal_degradation
+
+Settings = get_settings()
+logger = Settings.logger
+
+DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
+engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
 
 
 # define constants from S2-RUT

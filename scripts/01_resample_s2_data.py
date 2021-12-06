@@ -22,7 +22,7 @@ if __name__ == '__main__':
     tile = 'T32TLT'
     region = 'CH'
     processing_level = 'L2A'
-    
+
     date_start = date(2017,11,1)
     date_end = date(2017,11,1)
     
@@ -80,4 +80,5 @@ if __name__ == '__main__':
 
     # save to CSV in addition
     metadata.to_csv(target_s2_archive.joinpath('metadata.csv'))
+
     failed_datasets.to_csv(target_s2_archive.joinpath('failed_datasets.csv'))

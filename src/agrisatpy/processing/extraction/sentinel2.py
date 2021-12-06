@@ -25,7 +25,6 @@ import pandas as pd
 from agrisatpy.processing.extraction.utils import buffer_fieldpolygons
 from agrisatpy.processing.extraction.utils import DataNotFoundError
 from agrisatpy.processing.extraction.utils import compute_parcel_stat
-
 from agrisatpy.utils.sentinel2 import get_S2_bandfiles
 from agrisatpy.utils.sentinel2 import get_S2_sclfile
 from agrisatpy.config.sentinel2 import Sentinel2
@@ -119,12 +118,13 @@ def S2singlebands2table(
     try:
         jp2_files = get_S2_bandfiles(
             in_dir=in_dir,
-            resolution=resolution
+            resolution=resolution,
+            is_L2A=is_L2A
         )
     except Exception as e:
         raise DataNotFoundError(f'Could not find Sentinel-2 JPEG2000 files: {e}')
-    # get the file with SCL (scene classification)
-    if is_L2A:
+    # get the file with SCL (scene classification); only in 20m resolution
+    if is_L2A and resolution == 20:
         try:
             scl_file = get_S2_sclfile(in_dir = in_dir)
         except Exception as e:
@@ -147,15 +147,21 @@ def S2singlebands2table(
     drop_multipolygons = kwargs.get('drop_multipolygons', True)
 
     bandlist = []
+    file_list = []
     for filename in jp2_files:
+        filename = str(filename)
         if is_L2A:
             bandname = filename.split(os.sep)[-1].split(".")[0].split("_")[-2]
         else:
             bandname = filename.split(os.sep)[-1].split(".")[0].split("_")[-1]
             # if the band does not match the spatial resolution skip it
             if bandname not in bands_to_select: continue
-        bandlist.append(bandname) 
+        bandlist.append(bandname)
+        file_list.append(filename)
 
+    # keep only bands matching the selected spatial resolution
+    jp2_files = file_list
+    
     # read the shapefile that contains the polyons
     try:
         if in_file_polys != '':
@@ -260,8 +266,8 @@ def S2singlebands2table(
             per_ID_df["y_coord"] = flat_y_coords
             
             # ======== Get SCL class per pixel ==========
-            # works only for is_L2A processing level
-            if is_L2A:
+            # works only for is_L2A processing level (and 20m resolution)
+            if is_L2A and resolution == 20:
                 with rio.open(scl_file) as src:
                     shape = gpd.GeoDataFrame(feature[1]).transpose()
                     
@@ -295,8 +301,8 @@ def S2singlebands2table(
         # append to full DF holding all field_IDs
         full_DF.append(per_ID_df)
 
-    # coerce parcel statistic to Dataframe (is_L2A only)
-    if is_L2A:
+    # coerce parcel statistic to Dataframe (is_L2A only and 20m resolution)
+    if is_L2A and resolution == 20:
 
         stat_DF = pd.DataFrame(parcel_statistics)
         stat_DF[id_column] = stat_DF[id_column]
@@ -314,7 +320,7 @@ def S2singlebands2table(
 
     # ========= filter out clouds based on SCL ================
     # works for is_L2A data only
-    if is_L2A:
+    if is_L2A and resolution == 20:
         out_DF = out_DF.loc[out_DF["scl_class"] != nodata_scl]
     if filter_clouds and is_L2A:
         out_DF = out_DF.loc[~out_DF["scl_class"].isin(scl_2_filterout)]
@@ -322,7 +328,8 @@ def S2singlebands2table(
     # Append sensing product_date of S2 image
     # YYYY, MM, DD = 2020, 4, 14  # debug
     out_DF["date"] = product_date
-    if is_L2A: stat_DF["date"] = product_date
+    if is_L2A and resolution == 20:
+        stat_DF["date"] = product_date
 
     return out_DF, stat_DF
 

@@ -36,18 +36,12 @@ from agrisatpy.utils import reconstruct_path
 from agrisatpy.config import get_settings
 from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
 
+
 Settings = get_settings()
 DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
 engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
 session = sessionmaker(bind=engine)()
 logger = Settings.logger
-
-
-class ArchiveNotFoundError(Exception):
-    pass
-
-class MetadataNotFoundError(Exception):
-    pass
 
 
 def do_parallel(
@@ -281,7 +275,6 @@ def exec_parallel(target_s2_archive: Path,
     bandstack_meta = pd.DataFrame(result)
 
     # merge blackfill scenes (data take issue) if any
-    # TODO: this section is for sure buggy and there is a problem in the datamodel...
     if not meta_blackfill.empty:
         logger.info('Starting merging of blackfill scenes')
         # after regular scene processsing, process the blackfill scenes single-threaded

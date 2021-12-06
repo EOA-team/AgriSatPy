@@ -5,6 +5,9 @@ Created on Aug 30, 2021
 '''
 
 import pandas as pd
+import geopandas as gpd
+
+from pathlib import Path
 from typing import Optional
 from typing import List
 from sqlalchemy import create_engine
@@ -13,9 +16,8 @@ from sqlalchemy.orm import sessionmaker
 
 from agrisatpy.metadata.sentinel2.database.db_model import S2_Raw_Metadata
 from agrisatpy.metadata.sentinel2.database.db_model import S2_Processed_Metadata
-from agrisatpy.metadata.sentinel2.database.db_model import S2_Raw_Metadata_QL
+from agrisatpy.metadata.sentinel2.database.db_model import Regions
 from agrisatpy.config import get_settings
-from copy import deepcopy
 
 
 Settings = get_settings()
@@ -26,46 +28,44 @@ engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
 session = sessionmaker(bind=engine)()
 
 
-def ql_info_to_database(
-        ql_df: pd.DataFrame
-    ) -> None:
+def add_region(
+        region_identifier: str,
+        region_file: Path
+    ):
     """
-    Inserts the optional Sentinel-2 datastrip related
-    metadata (used for uncertainty assessment) into the database
+    Adds a new region to the database. Regions are geograhic extents
+    (aka bounding boxes) used to organize data on the file system in some
+    (human-) meaningful manner and to organize archive query (e.g., from
+    CREODIAS)
 
-    :param ql_df:
-        dataframe with information about noise model parameters
-        alpa and beta, and the physical gain per band and
-        datatakeIdentifier
+    :param region_identifier:
+        unique region identifier (e.g., 'CH' for Switzerland)
+    :param region_file:
+        shapefile or similar vector format defining extent of the region.
+        Will be reprojected to geographic coordinates (WGS84) if it has
+        a different projection.
     """
 
-    ql_df.columns = ql_df.columns.str.lower()
+    # read shapefile defining the bounds of your region of interest
+    region_data = gpd.read_file(region_file)
+    # project to geographic coordinates (required by data model)
+    region_data.to_crs(4326, inplace=True)
+    # use the first feature (all others are ignored)
+    bounding_box = region_data.geometry.iloc[0]
+    # the insert requires extended Well Know Text (eWKT)
+    bounding_box_ewkt = f'SRID=4326;{bounding_box.wkt}'
 
-    # remove possible duplicates (mutliple scenes might belong to the
-    # same datatake identifier)
-    ql_df_clean = deepcopy(ql_df)
-    ql_df_cleaned = ql_df_clean.drop_duplicates(
-        subset='datatakeidentifier', keep="last"
-    )
-    
-    ql_df_cleaned.to_sql(
-        'sentinel2_raw_metadata_ql',
-        con=engine,
-        schema='cs_sat_s1',
-        index=False,
-        if_exists='append'
-    )
+    insert_dict = {
+        'region_uid': region_identifier,
+        'geom': bounding_box_ewkt
+    }
 
-    # TODO: there seems to be a bug here
-    # try:
-    #     for _, record in ql_df.iterrows():
-    #         metadata = record.to_dict()
-    #         session.add(S2_Raw_Metadata_QL(**metadata))
-    #         session.flush()
-    #     session.commit()
-    # except Exception as e:
-    #     logger.error(f'Database INSERT failed: {e}')
-    #     session.rollback()
+    try:
+        session.add(Regions(**insert_dict))
+        session.commit()
+    except Exception as e:
+        logger.error(f'Insert of region "{region_identifier} failed: {e}')
+        session.rollback()
 
 
 def meta_df_to_database(
@@ -102,7 +102,6 @@ def meta_df_to_database(
             logger.error(f'Database INSERT failed: {e}')
             session.rollback()
     session.commit()
-    
 
 
 def metadata_dict_to_database(
@@ -117,7 +116,12 @@ def metadata_dict_to_database(
 
     # convert keys to lower case
     metadata =  {k.lower(): v for k, v in metadata.items()}
-    session.add(S2_Raw_Metadata(**metadata))
+    try:
+        session.add(S2_Raw_Metadata(**metadata))
+        session.flush()
+    except Exception as e:
+        logger.error(f'Database INSERT failed: {e}')
+        session.rollback()
     session.commit()
 
 

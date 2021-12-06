@@ -5,15 +5,15 @@ Created on Sep 20, 2021
 '''
 
 import os
-import json
 import requests
 from datetime import date
-from enum import Enum
 from shapely.geometry import Polygon
 from typing import Optional
 import pandas as pd
 
 from agrisatpy.config import get_settings
+from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
+
 
 Settings = get_settings()
 logger = Settings.logger
@@ -21,10 +21,6 @@ logger = Settings.logger
 CREODIAS_FINDER_URL = 'https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?'
 CHUNK_SIZE = 2096
 
-
-class ProcessingLevels(Enum):
-    L1C = 'LEVEL1C'
-    L2A = 'LEVEL2A'
 
 def query_creodias(
         start_date: date,
@@ -94,6 +90,12 @@ def query_creodias(
     # extract features (=available datasets)
     features = res_json['features']
     datasets = pd.DataFrame(features)
+
+    # get *.SAFE dataset names
+    datasets['dataset_name'] = datasets.properties.apply(
+        lambda x: x['productIdentifier'].split('/')[-1]
+    )
+
     return datasets
 
 
@@ -124,7 +126,7 @@ def get_keycloak() -> str:
             data=data,
         )
         r.raise_for_status()
-    except Exception as e:
+    except Exception:
         raise Exception(
             f"Keycloak token creation failed. Reponse from the server was: {r.json()}"
         )
@@ -154,20 +156,25 @@ def download_datasets(
     os.chdir(download_dir)
 
     # loop over datasets to download them sequentially
-    for idx, dataset in datasets.iterrows():
-        dataset_url = dataset.properties['services']['download']['url']
-        response = requests.get(
-            dataset_url,
-            headers={'Authorization': f'Bearer {keycloak_token}'},
-            stream=True
-        )
-        response.raise_for_status()
+    scene_counter = 1
+    for _, dataset in datasets.iterrows():
+        try:
+            dataset_url = dataset.properties['services']['download']['url']
+            response = requests.get(
+                dataset_url,
+                headers={'Authorization': f'Bearer {keycloak_token}'},
+                stream=True
+            )
+            response.raise_for_status()
+        except Exception as e:
+            logger.error(f'Could not download {dataset.product_uri}: {e}')
+            continue
+
         # download the data using the iter_content method (writes chunks to disk)
-        fname = dataset.properties['productIdentifier'].split('/')[-1].replace(
-            'SAFE', 'zip'
-        )
-        logger.info(f'Starting downloading {fname} ({idx+1}/{datasets.shape[0]})')
+        fname = dataset.dataset_name.replace('SAFE', 'zip')
+        logger.info(f'Starting downloading {fname} ({scene_counter}/{datasets.shape[0]})')
         with open(fname, 'wb') as fd:
             for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 fd.write(chunk)
-        logger.info(f'Finished downloading {fname} ({idx+1}/{datasets.shape[0]})')
+        logger.info(f'Finished downloading {fname} ({scene_counter}/{datasets.shape[0]})')
+        scene_counter += 1

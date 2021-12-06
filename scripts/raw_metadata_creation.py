@@ -11,7 +11,7 @@ import agrisatpy
 
 if __name__ == '__main__':
 
-    years = [2018]
+    years = [2021]
     processing_levels = ['L2A']
     region = 'CH'
     # set to True if noise model parameters are required (slow!)

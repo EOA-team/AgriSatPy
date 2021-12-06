@@ -22,9 +22,14 @@ from pathlib import Path
 
 from agrisatpy.config import Sentinel2
 from agrisatpy.utils.decorators import check_processing_level
+from agrisatpy.utils.exceptions import RegionNotFoundError
+from agrisatpy.utils.exceptions import ArchiveCreationError
 from agrisatpy.downloader.sentinel2.creodias import query_creodias
 from agrisatpy.downloader.sentinel2.creodias import download_datasets
 from agrisatpy.downloader.sentinel2.creodias import ProcessingLevels
+from agrisatpy.utils.constants.sentinel2 import ProcessingLevelsDB
+from agrisatpy.metadata.sentinel2.database import Regions
+from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
 from agrisatpy.config import get_settings
 
 
@@ -35,18 +40,8 @@ logger = Settings.logger
 DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
 engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
 
-# Sentinel-2 processing levels as defined in the metadatabase
-ProcessingLevelsDB = {
-    'L1C' : 'Level-1C',
-    'L2A' : 'Level-2A'
-}
-
 # object with information about Sentinel-2
 s2 = Sentinel2()
-
-
-class ArchiveCreationError(Exception):
-    pass
 
 
 @check_processing_level
@@ -176,9 +171,11 @@ def pull_from_creodias(
         end_date: date,
         processing_level: ProcessingLevels,
         path_out: Path,
-        aoi_file: Path
-) -> None:
+        region: str
+    ) -> pd.DataFrame:
     '''
+    Checks if CREODIAS has Sentinel-2 datasets not yet available locally
+    and downloads these datasets.
 
     :param start_date:
         Start date of the database & creodias query
@@ -188,31 +185,39 @@ def pull_from_creodias(
         Select S2 processing level L1C or L2A
     :param path_out:
         Out directory where the additional data from creodias should be downloaded
-    :param aoi_file:
-        Bounding box file. Gets automatically projected to WGS84 in well-known-text (WKT)
+    :param region:
+        Region identifier of the Sentinel-2 archive. By region we mean a
+        geographic extent (bounding box) in which the data is organized. The bounding
+        box extent is taken from the metadata base based on the region identifier.
     :return:
-        None; automatically downloads the found Datasets on Creodias that are not yet in local DB.
+        dataframe with downloaded datasets
     '''
 
     # select processing level for DB query
     processing_level_db = ProcessingLevelsDB[processing_level.name]
 
-    # read shapefile defining the bounds of your region of interest
-    bbox_data = gpd.read_file(aoi_file)
+    # query database to get the bounding box of the selected region
+    query = f"""
+    SELECT
+        geom
+    FROM
+        {Regions.__tablename__}
+    WHERE
+        region_uid = '{region}';
+    """
+    region_gdf = gpd.read_postgis(query, engine)
+    if region_gdf.empty:
+        raise RegionNotFoundError(f'{region} is not defined in the metadata base!')
 
-    # project to geographic coordinates (required for API query)
-    bbox_data.to_crs(4326, inplace=True)
-    # use the first feature (all others are ignored)
-    bounding_box = bbox_data.geometry.iloc[0]
-
-    bounding_box_wkt = bounding_box.to_wkt()
+    bounding_box = region_gdf.geometry.iloc[0]
+    bounding_box_wkt = bounding_box.wkt
 
     # local database query
     query = f"""
         SELECT
             product_uri, cloudy_pixel_percentage
         FROM
-            sentinel2_raw_metadata
+            {S2_Raw_Metadata.__tablename__}
         WHERE
             sensing_time between '{start_date}' and '{end_date}'
         AND
@@ -227,6 +232,7 @@ def pull_from_creodias(
 
     # determine max_records and cloudy_pixel_perecentage thresholds from local DB
     max_records = 1.25 * meta_db_df.shape[0]
+    max_records = int(np.round(max_records,0))
     # Creodias has a hard cap of 2001 max_records
     if max_records > 2000:
         max_records = 2000
@@ -257,4 +263,7 @@ def pull_from_creodias(
     datasets_filtered = datasets[datasets.product_uri.isin(missing_datasets)]
 
     # download those scenes not available in the local database from Creodias
+    # TODO: debug from here
     download_datasets(datasets_filtered, path_out)
+
+    return datasets_filtered
