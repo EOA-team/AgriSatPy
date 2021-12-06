@@ -156,7 +156,8 @@ def download_datasets(
     os.chdir(download_dir)
 
     # loop over datasets to download them sequentially
-    for idx, dataset in datasets.iterrows():
+    scene_counter = 1
+    for _, dataset in datasets.iterrows():
         try:
             dataset_url = dataset.properties['services']['download']['url']
             response = requests.get(
@@ -171,8 +172,9 @@ def download_datasets(
 
         # download the data using the iter_content method (writes chunks to disk)
         fname = dataset.dataset_name.replace('SAFE', 'zip')
-        logger.info(f'Starting downloading {fname} ({idx+1}/{datasets.shape[0]})')
+        logger.info(f'Starting downloading {fname} ({scene_counter}/{datasets.shape[0]})')
         with open(fname, 'wb') as fd:
             for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 fd.write(chunk)
-        logger.info(f'Finished downloading {fname} ({idx+1}/{datasets.shape[0]})')
+        logger.info(f'Finished downloading {fname} ({scene_counter}/{datasets.shape[0]})')
+        scene_counter += 1
