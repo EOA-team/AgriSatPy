@@ -44,6 +44,7 @@ setuptools.setup(
                       'sqlalchemy', 
                       'matplotlib', 
                       'geoalchemy2',
-                      'opencv-python'
+                      'opencv-python',
+                      'requests'
                       ]
 )

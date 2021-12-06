@@ -14,3 +14,4 @@ lxml
 joblib
 psycopg2-binary
 opencv-python
+requests
