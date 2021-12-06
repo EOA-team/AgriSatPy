@@ -521,7 +521,7 @@ class Sat_Data_Reader(object):
         # loop over bands specified and mask the invalid pixels
         for band_to_mask in bands_to_mask:
             if band_to_mask not in self.data.keys():
-                raise BandNotFoundError(f'{band_to_mask} is not in data dict')
+                 raise BandNotFoundError(f'{band_to_mask} is not in data dict')
             # set values to NaN where tmp is zero
             self.data[band_to_mask][tmp == 0] = np.nan
         
