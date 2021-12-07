@@ -17,20 +17,15 @@ Created on Jul 9, 2021
 
 import cv2
 import glob
-import rasterio as rio
-import rasterio.mask
 import numpy as np
 
 from pathlib import Path
-from rasterio.enums import Resampling
-from rasterio.io import MemoryFile
-from rasterio import Affine
 from typing import Optional
 from typing import Union
 from typing import List
 from typing import Dict
 
-from agrisatpy.utils.io.sentinel2 import S2_Band_Reader
+from agrisatpy.io.sentinel2 import S2_Band_Reader
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.config import get_settings
 from agrisatpy.processing import resampling

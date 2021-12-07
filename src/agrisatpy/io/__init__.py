@@ -682,13 +682,35 @@ class Sat_Data_Reader(object):
     def write_bands(
             self,
             out_file: Path,
-            band_selection: List[str],
-            band_aliases: Optional[List[str]] = [],
+            driver: Optional[str] = 'geoTiff',
+            band_selection: Optional[List[str]] = [],
+            band_aliases: Optional[List[str]] = []
         ):
         """
-        Writes one or multiple files into a geoTiff file. The bands must all have the
-        same spatial resolution and x and y dimension.
+        Writes one or multiple bands to a raster file using rasterio. By
+        default a geoTiff is written since rasterio recommends this option over
+        other geospatial image formats such as JPEG2000.
 
+        IMPORTANT: The method can only write bands to file that have the same
+        spatial resolution and extent. If that's not the case you eiher have to
+        resample the data first using the ``resample`` method or write only those
+        bands that fullfil the aforementioned criteria.
+
+        :param out_file:
+            file-path where to save the raster to. When writting geoTiffs,
+            the *.tif or *.tiff ending is appended if not provided.
+        :param driver:
+            one of the GDAL drivers supported by rasterio. By default, the geoTiff
+            driver is used since this driver is reported to be the most stable one.
+        :param band_selection:
+            list of bands to export (optional). If empty all bands available are
+            exported to raster.
+        :param band_aliases:
+            optional list of alias band names to overwrite the (color) names of
+            the bands available in the data dict (optional). If provided must
+            have the same length as bands to export.
         """
-        pass
 
+        # TODO: use rasterio driver from extension!!
+        # check output file naming and driver
+        pass
