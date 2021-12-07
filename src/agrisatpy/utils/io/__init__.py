@@ -34,6 +34,7 @@ from agrisatpy.utils.exceptions import NotProjectedError, ResamplingFailedError
 from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.spatial_resampling import upsample_array
+from agrisatpy.utils.io.sentinel2 import band_selection
 
 
 class Sat_Data_Reader(object):
@@ -676,3 +677,18 @@ class Sat_Data_Reader(object):
         self.data['bounds'] = bounds
 
         self._from_bandstack = True
+
+
+    def write_bands(
+            self,
+            out_file: Path,
+            band_selection: List[str],
+            band_aliases: Optional[List[str]] = [],
+        ):
+        """
+        Writes one or multiple files into a geoTiff file. The bands must all have the
+        same spatial resolution and x and y dimension.
+
+        """
+        pass
+

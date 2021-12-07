@@ -268,15 +268,17 @@ def resample_and_stack_s2(
         rgb_subdir.mkdir()
 
     fig_rgb = s2_stack.plot_rgb()
-    fig_scl = s2_stack.plot_scl()
     fig_rgb.savefig(
         fname=rgb_subdir.joinpath(out_file_names['rgb_preview']),
         bbox_inches='tight'
     )
-    fig_scl.savefig(
-        fname=rgb_subdir.joinpath(out_file_names['scl_preview']),
-        bbox_inches='tight'
-    )
+
+    if processing_level.name == 'L2A':
+        fig_scl = s2_stack.plot_scl()
+        fig_scl.savefig(
+            fname=rgb_subdir.joinpath(out_file_names['scl_preview']),
+            bbox_inches='tight'
+        )
 
     # write bandstack preserving the band names
     # TODO ...
