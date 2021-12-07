@@ -18,6 +18,7 @@ import rasterio.mask
 
 from rasterio import Affine
 from rasterio.coords import BoundingBox
+from rasterio.drivers import driver_from_extension
 from pathlib import Path
 from typing import Optional
 from typing import Dict
@@ -34,7 +35,6 @@ from agrisatpy.utils.exceptions import NotProjectedError, ResamplingFailedError
 from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.spatial_resampling import upsample_array
-from agrisatpy.utils.io.sentinel2 import band_selection
 
 
 class Sat_Data_Reader(object):
@@ -682,10 +682,9 @@ class Sat_Data_Reader(object):
     def write_bands(
             self,
             out_file: Path,
-            driver: Optional[str] = 'geoTiff',
             band_selection: Optional[List[str]] = [],
             band_aliases: Optional[List[str]] = []
-        ):
+        ) -> None:
         """
         Writes one or multiple bands to a raster file using rasterio. By
         default a geoTiff is written since rasterio recommends this option over
@@ -696,9 +695,12 @@ class Sat_Data_Reader(object):
         resample the data first using the ``resample`` method or write only those
         bands that fullfil the aforementioned criteria.
 
+        IMPORTANT: If the bands do not have the same datatype they will be all set
+        to ``numpy.float64``.
+
         :param out_file:
-            file-path where to save the raster to. When writting geoTiffs,
-            the *.tif or *.tiff ending is appended if not provided.
+            file-path where to save the raster to. The file-ending will determine
+            the type of raster generated; we recommend to use geoTiff (*.tif)
         :param driver:
             one of the GDAL drivers supported by rasterio. By default, the geoTiff
             driver is used since this driver is reported to be the most stable one.
@@ -711,6 +713,78 @@ class Sat_Data_Reader(object):
             have the same length as bands to export.
         """
 
-        # TODO: use rasterio driver from extension!!
         # check output file naming and driver
-        pass
+        try:
+            driver = driver_from_extension(out_file)
+        except Exception as e:
+            raise ValueError(
+                f'Could not determine GDAL driver for {out_file.name}: {e}'
+            )
+
+        # check band_selection, if not provided use all available bands
+        if len(band_selection) > 0:
+            if not all(band_name in self.data.keys() for band_name in band_selection):
+                raise BandNotFoundError('Mismatch between selected and available bands')
+        else:
+            band_selection = self.get_bandnames()
+
+        # check if band aliases (if provided) match the band_selection
+        if len(band_aliases) > 0:
+            if len(band_aliases) != len(band_selection):
+                raise ValueError(
+                    f'Number of selected bands ({len(band_selection)}) '\
+                    f'does not match number of aliases ({len(band_aliases)})'
+                )
+
+        # check meta and update it with the selected driver for writing the result
+        if self._from_bandstack:
+            meta = self.get_band(band_name='meta')
+        else:
+            # if not from bandstack use the meta information of the first selected band
+            meta = self.get_band(band_name='meta').get(band_selection[0])
+
+        # check if all bands have the same shape, the first band determines the
+        # shape all other bands have to follow
+        first_shape = self.get_band(band_name=band_selection[0]).shape
+
+        if len(band_selection) > 1:
+            for band_name in band_selection[1:]:
+                next_shape = self.get_band(band_name=band_name).shape
+                if first_shape != next_shape:
+                    raise ValueError(
+                        f'The shapes of band "{band_selection[0]}" and "{band_name}"'\
+                        f' differ: {first_shape} != {next_shape}'
+                    )
+
+        # check datatype of the bands and use the highest one
+        dtype = self.get_band(band_name=band_selection[0]).dtype
+        dtype_str = str(dtype)
+
+        if len(band_selection) > 1:
+            if not all(isinstance(self.get_band(x).dtype, int) for x in self.get_bandnames()):
+                dtype = np.float64
+                dtype_str = 'float64'
+
+        # update driver and the number of bands
+        meta.update(
+            {
+                'driver': driver,
+                'count': len(band_selection),
+                'dtype': dtype_str
+            }
+        )
+
+        # open the result dataset and try to write the bands
+        with rio.open(out_file, 'w', **meta) as dst:
+
+            for idx, band in enumerate(band_selection):
+
+                # check with band name to set
+                band_name = band
+                if len(band_aliases) > 0:
+                    band_name = band_aliases[idx]
+                dst.set_band_description(idx+1, band_name)
+
+                # write band data
+                band_data = self.get_band(band_name=band).astype(dtype)
+                dst.write(band_data, idx+1)

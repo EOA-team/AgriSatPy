@@ -30,7 +30,7 @@ from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res
 from agrisatpy.utils.sentinel2 import get_S2_sclfile
 from agrisatpy.utils.constants.sentinel2 import band_resolution
-from agrisatpy.utils.io import Sat_Data_Reader
+from agrisatpy.io import Sat_Data_Reader
 from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.config import get_settings
 
@@ -561,7 +561,12 @@ if __name__ == '__main__':
     fig_scl = reader.plot_scl()
 
     reader.resample(target_resolution=10, resampling_method=cv2.INTER_CUBIC, bands_to_exclude=['scl'])
-    reader.calc_vi(vi='TCARI_OSAVI')
+    reader.calc_vi(vi='NDVI')
+    reader.write_bands(
+        out_file=testdata_dir.joinpath('scl.tif'),
+        band_selection=['scl']
+    )
+
     cloudy_pixels = reader.get_cloudy_pixel_percentage()
 
     # resample SCL
