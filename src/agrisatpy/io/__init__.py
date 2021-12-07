@@ -269,13 +269,17 @@ class Sat_Data_Reader(object):
         east_west_dim = bounds.right - bounds.left
         if abs(east_west_dim) < 5000:
             x_interval = 500
-        else:
+        elif abs(east_west_dim) >= 5000 and abs(east_west_dim) < 100000:
             x_interval = 5000
+        else:
+            x_interval = 50000
         north_south_dim = bounds.top - bounds.bottom
         if abs(north_south_dim) < 5000:
             y_interval = 500
-        else:
+        elif abs(north_south_dim) >= 5000 and abs(north_south_dim) < 100000:
             y_interval = 5000
+        else:
+            y_interval = 50000
 
         w_h_ratio = figaspect(east_west_dim / north_south_dim)
 
@@ -311,6 +315,12 @@ class Sat_Data_Reader(object):
             # lower 5% of the data
             lower_bound = np.nanquantile(band_data, 0.05)
             upper_bound = np.nanquantile(band_data, 0.95)
+
+            # be even stricter for RGB plot
+            if rgb_plot:
+                lower_bound = np.nanquantile(band_data, 0.1)
+                upper_bound = np.nanquantile(band_data, 0.9)
+
             img = ax.imshow(
                 band_data,
                 vmin=lower_bound,

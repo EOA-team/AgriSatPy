@@ -18,6 +18,7 @@ Created on Jul 9, 2021
 import cv2
 import glob
 import numpy as np
+import matplotlib.pyplot as plt
 
 from pathlib import Path
 from typing import Optional
@@ -29,16 +30,20 @@ from agrisatpy.io.sentinel2 import S2_Band_Reader
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.config import get_settings
 from agrisatpy.processing import resampling
+from agrisatpy.config.sentinel2 import Sentinel2
+from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
+
 
 Settings = get_settings()
 logger = Settings.logger
 
+S2 = Sentinel2()
 
 def _get_output_file_names(
         in_dir: Path,
         resampling_method: str,
         target_resolution: Union[int,float]
-    ) -> Dict[str]:
+    ) -> Dict[str, str]:
     """
     auxiliary method to get the output file names
     for the band-stack, the quicklooks and (if applicable) the
@@ -263,40 +268,77 @@ def resample_and_stack_s2(
         rgb_subdir.mkdir()
 
     fig_rgb = s2_stack.plot_rgb()
+    out_file_names.update(
+        {'rgb_preview': rgb_subdir.joinpath(out_file_names['rgb_preview'])}
+    )
     fig_rgb.savefig(
-        fname=rgb_subdir.joinpath(out_file_names['rgb_preview']),
+        fname=out_file_names['rgb_preview'],
         bbox_inches='tight'
     )
+    plt.close(fig_rgb)
 
     if processing_level.name == 'L2A':
+        
         fig_scl = s2_stack.plot_scl()
+
+        # write SCL file
+        scl_subdir = out_dir.joinpath(Settings.SUBDIR_SCL_FILES)
+        if not scl_subdir.exists():
+            scl_subdir.mkdir()
+
+        out_file_names.update(
+            {
+                'scl_preview': rgb_subdir.joinpath(out_file_names['scl_preview']),
+                'scl': scl_subdir.joinpath(out_file_names['scl'])
+            }
+        )
         fig_scl.savefig(
-            fname=rgb_subdir.joinpath(out_file_names['scl_preview']),
+            fname=out_file_names['scl_preview'],
             bbox_inches='tight'
         )
+        plt.close(fig_scl)
+
+        try:
+            s2_stack.write_bands(
+                out_file=out_file_names['scl'],
+                band_selection=['scl']
+            )
+        except Exception as e:
+            logger.error(e)
+            return {}
+    else:
+        out_file_names.pop('scl')
+        out_file_names.pop('scl_preview')
 
     # write bandstack preserving the band names
-    # TODO ...
-    
+    band_aliases = S2.BAND_INDICES
+    drop_bands = S2.SPATIAL_RESOLUTIONS.get(60.)
+    band_aliases = [k for k in band_aliases.keys() if k not in drop_bands]
+    band_selection = list(s2_band_mapping.values())
+    band_selection.remove('scl')
+
+    try:
+        s2_stack.write_bands(
+            out_file=out_dir.joinpath(out_file_names['bandstack']),
+            band_selection=band_selection,
+            band_aliases=band_aliases
+        )
+    except Exception as e:
+        logger.error(e)
+        return {}
+
+    return out_file_names
 
 
+if __name__ == '__main__':
 
-# if __name__ == '__main__':
-#
-#     in_dir = '/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L2A/CH/2018/S2A_MSIL2A_20180816T104021_N0208_R008_T32TLT_20180816T190612'
-#     out_dir = '/mnt/ides/Lukas/03_Debug/Sentinel2/L1C/'
-#     is_L2A = True
-#
-#     out_file = resample_and_stack_S2(
-#         in_dir=Path(in_dir),
-#         out_dir=Path(out_dir),
-#         is_L2A=is_L2A
-#     )
-#
-#     if is_L2A:
-#         out_file_scl = scl_10m_resampling(
-#             in_dir=Path(in_dir),
-#             out_dir=Path(out_dir)
-#         )
-#
-#     print(out_file)
+    in_dir = Path('/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L2A/CH/2018/S2A_MSIL2A_20180816T104021_N0208_R008_T32TLT_20180816T190612')
+    out_dir = Path('/home/graflu/public/Evaluation/Projects/KP0031_lgraf_PhenomEn/temp')
+
+    pixel_division = True
+
+    resample_and_stack_s2(
+        in_dir=in_dir,
+        out_dir=out_dir,
+        pixel_division=pixel_division
+    )

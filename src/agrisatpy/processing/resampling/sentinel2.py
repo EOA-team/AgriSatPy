@@ -28,7 +28,7 @@ from typing import Optional
 from typing import Tuple
 from datetime import datetime
 
-from agrisatpy.spatial_resampling import resample_and_stack_S2
+from agrisatpy.spatial_resampling.sentinel2 import resample_and_stack_S2
 from agrisatpy.spatial_resampling import scl_10m_resampling
 from agrisatpy.spatial_resampling import identify_split_scenes
 from agrisatpy.spatial_resampling import merge_split_scenes

@@ -40,9 +40,9 @@ def get_S2_processing_level(
     :return:
         processing level of the dataset
     """
-    if dot_safe_name.find('MSIL1C'):
+    if dot_safe_name.find('MSIL1C') >= 0:
         return ProcessingLevels.L1C
-    elif dot_safe_name.find('MSIL2A'):
+    elif dot_safe_name.find('MSIL2A') >= 0:
         return ProcessingLevels.L2A
     else:
         raise ValueError(
