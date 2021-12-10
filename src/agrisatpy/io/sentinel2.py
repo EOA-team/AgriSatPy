@@ -18,9 +18,11 @@ from matplotlib.pyplot import Figure
 from matplotlib import colors
 from rasterio.coords import BoundingBox
 from pathlib import Path
+from copy import deepcopy
 from typing import Optional
 from typing import Dict
 from typing import List
+from typing import Union
 
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
@@ -33,6 +35,7 @@ from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.utils.constants.sentinel2 import band_resolution
 from agrisatpy.io import Sat_Data_Reader
 from agrisatpy.utils.exceptions import BandNotFoundError
+from agrisatpy.utils.exceptions import BlackFillOnlyError
 from agrisatpy.config import get_settings
 
 
@@ -189,7 +192,7 @@ class S2_Band_Reader(Sat_Data_Reader):
         cloudy_pixel_percentage = (num_cloudy_pixels / num_noncloudy_pixels) * 100
 
         return cloudy_pixel_percentage
-        
+
 
     def read_from_bandstack(
             self,
@@ -306,6 +309,11 @@ class S2_Band_Reader(Sat_Data_Reader):
                         self.data[s2_band_mapping[band_name]] = \
                             self.data[s2_band_mapping[band_name]].astype(float) * \
                             s2_gain_factor
+
+        # check for black-fill
+        is_blackfilled = self.is_blackfilled()
+        if is_blackfilled:
+            raise BlackFillOnlyError('AOI contains blackfill, only')
     
         # meta and bounds are saved as additional items of the dict
         meta.update(
@@ -535,6 +543,7 @@ if __name__ == '__main__':
         processing_level=processing_level,
         in_file_aoi=in_file_aoi
     )
+    fig_rgb = reader.plot_rgb()
     fig_scl = reader.plot_scl()
     cc = reader.get_cloudy_pixel_percentage()
     fig_blue = reader.plot_band('blue')

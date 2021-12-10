@@ -36,4 +36,5 @@ class RegionNotFoundError(Exception):
 class ArchiveCreationError(Exception):
     pass
 
-
+class BlackFillOnlyError(Exception):
+    pass

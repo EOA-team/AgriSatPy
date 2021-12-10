@@ -16,20 +16,28 @@ import rasterio.mask
 from rasterio import Affine
 from rasterio.coords import BoundingBox
 from rasterio.drivers import driver_from_extension
+from rasterio.crs import CRS
+from shapely.geometry import box
+from shapely.geometry import Polygon
 from pathlib import Path
 from typing import Optional
 from typing import Dict
 from typing import List
 from typing import Union
+from typing import Tuple
+from typing import NamedTuple
 from matplotlib.colors import ListedColormap
 from matplotlib.pyplot import Figure
 from matplotlib.figure import figaspect
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from copy import deepcopy
+from collections import namedtuple
 
 from agrisatpy.analysis.vegetation_indices import VegetationIndices
-from agrisatpy.utils.exceptions import NotProjectedError, ResamplingFailedError
+from agrisatpy.utils.exceptions import NotProjectedError
+from agrisatpy.utils.exceptions import ResamplingFailedError
 from agrisatpy.utils.exceptions import BandNotFoundError
+from agrisatpy.utils.exceptions import BlackFillOnlyError
 from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.spatial_resampling import upsample_array
 
@@ -127,11 +135,13 @@ class Sat_Data_Reader(object):
             band_name: Optional[str] = None
         ) -> dict:
         """
-        Returns the image metadata for all or a selected band
+        Returns the image metadata for all bands or a selected band
 
         :param band_name:
             optional band name for retrieving meta data for a specific
             band
+        :return:
+            meta dict with image meta data
         """
 
         # if data is band-stacked, meta is always the same
@@ -145,6 +155,107 @@ class Sat_Data_Reader(object):
                 )
         else:
             return self.data['meta']
+
+
+    def get_spatial_resolution(
+            self,
+            band_name: str
+        ) -> NamedTuple:
+        """
+        Returns the spatial resolution in x and y direction of a band
+
+        :param band_name:
+            band name for retrieving spatial resolution
+            of a specific band
+        :return:
+            spatial resolution in units of the image coordinate system
+            in x and y direction
+        """
+
+        transform = self.get_meta(band_name=band_name)['transform']
+        Spatial_Resolution = namedtuple('Spatial_Resolution', 'x y')
+        return Spatial_Resolution(transform[0], transform[4])
+
+
+    def get_band_bounds(
+            self,
+            band_name: str,
+            return_as_polygon: Optional[bool] = True
+        ) -> Tuple[Polygon, BoundingBox]:
+        """
+        Returns the bounds (bounding box) of a band
+
+        :param band_name:
+            band name for retrieving bounds
+        :param return_as_polygon:
+            if True returns a ``shapely`` polygon, if False a ``rasterio``
+            bounding box object
+        :return:
+            bounds of the band in the coordinate system of the dataset
+        """
+
+        bounds = self.get_band(band_name='bounds')
+
+        # check if the file is from band stack or if bounds are the same for each band
+        if not self.from_bandstack():
+            try:
+                bounds = bounds[band_name]
+            except Exception:
+                raise BandNotFoundError(
+                    f'Could not find "{band_name}" in data dict'
+                )
+
+        # return bounding box or polygon
+        if return_as_polygon:
+            bounds = box(*bounds)
+
+        return bounds
+
+
+    def get_band_epsg(
+            self,
+            band_name: str
+        ) -> CRS:
+        """
+        Returns the EPSG code of a band
+
+        :param band_name:
+            name of the band for which to extract the EPSG code
+        :return:
+            EPSG code of the band as ``rasterio.crs.CRS``
+        """
+
+        meta = self.get_meta(band_name=band_name)
+        return meta['crs']
+
+
+    def is_blackfilled(
+            self,
+            blackfill_value: Optional[Union[int,float]] = 0
+        ) -> bool:
+        """
+        Checks if the read Sentinel-2 scene data contains black fill only.
+        Black fill in the spectral bands corresponds to having zero everywhere.
+
+        :param blackfill_value:
+            value indicating black fill. Set to zero by default.
+        :return:
+            True of the data is black fill only, else False
+        """
+
+        # check the bands
+        band_names = self.get_bandnames()
+        blackfill_list = []
+        for band_name in band_names:
+            band_data = self.get_band(band_name)
+            if isinstance(band_data, np.ma.core.MaskedArray):
+                band_data = deepcopy(band_data.data)
+            if (band_data == blackfill_value).all():
+                blackfill_list.append(True)
+            else:
+                blackfill_list.append(False)
+
+        return all(blackfill_list)
 
 
     @staticmethod
@@ -259,7 +370,8 @@ class Sat_Data_Reader(object):
             # get all RGB bands
             band_data_list = []
             for band_name in band_names:
-                band_data_list.append(self.data[band_name])
+                band_data = self._masked_array_to_nan(self.data[band_name])
+                band_data_list.append(band_data)
             # add transparency layer
             band_data_list.append(np.zeros_like(band_data_list[0]))
             band_data = np.dstack(band_data_list)
@@ -650,7 +762,8 @@ class Sat_Data_Reader(object):
             self,
             fname_bandstack: Path,
             in_file_aoi: Optional[Path] = None,
-            full_bounding_box_only: Optional[bool] = False
+            full_bounding_box_only: Optional[bool] = False,
+            blackfill_value: Optional[Union[int,float]] = 0
         ) -> None:
         """
         Reads spectral bands from a band-stacked geoTiff file
@@ -673,7 +786,7 @@ class Sat_Data_Reader(object):
             <bounds>: <BoundingBox> denoting the bounding box of the band data
 
         :param fname_bandstack:
-            file-path to the bandstacked geoTiff to read
+            file-path to the bandstacked geoTiff file to read.
         :param in_file_aoi:
             vector file (e.g., ESRI shapefile or geojson) defining geometry/ies
             (polygon(s)) for which to extract the Sentinel-2 data. Can contain
@@ -682,6 +795,8 @@ class Sat_Data_Reader(object):
             if set to False, will only extract the data for those geometry/ies
             defined in in_file_aoi. If set to False, returns the data for the
             full extent (hull) of all features (geometries) in in_file_aoi.
+        :param blackfill_value:
+            value indicating black fill. Set to zero by default.
         """
 
         # check bounding box
@@ -728,6 +843,11 @@ class Sat_Data_Reader(object):
                     right = left + meta['width'] * out_transform[0]
                     bottom = top + meta['height'] * out_transform[4]
                     bounds = BoundingBox(left=left, bottom=bottom, right=right, top=top)
+
+        # check for black-fill
+        is_blackfilled = self.is_blackfilled()
+        if is_blackfilled:
+            raise BlackFillOnlyError('AOI contains blackfill, only')
 
         # meta and bounds are saved as additional items of the dict
         meta.update(
@@ -835,7 +955,7 @@ class Sat_Data_Reader(object):
         )
 
         # open the result dataset and try to write the bands
-        with rio.open(out_file, 'w', **meta) as dst:
+        with rio.open(out_file, 'w+', **meta) as dst:
 
             for idx, band in enumerate(band_selection):
 
