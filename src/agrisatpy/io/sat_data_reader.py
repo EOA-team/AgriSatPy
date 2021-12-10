@@ -270,7 +270,11 @@ class Sat_Data_Reader(object):
             colormap = None
 
         # check if band data is a masked array
-        band_data = self._masked_array_to_nan(band_data=band_data)
+        # band_data = self._masked_array_to_nan(band_data=band_data)
+        if isinstance(band_data, np.ma.core.MaskedArray):
+            mask = band_data.mask
+            band_data = deepcopy(band_data.data)
+            band_data[mask] = np.nan
 
         # adjust transparency in case of RGBA arrays
         if len(band_data.shape) == 3:
@@ -469,12 +473,7 @@ class Sat_Data_Reader(object):
         snap_band_available = False
         for idx, band in enumerate(band_selection):
 
-            if not self.from_bandstack():
-                meta = self.data['meta'][band]
-                bounds = self.data['bounds'][band]
-
-            # get original spatial resolution
-            pixres = meta['transform'][0]
+            pixres = self.get_meta(band)['transform'][0]
 
             # check if resampling is required, if the band has
             # already the target resolution use its extent to snap
@@ -483,6 +482,23 @@ class Sat_Data_Reader(object):
                 snap_band_available = True
                 snap_shape = self.data[band].shape
                 snap_meta = self.data['meta'][band]
+                # check if the data is masked, in that case also provide
+                # a snap mask
+                if isinstance(self.data[band], np.ma.core.MaskedArray):
+                    snap_mask = self.data[band].mask
+                break
+
+        # raise a warning if no snap raster is available. The results might then
+        # not be perfectly aligned and differ in extent and localization!
+        if not snap_band_available:
+            raise Warning('No snap raster band found for resampling. '\
+                          'Results might differ in shape!')
+
+        for idx, band in enumerate(band_selection):
+
+            meta = self.get_meta(band)
+            pixres = meta['transform'][0]
+            if pixres == target_resolution:
                 continue
 
             # check if coordinate system is projected, geographic
@@ -508,14 +524,14 @@ class Sat_Data_Reader(object):
 
             # check if the band data is stored in a masked array
             # if so, replace the masked values with NaN
-            band_data = self._masked_array_to_nan(band_data=band_data)
+            if isinstance(band_data,  np.ma.core.MaskedArray):
+                band_data = deepcopy(band_data.data)
 
             # resample the array using opencv resize or pixel_division
-            # TODO: this might cause minor shape mis-matches based when
-            # working on an AOI
+            band_res = self.get_meta(band_name=band)['transform'][0]
+            scaling_factor = int(band_res / target_resolution)
             if pixel_division:
-                nrows_current = int(np.round((bounds.top - bounds.bottom) / meta['transform'].a,0))
-                scaling_factor = int(np.ceil(nrows_resampled / nrows_current))
+                # determine scaling factor as ratio between current and target spatial resolution
                 res = upsample_array(
                     in_array=band_data,
                     scaling_factor=scaling_factor
@@ -531,7 +547,19 @@ class Sat_Data_Reader(object):
                     raise ResamplingFailedError(e)
 
             # overwrite entries in self.data
-            self.data[band] = res
+            # if the array is masked, use the masked array from the snap raster
+            # or create a new one in the target resolution using pixel division
+            if isinstance(self.data[band], np.ma.core.MaskedArray):
+                if not snap_band_available:
+                    in_mask = deepcopy(self.data[band].mask)
+                    snap_mask = upsample_array(
+                        in_array=in_mask,
+                        scaling_factor=scaling_factor
+                    )
+                # save as masked array to back to data dict
+                self.data[band] = np.ma.masked_array(res, mask=snap_mask)
+            else:
+                self.data[band] = res
 
             # for data from bandstacks updating meta is required only once
             # since all bands have the same spatial resolution
@@ -819,4 +847,5 @@ class Sat_Data_Reader(object):
 
                 # write band data
                 band_data = self.get_band(band_name=band).astype(dtype)
+                band_data = self._masked_array_to_nan(band_data)
                 dst.write(band_data, idx+1)

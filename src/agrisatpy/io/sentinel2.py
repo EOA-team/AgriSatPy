@@ -29,6 +29,7 @@ from agrisatpy.utils.constants.sentinel2 import SCL_Classes
 from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res
 from agrisatpy.utils.sentinel2 import get_S2_sclfile
+from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.utils.constants.sentinel2 import band_resolution
 from agrisatpy.io import Sat_Data_Reader
 from agrisatpy.utils.exceptions import BandNotFoundError
@@ -193,7 +194,7 @@ class S2_Band_Reader(Sat_Data_Reader):
     def read_from_bandstack(
             self,
             fname_bandstack: Path,
-            processing_level: ProcessingLevels,
+            processing_level: Optional[ProcessingLevels] = None,
             in_file_scl: Optional[Path] = None,
             in_file_aoi: Optional[Path] = None,
             full_bounding_box_only: Optional[bool] = False,
@@ -215,7 +216,9 @@ class S2_Band_Reader(Sat_Data_Reader):
             file-path to the bandstacked geoTiff containing the Sentinel-2
             bands in a single spatial resolution
         :param processing_level:
-            specification of the processing level of the Sentinel-2 data
+            specification of the processing level of the Sentinel-2 data. If not
+            provided will be determined from the name of the band-stack (works only
+            if the file follows the AgriSatPy's naming conventions!)
         :param in_file_scl:
             if the SCL file location is already known (e.g., from AgriSatPy
             database query) pass it directly to the method, otherwise the method
@@ -244,6 +247,11 @@ class S2_Band_Reader(Sat_Data_Reader):
         self.data = self._check_band_selection(band_selection=band_selection)
 
         # check processing level
+        if processing_level is None:
+            processing_level = get_S2_processing_level(
+                dot_safe_name=fname_bandstack
+        )
+
         is_L2A = True
         if processing_level == ProcessingLevels.L1C:
             is_L2A = False
@@ -341,7 +349,7 @@ class S2_Band_Reader(Sat_Data_Reader):
     def read_from_safe(
             self,
             in_dir: Path,
-            processing_level: ProcessingLevels,
+            processing_level: Optional[ProcessingLevels] = None,
             in_file_aoi: Optional[Path] = None,
             full_bounding_box_only: Optional[bool] = False,
             int16_to_float: Optional[bool] = True,
@@ -363,7 +371,8 @@ class S2_Band_Reader(Sat_Data_Reader):
             file-path to the .SAFE directory containing Sentinel-2 data in
             L1C or L2A processing level
         :param processing_level:
-            specification of the processing level of the Sentinel-2 data
+            specification of the processing level of the Sentinel-2 data. If not
+            provided will be determined from the name of the .SAFE dataset.
         :param spatial resolution:
             target spatial resolution. Sentinel-2 bands not having the
             target spatial resolution are resampled on the fly...
@@ -400,6 +409,8 @@ class S2_Band_Reader(Sat_Data_Reader):
         resolution_selection = list(np.unique(band_selection_spatial_res))
     
         # check processing level
+        if processing_level is None:
+            processing_level = get_S2_processing_level(dot_safe_name=in_dir)
         is_L2A = True
         if processing_level == ProcessingLevels.L1C:
             is_L2A = False
@@ -481,9 +492,18 @@ class S2_Band_Reader(Sat_Data_Reader):
                     if int16_to_float:
                         # if SCL is selected, do not apply the conversion
                         if not band_name.upper() == 'SCL':
-                            self.data[s2_band_mapping[band_name]] = \
-                                self.data[s2_band_mapping[band_name]].astype(float) * \
-                                s2_gain_factor
+                            # apply conversion also to masked data pixels to avoid resampling errors
+                            if isinstance(self.data[s2_band_mapping[band_name]], np.ma.core.MaskedArray):
+                                # apply gain factor to data part only
+                                temp_data = self.data[s2_band_mapping[band_name]].data.astype(float) * \
+                                    s2_gain_factor
+                                temp_mask = self.data[s2_band_mapping[band_name]].mask
+                                self.data[s2_band_mapping[band_name]] = np.ma.masked_array(
+                                    temp_data, mask=temp_mask)
+                            else:
+                                self.data[s2_band_mapping[band_name]] = \
+                                    self.data[s2_band_mapping[band_name]].astype(float) * \
+                                    s2_gain_factor
     
             # store georeferencation and bounding box per band
             meta_bands[s2_band_mapping[band_name]] = meta

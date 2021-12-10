@@ -29,7 +29,7 @@ Settings = get_settings()
 
 
 def get_S2_processing_level(
-        dot_safe_name: str
+        dot_safe_name: Union[str,Path]
     ) -> ProcessingLevels:
     """
     Determines the processing level of a dataset in .SAFE format
@@ -40,6 +40,10 @@ def get_S2_processing_level(
     :return:
         processing level of the dataset
     """
+
+    if isinstance(dot_safe_name,Path):
+        dot_safe_name = dot_safe_name.name
+
     if dot_safe_name.find('MSIL1C') >= 0:
         return ProcessingLevels.L1C
     elif dot_safe_name.find('MSIL2A') >= 0:
@@ -48,6 +52,22 @@ def get_S2_processing_level(
         raise ValueError(
             f'Could not determine processing level for {dot_safe_name}'
         )
+
+
+def get_S2_acquistion_date_from_safe(
+        dot_safe_name: str
+    ) -> date:
+    """
+    Determines the image acquisition date of a dataset in .SAFE format
+    based on the file naming
+
+    :param dot_safe_name:
+        name of the .SAFE dataset
+    :return:
+        image acquistion date
+    """
+
+    return datetime.strptime(dot_safe_name.split('_')[2][0:8], '%Y%m%d').date()
 
 
 def get_S2_bandfiles(
