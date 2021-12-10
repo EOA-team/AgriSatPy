@@ -46,4 +46,4 @@ class Sat_Data_Creator(Sat_Data_Reader):
         pass
 
     def get_observation(self, band_names):
-    
+        pass

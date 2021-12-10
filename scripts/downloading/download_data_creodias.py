@@ -27,8 +27,8 @@ if __name__ == '__main__':
     # processing level
     processing_level = ProcessingLevels.L1C
     # date range
-    start_date = date(2016,4,20)
-    end_date = date(2016,12,31)
+    start_date = date(2015,9,1)
+    end_date = date(2015,12,31)
     year = start_date.year
 
     # max_records defines the maximum number of datasets to download, increase if
@@ -58,7 +58,9 @@ if __name__ == '__main__':
         cloud_cover_threshold=cloud_cover_threshold
     )
 
-    download_dir = r'/mnt/ides/Lukas/data/Senseco_Intercomparison/Sat_Data/FR/2016'
+    download_dir = Path('/mnt/ides/Lukas/data/Senseco_Intercomparison/Sat_Data/FR/2015')
+    if not download_dir.exists():
+        download_dir.mkdir()
     download_datasets(datasets, download_dir)
 
     unzip_datasets(download_dir=Path(download_dir))
