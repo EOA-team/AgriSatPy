@@ -27,9 +27,8 @@ if __name__ == '__main__':
     # processing level
     processing_level = ProcessingLevels.L1C
     # date range
-    start_date = date(2015,9,1)
-    end_date = date(2015,12,31)
-    year = start_date.year
+    start_date = date(2017,4,1)
+    end_date = date(2017,8,30)
 
     # max_records defines the maximum number of datasets to download, increase if
     # necessary; however, CREODIAS might impose a limitation...
@@ -40,7 +39,7 @@ if __name__ == '__main__':
     cloud_cover_threshold = 75
 
     # shapefile defining the bounds of your region of interest
-    aoi_file = '/home/graflu/public/Evaluation/Projects/KP0031_lgraf_PhenomEn/Senseco/Intercomparison/Senseco-WG2-IntercomparisonStudyData_v1/Shapefiles/2015-2016/AUR/AUR.shp'
+    aoi_file = '/home/graflu/public/Evaluation/Projects/KP0031_lgraf_PhenomEn/Senseco/Intercomparison/Senseco-WG2-IntercomparisonStudyData_v3/Shapefiles/P0/P0.shp'
     bbox_data = gpd.read_file(aoi_file)
 
     # project to geographic coordinates (required for API query)
@@ -58,7 +57,7 @@ if __name__ == '__main__':
         cloud_cover_threshold=cloud_cover_threshold
     )
 
-    download_dir = Path('/mnt/ides/Lukas/data/Senseco_Intercomparison/Sat_Data/FR/2015')
+    download_dir = Path('/mnt/ides/Lukas/data/Senseco_Intercomparison/Sat_Data/BG/2017')
     if not download_dir.exists():
         download_dir.mkdir()
     download_datasets(datasets, download_dir)
