@@ -18,7 +18,7 @@ class Sentinel2(BaseModel):
     SPATIAL_RESOLUTIONS: dict = {
         60.: ['B01', 'B09', 'B10'],
         10.: ['B02', 'B03', 'B04', 'B08'],
-        20.: ['B05', 'B06', 'B07', 'B8A', 'B11', 'B12']
+        20.: ['B05', 'B06', 'B07', 'B8A', 'B11', 'B12', 'SCL']
     }
     BAND_INDICES: dict = {
         'B01': 0, 'B02': 1, 'B03': 2, 'B04': 3, 'B05': 4, 'B06': 5,

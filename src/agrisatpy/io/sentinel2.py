@@ -361,7 +361,8 @@ class S2_Band_Reader(Sat_Data_Reader):
             in_file_aoi: Optional[Path] = None,
             full_bounding_box_only: Optional[bool] = False,
             int16_to_float: Optional[bool] = True,
-            band_selection: Optional[List[str]] = list(s2_band_mapping.keys())
+            band_selection: Optional[List[str]] = list(s2_band_mapping.keys()),
+            read_scl: Optional[bool] = True
         ) -> Dict[str, np.array]:
         """
         Reads Sentinel-2 spectral bands from a band-stacked geoTiff file
@@ -401,6 +402,8 @@ class S2_Band_Reader(Sat_Data_Reader):
             20m bands are processed. If you wish to read less, specify the
             band names accordingly, e.g., ['B02','B03','B04'] to read only the
             VIS bands.
+        :param read_scl:
+            read SCL file if available (default, L2A processing level).
         :return:
             dictionary with band names and corresponding band data as np.array.
             In addition, two entries in the dict provide information about the
@@ -431,7 +434,7 @@ class S2_Band_Reader(Sat_Data_Reader):
         )
 
         # search SCL file if processing level is L2A
-        if is_L2A:
+        if is_L2A and read_scl:
             band_selection.append('SCL')
             try:
                 scl_file = get_S2_sclfile(in_dir)

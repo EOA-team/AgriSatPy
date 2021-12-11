@@ -34,12 +34,13 @@ from copy import deepcopy
 from collections import namedtuple
 
 from agrisatpy.analysis.vegetation_indices import VegetationIndices
-from agrisatpy.utils.exceptions import NotProjectedError
+from agrisatpy.utils.exceptions import NotProjectedError, InputError
 from agrisatpy.utils.exceptions import ResamplingFailedError
 from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.utils.exceptions import BlackFillOnlyError
 from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.spatial_resampling import upsample_array
+from agrisatpy.utils.arrays import count_valid
 
 
 class Sat_Data_Reader(object):
@@ -229,6 +230,52 @@ class Sat_Data_Reader(object):
         return meta['crs']
 
 
+    def reset_bandnames(
+            self,
+            new_bandnames: List[str]
+        ) -> None:
+        """
+        Sets new band names. The length of the passed names must
+        match the number of bands available. The replacement works in
+        the order the new names are passed.
+
+        :param new_bandnames:
+            list of new band names
+        """
+
+        # get old band names
+        old_bandnames = self.get_bandnames()
+        if len(old_bandnames) != len(new_bandnames):
+            raise InputError(
+                f'The number of new band names ({len(new_bandnames)}) ' \
+                f'does not match the number of old band names (' \
+                f'{len(old_bandnames)})'
+            )
+
+        # replace the band names element by element
+        for old_bandname, new_bandname in list(zip(old_bandnames, new_bandnames)):
+            try:
+                self.data[new_bandname] = self.data.pop(old_bandname)
+            except Exception as e:
+                raise Exception from e
+
+
+    def drop_band(
+            self,
+            band_name: str
+        ) -> None:
+        """
+        Drops a selected band from the data dict.
+
+        :param band_name:
+            name of the band to drop
+        """
+
+        try:
+            del self.data[band_name]
+        except Exception as e:
+            raise Exception from e
+
     def is_blackfilled(
             self,
             blackfill_value: Optional[Union[int,float]] = 0
@@ -375,8 +422,9 @@ class Sat_Data_Reader(object):
                 if band_data.dtype == 'uint16':
                     band_data = band_data.astype(float)
                 band_data_list.append(band_data)
-            # add transparency layer
-            band_data_list.append(np.zeros_like(band_data_list[0]))
+            # add transparency layer (floats only)
+            if band_data.dtype == float:
+                band_data_list.append(np.zeros_like(band_data_list[0]))
             band_data = np.dstack(band_data_list)
 
             # use 'green' henceforth to extract the corresponding meta-data
@@ -392,9 +440,9 @@ class Sat_Data_Reader(object):
             band_data[mask] = np.nan
 
         # adjust transparency in case of RGBA arrays
-        if len(band_data.shape) == 3:
+        if len(band_data.shape) == 3 and band_data.dtype == float:
             tmp = deepcopy(band_data[:,:,0])
-            # replace zero (blackfill) with nan
+            # replace zero (blackfill) with nan 
             tmp[tmp <= 0.] = np.nan
             tmp[~np.isnan(tmp)] = 1.
             tmp[np.isnan(tmp)] = 0.
@@ -455,14 +503,13 @@ class Sat_Data_Reader(object):
         else:
 
             # clip data for displaying to central 90%, i.e., discard upper and
-            # lower 5% of the data
-            lower_bound = np.nanquantile(band_data, 0.05)
-            upper_bound = np.nanquantile(band_data, 0.95)
-
             # RGB and NIR plot work different because they contain multiple bands
-            if rgb_plot:
-                # set lower bound to 10% of maximum value in RGB bands
-                lower_bound = 0.1 * np.nanmax(band_data[:,:,0:3])
+            if (rgb_plot or nir_plot) and len(band_data.shape) == 3:
+                lower_bound = np.nanquantile(band_data[:,:,0:3], 0.05)
+                upper_bound = np.nanquantile(band_data[:,:,0:3], 0.95)
+            else:
+                lower_bound = np.nanquantile(band_data, 0.05)
+                upper_bound = np.nanquantile(band_data, 0.95)
 
             img = ax.imshow(
                 band_data,
@@ -528,7 +575,8 @@ class Sat_Data_Reader(object):
             resampling_method: Optional[int] = cv2.INTER_CUBIC,
             pixel_division: Optional[bool] = False,
             band_selection: Optional[List[str]] = [],
-            bands_to_exclude: Optional[List[str]] = []
+            bands_to_exclude: Optional[List[str]] = [],
+            blackfill_value: Optional[Union[int,float]] = 0
         ) -> None:
         """
         resamples band data on the fly if required into a user-definded spatial
@@ -543,6 +591,10 @@ class Sat_Data_Reader(object):
 
         IMPORTANT: The method overwrites the original band data when resampling
         is required!
+
+        IMPORTANT: If using one of cv2 methods it is crucial to provide a
+        blackfill (no-data) value. Blackfill is where the satellite image has no
+        data.
 
         :param target_resolution:
             target spatial resolution in image projection (i.e., pixel size
@@ -565,6 +617,11 @@ class Sat_Data_Reader(object):
         :param bands_to_exclude:
             list of bands NOT to consider for resampling. Per default all
             bands are considered for resampling (see band_selection).
+        :param blackfill_value:
+            value denoting blackfill (no-data). Pixels with that value are excluded
+            from the resampling process. Can be ignored if ``pixel_division=True``
+            because pixel division only divides pixels into smaller ones that
+            align with the original pixels.
         """
 
         # loop over bands and resample those bands not in the desired
@@ -581,16 +638,10 @@ class Sat_Data_Reader(object):
             set_to_exclude = set(bands_to_exclude)
             band_selection = [x for x in band_selection if x not in set_to_exclude]
 
-        # if the data comes from a bandstack then the spatial resolution is
-        # the same for all bands     
-        if self.from_bandstack():
-            meta = self.data['meta']
-            bounds = self.data['bounds']
-
         snap_band_available = False
         for idx, band in enumerate(band_selection):
 
-            pixres = self.get_meta(band)['transform'][0]
+            pixres = self.get_spatial_resolution(band).x
 
             # check if resampling is required, if the band has
             # already the target resolution use its extent to snap
@@ -605,18 +656,19 @@ class Sat_Data_Reader(object):
                     snap_mask = self.data[band].mask
                 break
 
-        # raise a warning if no snap raster is available. The results might then
-        # not be perfectly aligned and differ in extent and localization!
-        if not snap_band_available:
-            raise Warning('No snap raster band found for resampling. '\
-                          'Results might differ in shape!')
-
         for idx, band in enumerate(band_selection):
 
+            # check spatial resolution
             meta = self.get_meta(band)
-            pixres = meta['transform'][0]
+            pixres = self.get_spatial_resolution(band).x
             if pixres == target_resolution:
                 continue
+
+            # get image boundaries
+            bounds = self.get_band_bounds(
+                band,
+                return_as_polygon=False
+            )
 
             # check if coordinate system is projected, geographic
             # coordinate systems are not supported
@@ -645,8 +697,7 @@ class Sat_Data_Reader(object):
                 band_data = deepcopy(band_data.data)
 
             # resample the array using opencv resize or pixel_division
-            band_res = self.get_meta(band_name=band)['transform'][0]
-            scaling_factor = int(band_res / target_resolution)
+            scaling_factor = int(pixres / target_resolution)
             if pixel_division:
                 # determine scaling factor as ratio between current and target spatial resolution
                 res = upsample_array(
@@ -654,14 +705,57 @@ class Sat_Data_Reader(object):
                     scaling_factor=scaling_factor
                 )
             else:
-                try:
-                    res = cv2.resize(
-                        band_data,
-                        dsize=dim_resampled,
-                        interpolation=resampling_method
-                    )
-                except Exception as e:
-                    raise ResamplingFailedError(e)
+                # we have to take care about no-data pixels
+                valid_pixels = count_valid(
+                    in_array=band_data,
+                    no_data_value=blackfill_value
+                )
+                all_pixels = band_data.shape[0] * band_data.shape[1]
+                # if all pixels are valid, then we can directly proceed to the resampling
+                if valid_pixels == all_pixels:
+                    try:
+                        res = cv2.resize(
+                            band_data,
+                            dsize=dim_resampled,
+                            interpolation=resampling_method
+                        )
+                    except Exception as e:
+                        raise ResamplingFailedError(e)
+                else:
+                    # blackfill pixel should be set to NaN before resampling
+                    type_casting = False
+                    if band_data.dtype == 'uint8' or band_data.dtype == 'uint16':
+                        tmp = deepcopy(band_data).astype(float)
+                        type_casting = True
+                    else:
+                        tmp = deepcopy(band_data)
+                    tmp[tmp == blackfill_value] = np.nan
+                    # resample data
+                    try:
+                        res = cv2.resize(
+                            tmp,
+                            dsize=dim_resampled,
+                            interpolation=resampling_method
+                        )
+                    except Exception as e:
+                        raise ResamplingFailedError(e)
+                    # in addition, run pixel division since there will be too many NaN pixels
+                    # when using only res from cv2 resize as it sets pixels without full
+                    # spatial context to NaN
+                    try:
+                        res_pixel_div = upsample_array(
+                            in_array=band_data,
+                            scaling_factor=scaling_factor
+                        )
+                    except Exception as e:
+                        raise ResamplingFailedError(e)
+
+                    # replace NaNs with values from pixel division; thus we will get all
+                    # pixel values and the correct blackfill
+                    res[np.isnan(res)] = res_pixel_div[np.isnan(res)]
+
+                    if type_casting:
+                        res = res.astype(band_data.dtype)
 
             # overwrite entries in self.data
             # if the array is masked, use the masked array from the snap raster
@@ -823,6 +917,11 @@ class Sat_Data_Reader(object):
             band_names = src.descriptions
             self.data = dict.fromkeys(band_names)
             for idx, band_name in enumerate(band_names):
+
+                # handle empty band_names
+                if band_name is None:
+                    band_name = f'B{idx+1}'
+
                 if not masking:
                     self.data[band_name] = src.read(idx+1)
                 else:
@@ -850,7 +949,7 @@ class Sat_Data_Reader(object):
                     bounds = BoundingBox(left=left, bottom=bottom, right=right, top=top)
 
         # check for black-fill
-        is_blackfilled = self.is_blackfilled()
+        is_blackfilled = self.is_blackfilled(blackfill_value=blackfill_value)
         if is_blackfilled:
             raise BlackFillOnlyError('AOI contains blackfill, only')
 
