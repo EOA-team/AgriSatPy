@@ -516,6 +516,11 @@ class S2_Band_Reader(Sat_Data_Reader):
             # store georeferencation and bounding box per band
             meta_bands[s2_band_mapping[band_name]] = meta
             bounds_bands[s2_band_mapping[band_name]] = bounds
+
+        # check for black-fill
+        is_blackfilled = self.is_blackfilled()
+        if is_blackfilled:
+            raise BlackFillOnlyError('AOI contains blackfill, only')
     
         self.data['meta'] = meta_bands
         self.data['bounds'] = bounds_bands

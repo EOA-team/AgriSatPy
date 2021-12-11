@@ -36,11 +36,52 @@ class Sat_Data_Creator(Sat_Data_Reader):
         self._is_timeeries = is_timeseries
 
 
-    def add_meta(self, meta):
-        pass
+    def add_meta(
+            self,
+            meta: dict
+        ) -> None:
+        """
+        Adds image metadata to the current object. Image metadata is an essential
+        pre-requisite for writing image data to raster files.
 
-    def copy_meta_from_reader(self, reader, band_selection):
-        pass
+        IMPORTANT: Overwrites image metadata if already existing! Does not check
+        if meta is correct and contains all required items!
+
+        :param meta:
+            image metadata dict
+        """
+
+        if self.is_banstack:
+            self.data['meta'] = meta
+        else:
+            raise NotImplementedError()
+
+
+    def add_bounds(
+            self,
+            bounds
+        ):
+
+        if self.is_bandstack:
+            self.data['bounds'] = bounds
+        else:
+            raise NotImplementedError
+
+
+    def copy_geoinfo_from_reader(
+            self,
+            reader,
+            band_selection
+        ):
+        """
+        copies the meta and bounds geo information from another
+        ``Sat_Data_Reader`` object into the current object
+        """
+
+        if self.is_bandstack:
+            meta = reader.get_band_meta()
+            # TODO
+        
 
     def add_observation(self, timestamp: datetime, band_name, data):
         pass
