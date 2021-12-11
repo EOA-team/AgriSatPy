@@ -371,6 +371,9 @@ class Sat_Data_Reader(object):
             band_data_list = []
             for band_name in band_names:
                 band_data = self._masked_array_to_nan(self.data[band_name])
+                # check if band data is still int16, if yes convert it to float
+                if band_data.dtype == 'uint16':
+                    band_data = band_data.astype(float)
                 band_data_list.append(band_data)
             # add transparency layer
             band_data_list.append(np.zeros_like(band_data_list[0]))
@@ -391,6 +394,8 @@ class Sat_Data_Reader(object):
         # adjust transparency in case of RGBA arrays
         if len(band_data.shape) == 3:
             tmp = deepcopy(band_data[:,:,0])
+            # replace zero (blackfill) with nan
+            tmp[tmp <= 0.] = np.nan
             tmp[~np.isnan(tmp)] = 1.
             tmp[np.isnan(tmp)] = 0.
             band_data[:,:,3] = tmp
@@ -454,10 +459,10 @@ class Sat_Data_Reader(object):
             lower_bound = np.nanquantile(band_data, 0.05)
             upper_bound = np.nanquantile(band_data, 0.95)
 
-            # be even stricter for RGB plot
+            # RGB and NIR plot work different because they contain multiple bands
             if rgb_plot:
-                if lower_bound == 0:
-                    lower_bound = np.nanquantile(band_data[band_data > 0], 0.05)
+                # set lower bound to 10% of maximum value in RGB bands
+                lower_bound = 0.1 * np.nanmax(band_data[:,:,0:3])
 
             img = ax.imshow(
                 band_data,
@@ -471,7 +476,7 @@ class Sat_Data_Reader(object):
         if colormap is not None:
             divider = make_axes_locatable(ax)
             cax = divider.append_axes('right', size='5%', pad=0.05)
-            cb = fig.colorbar(img, cax=cax, orientation='vertical')
+            cb = fig.colorbar(img, cax=cax, orientation='vertical', ticks=unique_values)
             # overwrite ticker if user defined ticks provided
             if user_defined_ticks is not None:
                 cb.ax.locator_params(nbins=len(user_defined_ticks))
