@@ -1,23 +1,15 @@
 '''
-Created on Jul 9, 2021
-
-@author:    Gregor Perich and Lukas Graf (D-USYS, ETHZ)
-
-@purpose:   Spatial resampling of raster images to 10m resolution
-            developed for Sentinel2.
-            It is also possible to resample from a higher to
-            a lower spatial resolution.
-
-            The module can handle Sentinel-2 data in L1C and L2A
-            processing level.
-
-@history:   Rewritten in v1.2 using object-oriented IO methods by
-            Lukas Graf
+This module allows for spatial resampling of Sentinel-2 images to bring
+all or a subset of Sentinel-2 bands into a common spatial resolution.
+In the default use case, the function allows to resample the 20m Sentinel-2 bands
+into 10m- Other scenarios (e.g., bringing all bands to 20m resolution or resampling
+the 60m bands) are possible.
 '''
 
 import cv2
 import glob
 import numpy as np
+import rasterio as rio
 import matplotlib.pyplot as plt
 
 from pathlib import Path
@@ -31,8 +23,13 @@ from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.config import get_settings
 from agrisatpy.processing import resampling
 from agrisatpy.config.sentinel2 import Sentinel2
-from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
-
+from agrisatpy.utils.constants.sentinel2 import s2_band_mapping,\
+    ProcessingLevels
+from agrisatpy.io.sat_data_reader import Sat_Data_Reader
+from agrisatpy.io.utils.sentinel2 import read_s2_tcifile
+from agrisatpy.io.utils.sentinel2 import read_s2_sclfile
+from pickle import NONE
+from docutils.nodes import target
 
 Settings = get_settings()
 logger = Settings.logger
@@ -111,21 +108,107 @@ def _get_resampling_name(
     }
 
     return translator.get(resampling_method, 'unknown')
+
+
+def create_rgb_preview(
+        out_dir: Path,
+        reader: Sat_Data_Reader,
+        out_filename: str
+    ) -> None:
+    """
+    Creates the RGB quicklook image (stored in a sub-directory).
+
+    :param out_dir:
+        directory where the band-stacked geoTiff are written to
+    :param s2_stack:
+        opened Sat_Data_Reader with 'tci' band
+    :param out_filename:
+        file name of the resulting RGB quicklook image (*.png)
+    """
+
+    # RGB previews are stored in their own sub-directory
+    rgb_subdir = out_dir.joinpath(Settings.SUBDIR_RGB_PREVIEWS)
+    if not rgb_subdir.exists():
+        rgb_subdir.mkdir()
+
+    fig_rgb = reader.plot_rgb()
+    fig_rgb.savefig(
+        fname=rgb_subdir.joinpath(out_filename),
+        bbox_inches='tight'
+    )
+    plt.close(fig_rgb)
+
+
+def create_scl_preview(
+        out_dir: Path,
+        reader: Sat_Data_Reader,
+        out_filename: str
+    ) -> None:
+    """
+    Creates the SCL quicklook image (stored in a sub-directory).
+
+    :param out_dir:
+        directory where the band-stacked geoTiff are written to
+    :param s2_stack:
+        opened S2_Band_Reader with 'scl' band
+    :param out_filename:
+        file name of the resulting SCL quicklook image (*.png)
+    """
+    # SCL previews are stored in their own sub-directory alongside with the RGBs
+    rgb_subdir = out_dir.joinpath(Settings.SUBDIR_RGB_PREVIEWS)
+    if not rgb_subdir.exists():
+        rgb_subdir.mkdir()
+
+    fig_scl = reader.plot_scl()
+    fig_scl.savefig(
+        fname=rgb_subdir.joinpath(out_filename),
+        bbox_inches='tight'
+    )
+    plt.close(fig_scl)
+
+
+def create_scl(
+        out_dir: Path,
+        reader: S2_Band_Reader,
+        out_filename: str
+    ) -> None:
+    """
+    Creates the SCL raster datasets (stored in a sub-directory).
+
+    :param out_dir:
+        directory where the band-stacked geoTiff are written to
+    :param reader:
+        opened S2_Band_Reader with 'scl' band
+    :param out_filename:
+        file name of the resulting SCL raster image (*.tiff)
+    """
     
+    scl_subdir = out_dir.joinpath(Settings.SUBDIR_SCL_FILES)
+    if not scl_subdir.exists():
+        scl_subdir.mkdir()
+
+    reader.write_bands(
+        out_file=scl_subdir.joinpath(out_filename),
+         band_selection=['scl']
+    )
+
+
+TARGET_RESOLUTIONS: List[int] = [10, 20]
+
 
 def resample_and_stack_s2(
         in_dir: Path,
         out_dir: Path,
         target_resolution: Optional[Union[int, float]] = 10,
         resampling_method: Optional[int]=cv2.INTER_CUBIC,
-        pixel_division: Optional[bool]=False,
-        in_file_aoi: Optional[Path] = None
+        pixel_division: Optional[bool]=False
     ) -> Path:
     """
     Function to spatially resample a S2 scene in *.SAFE format and write it to a
-    single stacked geoTiff. Creates also a RGB preview png-file of the scene and
+    single, stacked geoTiff. Creates also a RGB preview png-file of the scene and
     stores the scene classification layer that comes with L2A products in 10m spatial
-    resolution.
+    resolution. Possible spatial resolution values are 10 and 20m. The 60m bands
+    are not considered.
 
     The function checks the processing level of the data (L1C or L2A) based on the
     name of the .SAFE dataset.
@@ -138,204 +221,201 @@ def resample_and_stack_s2(
       are generated PLUS the scene classification layer (SCL) resampled to 10m
       spatial resolution
 
-    The function takes the 10 and 20m Sentinel-2 bands, i.e., all bands but those
-    with 60m spatial resolution.
+    IMPORTANT: If only a small area of interest shall be processed, also consider
+    ``agrisatpy.io.sentinel2.Sat_Data_Reader.resample`` since this function works
+    on the **full** scene extent, only.
 
     :param in_dir:
         path of the .SAFE directory where the S2 data resides.
     :param out_dir:
         path where to save the resampled & stacked geoTiff files to.
     :param target_resolution:
-        target spatial resolution you want to resample to. The default is 10 (meters).
+        target spatial resolution you want to resample to. Must be one of
+        [10, 20]. The default is 10 (meters).
     :param resampling_method:
         The interpolation algorithm you want to use for spatial resampling. 
         The default is opencv's ``cv2.INTER_CUBIC``. See the opencv documentation for
-        other options such ``cv2.INTER_NEAREST`` for nearest neighbor, etc.
+        other options such as ``cv2.INTER_LINEAR``.
     :param pixel_division:
         if set to True then pixel values will be divided into n*n subpixels 
-        (only even numbers) depending on the target resolution. Takes the 
-        current band resolution (for example 20m) and checks against the desired
-        target_resolution and applies a scaling_factor. 
-        This works, however, only if the spatial resolution is increased, e.g.
-        from 20 to 10m. The ``resampling_method`` argument is ignored then.
-        Default value is False.
-    :param in_file_aoi:
-        optional vector geometry file defining an Area of Interest (AOI). If provided
-        the band-stack and the other products are only generated for the extent of
-        that specific AOI.
+        (only even numbers) depending on the target resolution. Works for resampling
+        from 20 to 10m, only.
     :return:
-        dictionary with filepaths to bandstack, rgb_quicklook and (L2A, only) SCL
+        dictionary with filepaths to bandstack, rgb_quicklook, and (L2A, only) SCL
     """
 
-    # read the data from .SAFE
-    s2_stack = S2_Band_Reader()
+    # check passed spatial resolution
+    if target_resolution not in TARGET_RESOLUTIONS:
+        raise ValueError(
+            f'Spatial resolution must be one out of {TARGET_RESOLUTIONS}'
+        )
 
-    # determine processing level
+    # determine name of the resampling method
+    if pixel_division:
+        resampling_method_str = 'pixel-division'
+    else:
+        resampling_method_str = _get_resampling_name(
+            resampling_method=resampling_method
+        )
+
+    # get output filenames
+    out_file_names = _get_output_file_names(
+        in_dir=in_dir,
+        resampling_method=resampling_method_str,
+        target_resolution=target_resolution
+    )
+
+    # get the TCI quicklook image first
     try:
-        processing_level = get_S2_processing_level(dot_safe_name=in_dir.name)
+        tci = read_s2_tcifile(in_dir)
     except Exception as e:
-        logger.error(e)
+        logger.error(f'Could not read TCI file from {in_dir}: {e}')
         return {}
-
-    # read data from .SAFE dataset
+    # save to file in RGB sub-directory
     try:
-        s2_stack.read_from_safe(
-            in_dir=in_dir,
-            processing_level=processing_level,
-            in_file_aoi=in_file_aoi,
-            int16_to_float=False # keep original datatypes
+        create_rgb_preview(
+            out_dir=out_dir,
+            reader=tci,
+            out_filename=out_file_names['rgb_preview']
         )
     except Exception as e:
-        logger.error(e)
+        logger.error(f'Generation of RGB preview from {in_dir} failed: {e}')
         return {}
+    logger.info(f'Generated RGB preview image from {in_dir}')
 
-    # resample the 20m bands to 10m using etiher
-    # opencv2
-    if not pixel_division:
+    # its meta information serves a blue-print for writing the output
+    meta = tci.get_meta('blue')
+    tci = None
 
-        # if L2A then do not resample the SCL layer using the custom
-        # interpolation method
-        bands_to_exclude = []
-        if processing_level.name == 'L2A':
-            bands_to_exclude = ['scl']
+    # get scene classification layer if available (L2A processing level)
+    processing_level = get_S2_processing_level(dot_safe_name=in_dir)
+    if processing_level == ProcessingLevels.L2A:
         try:
-            s2_stack.resample(
-                target_resolution=target_resolution,
-                resampling_method=resampling_method,
-                bands_to_exclude=bands_to_exclude
-            )
+            scl = read_s2_sclfile(in_dir)
         except Exception as e:
-            logger.error(e)
-            return {}
-        
-        # resample SCL band using pixel division for whole scenes
-        if in_file_aoi is None:
-            try:
-                s2_stack.resample(
-                    target_resolution=target_resolution,
-                    resampling_method=resampling_method,
-                    pixel_division=True
-                )
-            except Exception as e:
-                logger.error(e)
-                return {}
-        # but for AOIs it's better to use NEAREST_NEIGHBOR because this
-        # method will snap the layer to the correct extent
-        else:
-            try:
-                s2_stack.resample(
-                    target_resolution=target_resolution,
-                    resampling_method=cv2.INTER_NEAREST_EXACT,
-                )
-            except Exception as e:
-                logger.error(e)
-                return {}
-    # or using pixel_divsion (all bands including scl layer if available)
-    else:
+            logger.error(f'Could not read SCL file from {in_dir}: {e}')
+        # save as preview image and geoTiff dataset after resampling to 10m
+        create_scl_preview(
+            out_dir=out_dir,
+            reader=scl,
+            out_filename=out_file_names['scl_preview']
+        )
+        # resample to 10m spatial resolution and save to geoTiff
+        # we always use pixel division for the SCL file
         try:
-            s2_stack.resample(
+            scl.resample(
                 target_resolution=target_resolution,
                 pixel_division=True
             )
         except Exception as e:
-            logger.error(e)
+            logger.error(f'Resampling of SCL file from {in_dir} failed: {e}')
             return {}
-
-    logger.info(f'Completed spatial resampling of {in_dir}')
-
-    # check if image contains any valid pixel, if not return
-    band_list = s2_stack.get_bandnames()
-    test_band = s2_stack.get_band(band_name=band_list[0])
-    if test_band.sum() == 0:
-        logger.info('Image data seems to contain No-Data only')
-        return {}
-
-    # determine file name for output
-    if not pixel_division:
-        resampling_method = _get_resampling_name(resampling_method=resampling_method)
-    else:
-        resampling_method = 'pixel-division'
-
-    out_file_names = _get_output_file_names(
-        in_dir=in_dir,
-        resampling_method=resampling_method,
-        target_resolution=target_resolution
-    )
-
-    # create RGB and (if available) SCL quicklooks
-    rgb_subdir = out_dir.joinpath(Settings.SUBDIR_RGB_PREVIEWS)
-    if not rgb_subdir.exists():
-        rgb_subdir.mkdir()
-
-    fig_rgb = s2_stack.plot_rgb()
-    out_file_names.update(
-        {'rgb_preview': rgb_subdir.joinpath(out_file_names['rgb_preview'])}
-    )
-    fig_rgb.savefig(
-        fname=out_file_names['rgb_preview'],
-        bbox_inches='tight'
-    )
-    plt.close(fig_rgb)
-
-    if processing_level.name == 'L2A':
-        
-        fig_scl = s2_stack.plot_scl()
-
-        # write SCL file
-        scl_subdir = out_dir.joinpath(Settings.SUBDIR_SCL_FILES)
-        if not scl_subdir.exists():
-            scl_subdir.mkdir()
-
-        out_file_names.update(
-            {
-                'scl_preview': rgb_subdir.joinpath(out_file_names['scl_preview']),
-                'scl': scl_subdir.joinpath(out_file_names['scl'])
-            }
-        )
-        fig_scl.savefig(
-            fname=out_file_names['scl_preview'],
-            bbox_inches='tight'
-        )
-        plt.close(fig_scl)
-
+        logger.info(f'Generated SCL preview image from {in_dir}')
         try:
-            s2_stack.write_bands(
-                out_file=out_file_names['scl'],
-                band_selection=['scl']
+            create_scl(
+                out_dir=out_dir,
+                reader=scl,
+                out_filename=out_file_names['scl']
             )
         except Exception as e:
-            logger.error(e)
+            logger.error(f'Generation of SCL file from {in_dir} failed: {e}')
             return {}
+        logger.info(f'Generated SCL geoTiff (10m) from {in_dir}')
+        scl = None
+    # if scl is not available set it to empty string in the dictionary of filenames
     else:
-        out_file_names.pop('scl')
-        out_file_names.pop('scl_preview')
+        out_file_names['scl'] = ''
+        out_file_names['scl_preview'] = ''
 
-    # write bandstack preserving the band names
-    band_aliases = S2.BAND_INDICES
-    drop_bands = S2.SPATIAL_RESOLUTIONS.get(60.)
-    band_aliases = [k for k in band_aliases.keys() if k not in drop_bands]
-    band_selection = list(s2_band_mapping.values())
-    band_selection.remove('scl')
+    # get driver for output file
+    fname_bandstack = out_dir.joinpath(out_file_names['bandstack'])
+    driver = rio.drivers.driver_from_extension(fname_bandstack)
 
-    try:
-        s2_stack.write_bands(
-            out_file=out_dir.joinpath(out_file_names['bandstack']),
-            band_selection=band_selection,
-            band_aliases=band_aliases
-        )
-    except Exception as e:
-        logger.error(e)
-        return {}
+    # update meta dict
+    meta.update(
+        {
+            'count': 10,         # Sentinel-2 has 10 bands relevant for agriculture
+            'dtype': 'uint16',   # Sentinel-2 data is stored as unsigned integers (16bit)
+            'driver': driver     # should be geoTiff
+        }
+    )
+
+    # check if the resolution fits
+    if meta['transform'][0] != target_resolution:
+        # TODO: adopt meta, this is required when going from 10 to 20m
+        pass
+
+    # open output dataset
+    s2_bands = list(s2_band_mapping.keys())
+    s2_bands.remove('SCL')
+
+    with rio.open(fname_bandstack, 'w+', **meta) as dst:
+
+        logger.info(f'Opening output dataset {fname_bandstack}')
+
+        # loop over S2 bands: read from .SAFE, resample if required and write to output
+        for idx, s2_band in enumerate(s2_bands):
+
+            src = S2_Band_Reader()
+
+            try:
+                src.read_from_safe(
+                    in_dir=in_dir,
+                    band_selection=[s2_band],
+                    read_scl=False
+                )
+            except Exception as e:
+                logger.error(f'Could not read band {s2_band} from {in_dir}: {e}')
+                return {}
+            # get color name of the band (used in reader)
+            band_alias = s2_band_mapping[s2_band]
+
+            # check resolution of the band
+            band_res = src.get_spatial_resolution(band_alias).x
+
+            # resample band if required
+            if band_res != target_resolution:
+                
+                try:
+                    src.resample(
+                        target_resolution=target_resolution,
+                        resampling_method=resampling_method,
+                        pixel_division=pixel_division,
+                        band_selection=[band_alias]
+                    )
+                except Exception as e:
+                    logger.error(
+                        f'Resampling of band {s2_band}/{band_alias} ' \
+                        f'({idx+1}/{len(s2_bands)} failed: {e}'
+                    )
+                    return {}
+
+                logger.info(
+                    f'Resampled band {s2_band} - "{band_alias.upper()}" ' \
+                    f'({idx+1}/{len(s2_bands)}) to {int(target_resolution)}m ' \
+                    f'from {in_dir}'
+                )
+
+            # write band to dst
+            dst.set_band_description(idx+1, s2_band)
+            dst.write(src.data[band_alias], idx+1)
+
+            logger.info(
+                f'Wrote band {s2_band} - "{band_alias.upper()}" ({idx+1}/{len(s2_bands)}) ' \
+                f'from {in_dir} into {fname_bandstack}'
+            )
+
+        logger.info(f'Finished writing bands to {fname_bandstack}')
 
     return out_file_names
 
 
 if __name__ == '__main__':
 
-    in_dir = Path('/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L2A/CH/2018/S2A_MSIL2A_20180816T104021_N0208_R008_T32TLT_20180816T190612')
-    out_dir = Path('/home/graflu/public/Evaluation/Projects/KP0031_lgraf_PhenomEn/temp')
+    in_dir = Path('/mnt/ides/Lukas/04_Work/S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.SAFE')
+    out_dir = Path('/mnt/ides/Lukas/03_Debug/Sentinel2/Resampling')
 
-    pixel_division = True
+    pixel_division = False
 
     resample_and_stack_s2(
         in_dir=in_dir,

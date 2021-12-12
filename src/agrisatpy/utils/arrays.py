@@ -11,6 +11,7 @@ from typing import Union
 from typing import Optional
 from agrisatpy.utils.exceptions import InputError
 
+
 def count_valid(
         in_array: Union[np.array, MaskedArray],
         no_data_value: Optional[Union[int, float]] = 0.
@@ -39,6 +40,5 @@ def count_valid(
     if isinstance(in_array, MaskedArray):
         return in_array.count()
 
-    return in_array.count_nonzero(in_array != no_data_value)
-    
-    
+    # check if array is np.array or np.ndarray
+    return (in_array != no_data_value).sum()

@@ -46,8 +46,7 @@ def resample_and_stack_S2(
         target_resolution: Optional[float]=10.0,
         interpolation: Optional[int]=Resampling.cubic,
         masking: Optional[bool]=False,
-        pixel_division: Optional[bool]=False,
-        is_L2A: Optional[bool]=True,
+        pixel_division: Optional[bool]=False
         **kwargs
     ) -> Path:
     '''
