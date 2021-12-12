@@ -1,15 +1,16 @@
 '''
-Created on Dec 10, 2021
-
-@author: graflu
+Module for merging raster datasets.
 '''
+
 
 from pathlib import Path
 from typing import NamedTuple
 from typing import List
+from typing import Optional
+from typing import Union
 from collections import namedtuple
-import rasterio as rio
 from rasterio.merge import merge
+from rasterio.crs import CRS
 
 from agrisatpy.io import Sat_Data_Reader
 
@@ -41,18 +42,24 @@ def _get_CRS_and_bounds(
 
 def merge_datasets(
         datasets: List[Path],
-        out_file: Path
+        out_file: Path,
+        target_crs: Optional[Union[int,CRS]] = None
     ):
     """
     Merges a list of raster datasets using the ``rasterio.merge`` module. The
     function can handle datasets in different coordinate systems by resampling
-    the data into a common spatial reference system (todo)
+    the data into a common spatial reference system either provided in the function
+    call or infered from the first dataset in the list.
 
     IMPORTANT: All datasets must have the same number of bands and data type!
 
     :param datasets:
         list of datasets (as path-like objects or opened raster datasets)
         to merge into a single raster
+    :param target_crs:
+        optional target spatial coordinate reference system in which the output
+        product shall be generated. Must be passed as integer EPSG code or CRS
+        instance.
     :param out_file:
         name of the resulting raster dataset
     """
@@ -70,8 +77,19 @@ def merge_datasets(
 
     # coordinate systems are not the same 
     if len(set(crs_list)) > 1:
-        # TODO: implement this case -> requires re-projection of the data
-        pass
+        # check if a target CRS is provided, otherwise use the CRS of the first
+        # dataset item
+        if target_crs is None:
+            # use CRS from first dataset
+            pass
+        else:
+            pass
+    # all datasets have one coordinate system, check if it is the desired one
+    else:
+        if target_crs is not None:
+            if crs_list[0] != target_crs:
+                # reprojection into target CRS required
+                pass
 
     # use rasterio merge to get a new raster dataset
     try:

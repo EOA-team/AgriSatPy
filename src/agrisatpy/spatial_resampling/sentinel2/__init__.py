@@ -1,9 +1,14 @@
 '''
-This module allows for spatial resampling of Sentinel-2 images to bring
-all or a subset of Sentinel-2 bands into a common spatial resolution.
-In the default use case, the function allows to resample the 20m Sentinel-2 bands
-into 10m- Other scenarios (e.g., bringing all bands to 20m resolution or resampling
-the 60m bands) are possible.
+This function is part of the AgriSatPy's Sentinel-2 default processing chain.
+
+It allows for spatial resampling of Sentinel-2 images to bring
+the 10 and 20m spectral bands into either 10m (default) or 20m spatial resolution.
+The function works on the full extent of a Sentinel-2 scene and writes
+the output bands into a single multi-band geoTiff file.
+
+For resampling spatial subsets of a scene which are considerably smaller than
+the spatial extent of Sentinel-2 scene (almost 110km by 110km) consider using
+``agrisatpy.io.sentinel.S2_Band_Reader`` and its ``resample()`` method directly.
 '''
 
 import cv2

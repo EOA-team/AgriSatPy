@@ -1,14 +1,17 @@
 '''
-Created on Nov 25, 2021
-
-@author: Lukas Graf (D-USYS, ETHZ)
+Functions for reprojecting vector and raster data from one spatial
+coordinate reference system into another one.
 '''
 
+import numpy as np
 import rasterio as rio
 import geopandas as gpd
 
+from rasterio import Affine
 from shapely.geometry import box
 from pathlib import Path
+from typing import Union
+from typing import Tuple
 from geopandas import GeoDataFrame
 
 
@@ -54,4 +57,31 @@ def check_aoi_geoms(
         gdf_aoi = gpd.GeoDataFrame(geometry=gpd.GeoSeries(bbox))
 
     return gdf_aoi
+
+
+def reproject_raster_dataset(
+        raster: Union[Path, np.ndarray],
+        **kwargs
+    ) -> Tuple[Union[Path,np.ndarray], Affine]:
+    """
+    Re-projects a raster dataset into another spatial coordinate reference
+    system by calling ``rasterio.warp.reproject``.
+
+    :param raster:
+        either a file-path to a raster dataset or a numpy array
+        containing band data to reproject
+    :param kwargs:
+        kwargs required by ``rasterio.warp.reproject``. See rasterio's docs
+        for more information.
+    """
+
+    try:
+        dst, transform = rio.warp.reproject(
+            source=raster,
+            **kwargs
+        )
+    except Exception as e:
+        raise Exception from e
+
+    return dst, transform
 

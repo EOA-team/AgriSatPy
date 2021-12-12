@@ -21,7 +21,6 @@ from shapely.geometry import box
 from shapely.geometry import Polygon
 from pathlib import Path
 from typing import Optional
-from typing import Dict
 from typing import List
 from typing import Union
 from typing import Tuple
@@ -34,13 +33,17 @@ from copy import deepcopy
 from collections import namedtuple
 
 from agrisatpy.analysis.vegetation_indices import VegetationIndices
-from agrisatpy.utils.exceptions import NotProjectedError, InputError
+from agrisatpy.utils.exceptions import NotProjectedError
+from agrisatpy.utils.exceptions import InputError
+from agrisatpy.utils.exceptions import ReprojectionError
 from agrisatpy.utils.exceptions import ResamplingFailedError
 from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.utils.exceptions import BlackFillOnlyError
 from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.spatial_resampling import upsample_array
 from agrisatpy.utils.arrays import count_valid
+from agrisatpy.utils.reprojection import reproject_raster_dataset
+from rasterio.warp import transform_bounds
 
 
 class Sat_Data_Reader(object):
@@ -95,7 +98,7 @@ class Sat_Data_Reader(object):
 
     def get_band(
             self,
-            band_name
+            band_name: str
         ) -> np.array:
         """
         Returns the ``numpy.array`` containing the data for one band
@@ -112,6 +115,26 @@ class Sat_Data_Reader(object):
 
         # return np array
         return self.data[band_name]
+
+
+    def get_blackfill(
+            self,
+            band_name: str,
+            blackfill_value: Optional[Union[int,float]] = 0
+        ) -> np.array:
+        """
+        Returns a boolean ``numpy.array`` indicating those pixels that are
+        black-filled in a user-selected band.
+
+        :param band_name:
+            name of the band
+        :param blackfill_value:
+            pixel value indicating black fill. Zero by default.
+        :return:
+            boolean black-fill mask as ``numpy.array`` (two dimensional)
+        """
+
+        return self.get_band(band_name) == blackfill_value
 
 
     def get_bandnames(self) -> List[str]:
@@ -275,6 +298,79 @@ class Sat_Data_Reader(object):
             del self.data[band_name]
         except Exception as e:
             raise Exception from e
+
+
+    def reproject_bands(
+            self,
+            target_crs: Union[int, CRS],
+            blackfill_value: Optional[Union[int,float]] = 0,
+            resampling_method: Optional[int] = 2,
+            num_threads: Optional[int] = 1
+        ) -> None:
+        """
+        Reprojects all available bands from their source spatial reference
+        system into another one.
+
+        IMPORTANT: The original band data is overwritten by this method!
+
+        :param target_crs:
+            EPSG code denoting the target coordinate system
+        """
+
+        # get band names
+        band_names = self.get_bandnames()
+        
+        # loop over bands and reproject them
+        for band_name in band_names:
+
+            # get band bounds and Affine transformation
+            src_bounds = self.get_band_bounds(band_name, return_as_polygon=False)
+            src_crs = self.get_band_epsg(band_name)
+            src_affine = self.get_meta(band_name)['transform']
+
+            resampling_options = {
+                'src_transform': src_affine,
+                'dst_crs': target_crs,
+                'src_nodata': blackfill_value,
+                'resampling': resampling_method,
+                'num_threads': num_threads
+            }
+
+            # reproject raster data
+            try:
+                out_data, out_transform = reproject_raster_dataset(
+                    raster=self.get_band(band_name),
+                    **resampling_options
+                )
+            except Exception as e:
+                raise ReprojectionError(f'Could not re-project band {band_name}: {e}')
+
+            # reproject bounds
+            try:
+                out_bounds = transform_bounds(
+                    src_crs=src_crs,
+                    dst_crs=target_crs,
+                    left=src_bounds.left,
+                    bottom=src_bounds.bottom,
+                    top=src_bounds.top,
+                    right=src_bounds.right
+                )
+            except Exception as e:
+                raise ReprojectionError(f'Could not re-project bounds of {band_name}: {e}')
+
+            # overwrite band data
+            self.data[band_name] = out_data
+
+            # TODO: adopt meta-entries (CRS, coordinates, etc.)
+            
+            # overwrite meta and bounds
+            if not self.from_bandstack():
+                self.data['meta'][band_name]['transform'] = out_transform
+                self.data['bounds'][band_name] = out_bounds
+            else:
+                self.data['meta']['transform'] = out_transform
+                self.data['bounds'] = out_bounds
+
 
     def is_blackfilled(
             self,
