@@ -1,9 +1,5 @@
 '''
-Created on Nov 29, 2021
-
-@author:    Lukas Graf (D-USYS, ETHZ)
-
-@purpose:   Collection of exceptions raised by AgriSatPy's modules
+Collection of exceptions raised by AgriSatPy's modules
 '''
 
 class NotProjectedError(Exception):
@@ -38,3 +34,7 @@ class ArchiveCreationError(Exception):
 
 class BlackFillOnlyError(Exception):
     pass
+
+class ReprojectionError(Exception):
+    pass
+
