@@ -17,6 +17,7 @@ from rasterio import Affine
 from rasterio.coords import BoundingBox
 from rasterio.drivers import driver_from_extension
 from rasterio.crs import CRS
+from rasterio.enums import Resampling
 from shapely.geometry import box
 from shapely.geometry import Polygon
 from pathlib import Path
@@ -304,7 +305,7 @@ class Sat_Data_Reader(object):
             self,
             target_crs: Union[int, CRS],
             blackfill_value: Optional[Union[int,float]] = 0,
-            resampling_method: Optional[int] = 2,
+            resampling_method: Optional[int] = Resampling.nearest,
             num_threads: Optional[int] = 1
         ) -> None:
         """
@@ -315,6 +316,15 @@ class Sat_Data_Reader(object):
 
         :param target_crs:
             EPSG code denoting the target coordinate system
+        :param blackfill_value:
+            value indicating black-fill (aka no-data). No-Data pixels are
+            not used for interpolation.
+        :param resampling_method:
+            resampling method used by rasterio. Default is nearest neighbor
+            resampling which is recommended as long as the pixel size remains
+            the same (e.g., from one UTM zone into another).
+        :param num_threads:
+            number of threads to use. The default is 1.
         """
 
         # get band names

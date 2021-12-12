@@ -13,6 +13,7 @@ from rasterio.merge import merge
 from rasterio.crs import CRS
 
 from agrisatpy.io import Sat_Data_Reader
+from agrisatpy.utils.reprojection import reproject_raster_dataset
 
 
 def _get_CRS_and_bounds(
@@ -43,7 +44,8 @@ def _get_CRS_and_bounds(
 def merge_datasets(
         datasets: List[Path],
         out_file: Path,
-        target_crs: Optional[Union[int,CRS]] = None
+        target_crs: Optional[Union[int,CRS]] = None,
+        **kwargs
     ):
     """
     Merges a list of raster datasets using the ``rasterio.merge`` module. The
@@ -56,12 +58,14 @@ def merge_datasets(
     :param datasets:
         list of datasets (as path-like objects or opened raster datasets)
         to merge into a single raster
+    :param out_file:
+        name of the resulting raster dataset
     :param target_crs:
         optional target spatial coordinate reference system in which the output
         product shall be generated. Must be passed as integer EPSG code or CRS
         instance.
-    :param out_file:
-        name of the resulting raster dataset
+    :param kwargs:
+        kwargs to pass to ``rasterio.warp.reproject``
     """
 
     # check the CRS and bounds of the datasets first
@@ -75,7 +79,7 @@ def merge_datasets(
         bounds_list.append(geo_info.bounds)
         meta_list.append(geo_info.meta)
 
-    # coordinate systems are not the same 
+    # coordinate systems are not the same -> re-projection of raster datasets
     if len(set(crs_list)) > 1:
         # check if a target CRS is provided, otherwise use the CRS of the first
         # dataset item
@@ -88,7 +92,7 @@ def merge_datasets(
     else:
         if target_crs is not None:
             if crs_list[0] != target_crs:
-                # reprojection into target CRS required
+                # re-projection into target CRS required
                 pass
 
     # use rasterio merge to get a new raster dataset
