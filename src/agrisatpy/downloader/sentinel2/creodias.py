@@ -13,6 +13,7 @@ import pandas as pd
 
 from agrisatpy.config import get_settings
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
+from agrisatpy.utils.exceptions import DataNotFoundError
 
 
 Settings = get_settings()
@@ -90,6 +91,10 @@ def query_creodias(
     # extract features (=available datasets)
     features = res_json['features']
     datasets = pd.DataFrame(features)
+
+    # make sure datasets is not empty otherwise return
+    if datasets.empty:
+        raise DataNotFoundError(f'CREODIAS query returned empty set')
 
     # get *.SAFE dataset names
     datasets['dataset_name'] = datasets.properties.apply(
