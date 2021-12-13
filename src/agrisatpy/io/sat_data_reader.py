@@ -47,6 +47,7 @@ from agrisatpy.spatial_resampling import upsample_array
 from agrisatpy.utils.arrays import count_valid
 from agrisatpy.utils.reprojection import reproject_raster_dataset
 from agrisatpy.utils.decorators import check_band_names
+from agrisatpy.utils.decorators import check_meta
 
 
 
@@ -276,7 +277,7 @@ class Sat_Data_Reader(object):
             bounds of the band in the coordinate system of the dataset
         """
 
-        bounds = self.get_band(band_name='bounds')
+        bounds = self.data['bounds']
 
         # check if the file is from band stack or if bounds are the same for each band
         if not self.from_bandstack():
@@ -284,7 +285,7 @@ class Sat_Data_Reader(object):
                 bounds = bounds[band_name]
             except Exception:
                 raise BandNotFoundError(
-                    f'Could not find "{band_name}" in data bounds dict'
+                    f'Could not find "bounds" in data bounds dict'
                 )
 
         # return bounding box or polygon
@@ -310,6 +311,72 @@ class Sat_Data_Reader(object):
 
         meta = self.get_meta(band_name=band_name)
         return meta['crs']
+
+
+    @check_meta
+    def set_meta(
+            self,
+            meta: dict,
+            band_name: Optional[str] = None
+        ) -> None:
+        """
+        Adds image metadata to the current object. Image metadata is an essential
+        pre-requisite for writing image data to raster files.
+
+        IMPORTANT: Overwrites image metadata if already existing!
+
+        :param meta:
+            image metadata dict
+        :param band_name:
+            name of the band for which meta is added. If the current object
+            is not a bandstack, specifying a band name is mandatory!
+        """
+
+        # check if meta is already populated
+        if 'meta' not in self.data.keys():
+            self.data['meta'] = {}
+
+        # check if the data is band stack
+        if self._from_bandstack:
+            self.data['meta'] = meta
+        else:
+            if band_name is None:
+                raise ValueError(
+                    'Band name must be provided when not from bandstack'
+                )
+            self.data['meta'][band_name] = meta
+
+
+    def set_bounds(
+            self,
+            bounds,
+            band_name: Optional[str] = None
+        ) -> None:
+        """
+        Adds image bounds to the current object. Image bounds are required for
+        plotting.
+
+        IMPORTANT: Overwrites image bounds if already existing!
+
+        :param meta:
+            image metadata dict
+        :param band_name:
+            name of the band for which meta is added. If the current object
+            is not a bandstack, specifying a band name is mandatory!
+        """
+
+        # check if bounds is already populated
+        if 'bounds' not in self.data.keys():
+            self.data['bounds'] = {}
+    
+        if self._from_bandstack:
+            self.data['bounds'] = bounds
+        else:
+            if band_name is None:
+                raise ValueError(
+                    'Band name must be provided when not from bandstack'
+                )
+            self.data['bounds'][band_name] = bounds
 
 
     def reset_bandnames(
