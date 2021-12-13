@@ -92,3 +92,23 @@ def check_band_names(f):
     return wrapper
 
 
+def check_meta(f):
+    """validates if a meta(data) dict is valid (required by rasterio for writing)"""
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+
+        meta = None
+        if len(args) > 0:
+            meta = args[0]
+        if kwargs != {}:
+            meta = kwargs.get('meta', meta)
+
+        meta_keys = ['driver', 'dtype', 'nodata', 'width', 'height', 'count', 'crs', 'transform']
+        if set(list(meta.keys())) !=  set(meta_keys):
+            raise Exception('The passed meta-dict is invalid')
+
+        return f(self, *args, **kwargs)
+
+    return wrapper
+
+
