@@ -55,20 +55,18 @@ class S2_Band_Reader(Sat_Data_Reader):
     @staticmethod
     def _check_band_selection(
             band_selection: List[str]
-        ) -> Dict[str, str]:
+        ) -> List[str]:
         """
-        Returns the band mapping dictionary including only the
-        user-selected bands
+        Returns the Sentinel-2 color names for a given band selection
     
         :param band_selection:
             list of selected bands
         :return:
-            band mapping dict with selected bands
+            list of corresponding Sentinel-2 color names
         """
-    
+
         # check how many bands were selected
-        band_selection_dict = dict((k, s2_band_mapping[k]) for k in band_selection)
-        return dict.fromkeys(band_selection_dict.values())
+        return [s2_band_mapping[k] for k in band_selection]
 
 
     def plot_scl(
@@ -246,112 +244,81 @@ class S2_Band_Reader(Sat_Data_Reader):
             VIS bands.
         """
 
-        # check which bands were selected
-        self.data = self._check_band_selection(band_selection=band_selection)
+        # call method from super class
+        try:
+            super().read_from_bandstack(
+                fname_bandstack=fname_bandstack,
+                in_file_aoi=in_file_aoi,
+                full_bounding_box_only=full_bounding_box_only,
+                blackfill_value=0,
+                band_selection=band_selection
+            )
+        except Exception as e:
+            raise Exception from e
 
-        # check processing level
+        # post-treatment: loop over bands, set band and color names and 
+        # convert and rescale to float if selected
+        sel_bands = self._check_band_selection(band_selection)
+        sel_bands.remove('scl')
+        # preserve "old" band names as aliases
+        old_band_names = self.get_bandnames()
+        self.reset_bandnames(new_bandnames=sel_bands)
+        self.set_bandaliases(
+            band_names=self.get_bandnames(),
+            band_aliases=old_band_names
+        )
+
+        # apply type casting if selected
+        if int16_to_float:
+            for band_name in self.get_bandnames():
+                self.data[band_name] = self.data[band_name].astype(float) * \
+                    s2_gain_factor
+            # update datatype in meta
+            self.data['meta']['dtype'] = 'float32'
+
+        # check processing level (for SCL reading)
         if processing_level is None:
             processing_level = get_S2_processing_level(
                 dot_safe_name=fname_bandstack
-        )
-
-        is_L2A = True
-        if processing_level == ProcessingLevels.L1C:
-            is_L2A = False
-
-        # check bounding box
-        masking = False
-        if in_file_aoi is not None:
-            masking = True
-            gdf_aoi = check_aoi_geoms(
-                in_file_aoi=in_file_aoi,
-                fname_sat=fname_bandstack,
-                full_bounding_box_only=full_bounding_box_only
             )
-    
-        with rio.open(fname_bandstack, 'r') as src:
-            # get geo-referencation information
-            meta = src.meta
-            # and bounds which are helpful for plotting
-            bounds = src.bounds
-            # read relevant bands and store them in dict
-            band_names = src.descriptions
-            for idx, band_name in enumerate(band_names):
-                if band_name in band_selection:
-                    if not masking:
-                        self.data[s2_band_mapping[band_name]] = src.read(idx+1)
-                    else:
-                        self.data[s2_band_mapping[band_name]], out_transform = rio.mask.mask(
-                            src,
-                            gdf_aoi.geometry,
-                            crop=True, 
-                            all_touched=True, # IMPORTANT!
-                            indexes=idx+1,
-                            filled=False
-                        )
-                        # update meta dict to the subset
-                        meta.update(
-                            {
-                                'height': self.data[s2_band_mapping[band_name]].shape[0],
-                                'width': self.data[s2_band_mapping[band_name]].shape[1], 
-                                'transform': out_transform
-                             }
-                        )
-                        # and bounds
-                        left = out_transform[2]
-                        top = out_transform[5]
-                        right = left + meta['width'] * out_transform[0]
-                        bottom = top + meta['height'] * out_transform[4]
-                        bounds = BoundingBox(left=left, bottom=bottom, right=right, top=top)
-     
-                    # convert and rescale to float if selected
-                    if int16_to_float:
-                        self.data[s2_band_mapping[band_name]] = \
-                            self.data[s2_band_mapping[band_name]].astype(float) * \
-                            s2_gain_factor
 
-        # check for black-fill
-        is_blackfilled = self.is_blackfilled()
-        if is_blackfilled:
-            raise BlackFillOnlyError('AOI contains blackfill, only')
-    
-        # meta and bounds are saved as additional items of the dict
-        meta.update(
-            {'count': len(self.data)}
-        )
-        self.data['meta'] = meta
-        self.data['bounds'] = bounds
+        # read SCL if processing level is L2A
+        if processing_level == ProcessingLevels.L2A:
 
-        self._from_bandstack = True
-
-        # search SCL file if processing level is L2A
-        if is_L2A:
-            # search SCL file if not provided
             if in_file_scl is None:
-                in_dir = fname_bandstack.parent
                 try:
+                    parent_dir = fname_bandstack.parent
                     in_file_scl = get_S2_sclfile(
-                        in_dir=in_dir,
-                        from_bandstack=self._from_bandstack,
+                        in_dir=parent_dir,
+                        from_bandstack=True,
                         in_file_bandstack=fname_bandstack
                     )
                 except Exception as e:
-                    logger.error(f'Could not find SCL file: {e}')
+                    raise Exception(f'Could not find SCL file: {e}')
                     # return if it's not possible to find the SCL
                     return
-            # read SCL file
-            with rio.open(in_file_scl, 'r') as src:
-                if not masking:
-                    self.data['scl'] = src.read(1)
-                else:
-                    self.data['scl'], _ = rio.mask.mask(
-                        src,
-                        gdf_aoi.geometry,
-                        crop=True, 
-                        all_touched=True, # IMPORTANT!
-                        indexes=1,
-                        filled=False
-                    )
+
+            # read SCL file into new reader and add it as new band
+            scl_reader = Sat_Data_Reader()
+            try:
+                scl_reader.read_from_bandstack(
+                    fname_bandstack=in_file_scl,
+                    in_file_aoi=in_file_aoi,
+                    full_bounding_box_only=full_bounding_box_only,
+                    blackfill_value=0
+                )
+            except Exception as e:
+                raise Exception(f'Could not read SCL file: {e}')
+
+            # add SCL as new band
+            self.add_band(
+                band_name='scl',
+                band_data=scl_reader.get_band('B1'),
+                band_alias='SCL'
+            )
+
+            # increase band count in meta
+            self.data['meta']['count'] += 1
 
 
     def read_from_safe(
@@ -447,7 +414,9 @@ class S2_Band_Reader(Sat_Data_Reader):
                 band_df_safe = band_df_safe.append(record, ignore_index=True)
             except Exception as e:
                 logger.error(f'Could not read SCL file: {e}')
-    
+
+        # TODO: Use super().read_from_bandstack() instead
+
         # check bounding box
         masking = False
         if in_file_aoi is not None:
@@ -457,10 +426,14 @@ class S2_Band_Reader(Sat_Data_Reader):
                 fname_sat=band_df_safe.band_path.iloc[0],
                 full_bounding_box_only=full_bounding_box_only
             )
-    
+
+        # Sentinel-2 supports band-aliasing
+        self._has_bandaliases = True
+
         # loop over selected bands and read the data into a dict
         meta_bands = {}
         bounds_bands = {}
+
         for band_name in band_selection:
     
             # get entry from dataframe with file-path of band
@@ -472,6 +445,9 @@ class S2_Band_Reader(Sat_Data_Reader):
                 meta = src.meta
                 # and bounds which are helpful for plotting
                 bounds = src.bounds
+
+                # preserve the maapping between color and band name
+                self._band_aliases[s2_band_mapping[band_name]] = band_name
                 
                 if not masking:
                     self.data[s2_band_mapping[band_name]] = src.read(1)
@@ -529,7 +505,7 @@ class S2_Band_Reader(Sat_Data_Reader):
         self.data['bounds'] = bounds_bands
 
         self._from_bandstack = False
- 
+
 
 if __name__ == '__main__':
 
@@ -539,7 +515,7 @@ if __name__ == '__main__':
     from agrisatpy.downloader.sentinel2.utils import unzip_datasets
 
     reader = S2_Band_Reader()
-    band_selection = ['B02', 'B03', 'B04', 'B05', 'B07', 'B08']
+    band_selection = ['B02', 'B03', 'B04', 'B08']
     in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
 
     # bandstack testcase
@@ -548,7 +524,6 @@ if __name__ == '__main__':
 
     reader.read_from_bandstack(
         fname_bandstack=fname_bandstack,
-        processing_level=processing_level,
         in_file_aoi=in_file_aoi
     )
     fig_rgb = reader.plot_rgb()
@@ -556,7 +531,6 @@ if __name__ == '__main__':
     cc = reader.get_cloudy_pixel_percentage()
     fig_blue = reader.plot_band('blue')
     
-    blue_band = reader.get_band(band_name='blue')
     band_names = reader.get_bandnames()
 
     # L2A testcase
@@ -580,13 +554,11 @@ if __name__ == '__main__':
         # unzip dataset
         unzip_datasets(download_dir=testdata_dir)
 
-    processing_level = ProcessingLevels.L2A
-
     reader.read_from_safe(
         in_dir=testdata_fname_unzipped,
-        processing_level=processing_level,
-        band_selection=band_selection
+        band_selection=['B02']
     )
+    blue = reader.get_band('B02')
 
     # check the RGB
     fig_rgb = reader.plot_rgb()
