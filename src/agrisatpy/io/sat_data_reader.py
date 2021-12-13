@@ -18,6 +18,7 @@ from rasterio.coords import BoundingBox
 from rasterio.drivers import driver_from_extension
 from rasterio.crs import CRS
 from rasterio.enums import Resampling
+from rasterio.warp import transform_bounds
 from shapely.geometry import box
 from shapely.geometry import Polygon
 from pathlib import Path
@@ -26,6 +27,7 @@ from typing import List
 from typing import Union
 from typing import Tuple
 from typing import NamedTuple
+from typing import Dict
 from matplotlib.colors import ListedColormap
 from matplotlib.pyplot import Figure
 from matplotlib.figure import figaspect
@@ -44,7 +46,8 @@ from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.spatial_resampling import upsample_array
 from agrisatpy.utils.arrays import count_valid
 from agrisatpy.utils.reprojection import reproject_raster_dataset
-from rasterio.warp import transform_bounds
+from agrisatpy.utils.decorators import check_band_names
+
 
 
 class Sat_Data_Reader(object):
@@ -53,6 +56,8 @@ class Sat_Data_Reader(object):
     def __init__(self):
         self.data = {}
         self._from_bandstack = False
+        self._has_bandaliases = False
+        self._band_aliases = {}
 
 
     def from_bandstack(self) -> bool:
@@ -66,7 +71,12 @@ class Sat_Data_Reader(object):
         return self._from_bandstack
 
 
-    def add_band(self, band_name: str, band_data: np.array):
+    def add_band(
+            self,
+            band_name: str,
+            band_data: np.array,
+            band_alias: Optional[str] = None
+        ):
         """
         Adds a band to an existing band dict instance
 
@@ -75,10 +85,17 @@ class Sat_Data_Reader(object):
             will be overwritten!); corresponds to the dict key
         :param band_data:
             band data to add; corresponds to the dict value
+        :param band_alias:
+            optional band name alias (existing alias will be overwritten)
         """
 
         band_dict = {band_name: band_data}
         self.data.update(band_dict)
+
+        # check band aliasing
+        if band_alias is not None:
+            self._has_bandaliases = True
+            self._band_aliases[band_name] = band_alias
 
         # check if the data comes from a bandstack (nothing to do)
         # or from single band files where the metadata needs to be added
@@ -97,6 +114,7 @@ class Sat_Data_Reader(object):
                     break
 
 
+    @check_band_names
     def get_band(
             self,
             band_name: str
@@ -110,14 +128,11 @@ class Sat_Data_Reader(object):
             band data as ``numpy.array`` (two dimensional)
         """
 
-        # check if band_name is available
-        if not band_name in self.data.keys():
-            raise BandNotFoundError(f'{band_name} not found in data dict')
-
         # return np array
         return self.data[band_name]
 
 
+    @check_band_names
     def get_blackfill(
             self,
             band_name: str,
@@ -155,6 +170,47 @@ class Sat_Data_Reader(object):
         return band_names
 
 
+    def get_bandaliases(
+            self
+        ) -> Dict[str,str]:
+        """
+        Returns band aliases if any.
+        """
+
+        return self._band_aliases
+
+    @check_band_names
+    def set_bandaliases(
+            self,
+            band_names: List[str],
+            band_aliases: List[str]
+        ) -> None:
+        """
+        Sets alias band names. Existing aliases might be overwritten!
+
+        :param band_names:
+            selected band names
+        :param band_aliases:
+            band aliases to set. Must equal the number of band_names and applies
+            in the same order as band_names
+        """
+
+        # create dict of names and aliases
+        try:
+            alias_dict = dict(zip(band_names, band_aliases))
+        except Exception as e:
+            raise Exception from e
+
+        # check if self already has aliases
+        if self._has_bandaliases:
+            # update if aliases already exist
+            self._band_aliases.update(alias_dict)
+        else:
+            self._band_aliases = alias_dict
+            self._has_bandaliases = True
+
+
+    @check_band_names
     def get_meta(
             self,
             band_name: Optional[str] = None
@@ -181,7 +237,7 @@ class Sat_Data_Reader(object):
         else:
             return self.data['meta']
 
-
+    @check_band_names
     def get_spatial_resolution(
             self,
             band_name: str
@@ -202,6 +258,7 @@ class Sat_Data_Reader(object):
         return Spatial_Resolution(transform[0], transform[4])
 
 
+    @check_band_names
     def get_band_bounds(
             self,
             band_name: str,
@@ -227,7 +284,7 @@ class Sat_Data_Reader(object):
                 bounds = bounds[band_name]
             except Exception:
                 raise BandNotFoundError(
-                    f'Could not find "{band_name}" in data dict'
+                    f'Could not find "{band_name}" in data bounds dict'
                 )
 
         # return bounding box or polygon
@@ -237,6 +294,7 @@ class Sat_Data_Reader(object):
         return bounds
 
 
+    @check_band_names
     def get_band_epsg(
             self,
             band_name: str
@@ -284,6 +342,7 @@ class Sat_Data_Reader(object):
                 raise Exception from e
 
 
+    @check_band_names
     def drop_band(
             self,
             band_name: str
@@ -412,7 +471,9 @@ class Sat_Data_Reader(object):
 
 
     @staticmethod
-    def _masked_array_to_nan(band_data: np.array) -> np.array:
+    def _masked_array_to_nan(
+            band_data: np.array
+        ) -> np.array:
         """
         If the band array is a masked array, the masked values
         are replaced by NaNs in order to clip the plot to the
@@ -461,6 +522,7 @@ class Sat_Data_Reader(object):
         return self.plot_band(band_name='False-Color')
 
 
+    @check_band_names
     def plot_band(
             self,
             band_name: str,
@@ -629,7 +691,10 @@ class Sat_Data_Reader(object):
         if colormap is not None:
             divider = make_axes_locatable(ax)
             cax = divider.append_axes('right', size='5%', pad=0.05)
-            cb = fig.colorbar(img, cax=cax, orientation='vertical', ticks=unique_values)
+            if discrete_values:
+                cb = fig.colorbar(img, cax=cax, orientation='vertical', ticks=unique_values)
+            else:
+                cb = fig.colorbar(img, cax=cax, orientation='vertical')
             # overwrite ticker if user defined ticks provided
             if user_defined_ticks is not None:
                 cb.ax.locator_params(nbins=len(user_defined_ticks))
@@ -968,7 +1033,8 @@ class Sat_Data_Reader(object):
             fname_bandstack: Path,
             in_file_aoi: Optional[Path] = None,
             full_bounding_box_only: Optional[bool] = False,
-            blackfill_value: Optional[Union[int,float]] = 0
+            blackfill_value: Optional[Union[int,float]] = 0,
+            band_selection: Optional[List[str]] = []
         ) -> None:
         """
         Reads spectral bands from a band-stacked geoTiff file
@@ -1002,6 +1068,8 @@ class Sat_Data_Reader(object):
             full extent (hull) of all features (geometries) in in_file_aoi.
         :param blackfill_value:
             value indicating black fill. Set to zero by default.
+        :param band_selection:
+            list of bands to read. Per default all bands available are read.
         """
 
         # check bounding box
@@ -1013,6 +1081,11 @@ class Sat_Data_Reader(object):
                 fname_sat=fname_bandstack,
                 full_bounding_box_only=full_bounding_box_only
             )
+
+        # check band selection
+        check_band_selection = False
+        if len(band_selection) > 0:
+            check_band_selection = True
     
         with rio.open(fname_bandstack, 'r') as src:
             # get geo-referencation information
@@ -1027,6 +1100,11 @@ class Sat_Data_Reader(object):
                 # handle empty band_names
                 if band_name is None:
                     band_name = f'B{idx+1}'
+
+                # check band selection if required
+                if check_band_selection:
+                    if band_name not in band_selection:
+                        continue
 
                 if not masking:
                     self.data[band_name] = src.read(idx+1)
