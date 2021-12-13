@@ -23,7 +23,7 @@ from typing import Union
 from typing import List
 from typing import Dict
 
-from agrisatpy.io.sentinel2 import S2_Band_Reader
+from agrisatpy.io.sentinel2 import Sentinel2Handler
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.config import get_settings
 from agrisatpy.processing import resampling
@@ -38,8 +38,8 @@ from docutils.nodes import target
 
 Settings = get_settings()
 logger = Settings.logger
-
 S2 = Sentinel2()
+
 
 def _get_output_file_names(
         in_dir: Path,
@@ -174,7 +174,7 @@ def create_scl_preview(
 
 def create_scl(
         out_dir: Path,
-        reader: S2_Band_Reader,
+        reader: Sentinel2Handler,
         out_filename: str
     ) -> None:
     """
@@ -183,7 +183,7 @@ def create_scl(
     :param out_dir:
         directory where the band-stacked geoTiff are written to
     :param reader:
-        opened S2_Band_Reader with 'scl' band
+        opened ``Sentinel2Handler`` with 'scl' band
     :param out_filename:
         file name of the resulting SCL raster image (*.tiff)
     """
@@ -361,7 +361,7 @@ def resample_and_stack_s2(
         # loop over S2 bands: read from .SAFE, resample if required and write to output
         for idx, s2_band in enumerate(s2_bands):
 
-            src = S2_Band_Reader()
+            src = Sentinel2Handler()
 
             try:
                 src.read_from_safe(

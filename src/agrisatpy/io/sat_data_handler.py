@@ -1,6 +1,11 @@
 '''
-The Sat_Data_Reader is a super class from which sensor-specific classes for reading
-(satellite) raster image data might inherit. The Sat_Data_Reader class provides
+This module defines the ``Sat_Data_Reader`` class which is the basic class for reading, handling
+and writing raster data. It relies on ``rasterio`` for all in- and output operations. For
+data handling it implements a dict-like data structure that allows for storing image data,
+geo-information and related metadata on a per-band basis.
+
+The ``Sat_Data_Reader`` is a super class from which sensor-specific classes for reading
+(satellite) raster image data might inherit. The ``Sat_Data_Reader`` class provides
 methods to read arbitrary raster data from files (or URIs) using rasterio's GDAL drivers,
 and stores the band data in a dict-like data structure preserving the geo-spatial metadata.
 '''
@@ -48,11 +53,14 @@ from agrisatpy.utils.arrays import count_valid
 from agrisatpy.utils.reprojection import reproject_raster_dataset
 from agrisatpy.utils.decorators import check_band_names
 from agrisatpy.utils.decorators import check_meta
+from agrisatpy.utils.decorators import check_bounds
 
 
-
-class Sat_Data_Reader(object):
-    """reader class from which sensor-specific classes inherit"""
+class SatDataHandler(object):
+    """
+    basic class for handling single and multi-band raster data
+    from which sensor-specific classes inherit
+    """
 
     def __init__(self):
         self.data = {}
@@ -180,6 +188,7 @@ class Sat_Data_Reader(object):
 
         return self._band_aliases
 
+
     @check_band_names
     def set_bandaliases(
             self,
@@ -237,6 +246,7 @@ class Sat_Data_Reader(object):
                 )
         else:
             return self.data['meta']
+
 
     @check_band_names
     def get_spatial_resolution(
@@ -347,6 +357,7 @@ class Sat_Data_Reader(object):
             self.data['meta'][band_name] = meta
 
 
+    @check_bounds
     def set_bounds(
             self,
             bounds,

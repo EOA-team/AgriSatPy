@@ -5,6 +5,7 @@ Created on Jul 19, 2021
 '''
 
 from functools import wraps
+from rasterio.coords import BoundingBox
 
 from agrisatpy.config import get_settings
 from agrisatpy.utils.exceptions import UnknownProcessingLevel
@@ -112,3 +113,20 @@ def check_meta(f):
     return wrapper
 
 
+def check_bounds(f):
+    """validates if passed image bounds are valid"""
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+
+        bounds = None
+        if len(args) > 0:
+            bounds = args[0]
+        if kwargs != {}:
+            bounds = kwargs.get('bounds', bounds)
+
+        if not type(bounds) == BoundingBox:
+            raise Exception('The passed bounds are not valid.')
+
+        return f(self, *args, **kwargs)
+
+    return wrapper

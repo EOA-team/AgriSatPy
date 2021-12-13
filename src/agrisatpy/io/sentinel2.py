@@ -1,6 +1,6 @@
 '''
-This module contains the ``S2_Band_Reader`` class that inherits from
-AgriSatPy's ``Sat_Data_Reader`` class.
+This module contains the ``Sentinel2Handler`` class that inherits from
+AgriSatPy's ``SatDataHandler`` class.
 
 The ``S2_Band_Reader`` enables reading one or more spectral bands from Sentinel-2
 data. The data can be either band-stacked (i.e., AgriSatPy derived format) in .SAFE
@@ -25,19 +25,19 @@ from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res
 from agrisatpy.utils.sentinel2 import get_S2_sclfile
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.utils.constants.sentinel2 import band_resolution
-from agrisatpy.io import Sat_Data_Reader
+from agrisatpy.io import SatDataHandler
 from agrisatpy.utils.exceptions import BandNotFoundError
 
 
-class S2_Band_Reader(Sat_Data_Reader):
+class Sentinel2Handler(SatDataHandler):
     """
     Class for storing Sentinel-2 band data read from bandstacks or
     .SAFE archives (L1C and L2A level) overwriting methods inherited
-    from `~agrisatpy.utils.io.Sat_Data_Reader`.
+    from `~agrisatpy.utils.io.SatDataHandler`.
     """
 
     def __init__(self, *args, **kwargs):
-        Sat_Data_Reader.__init__(self, *args, **kwargs)
+        SatDataHandler.__init__(self, *args, **kwargs)
 
     @staticmethod
     def _check_band_selection(
@@ -103,7 +103,7 @@ class S2_Band_Reader(Sat_Data_Reader):
             colormap: Optional[str]=''
         ) -> Figure:
         """
-        Wrapper around `agrisatpy.utils.io` to plot the Scene Classification
+        Wrapper around `plot_band` method to plot the Scene Classification
         Layer available from the L2A processing level. Raises an error if
         the band is not available
 
@@ -319,7 +319,7 @@ class S2_Band_Reader(Sat_Data_Reader):
                     return
 
             # read SCL file into new reader and add it as new band
-            scl_reader = Sat_Data_Reader()
+            scl_reader = SatDataHandler()
             try:
                 scl_reader.read_from_bandstack(
                     fname_bandstack=in_file_scl,
@@ -434,7 +434,7 @@ class S2_Band_Reader(Sat_Data_Reader):
 
             # read band
             try:
-                band_reader = Sat_Data_Reader()
+                band_reader = SatDataHandler()
                 band_reader.read_from_bandstack(
                     fname_bandstack=band_fpath,
                     in_file_aoi=in_file_aoi,
@@ -482,7 +482,7 @@ if __name__ == '__main__':
     import requests
     from agrisatpy.downloader.sentinel2.utils import unzip_datasets
 
-    reader = S2_Band_Reader()
+    reader = Sentinel2Handler()
     band_selection = ['B02', 'B03', 'B04', 'B08']
     in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
 
@@ -522,7 +522,7 @@ if __name__ == '__main__':
         # unzip dataset
         unzip_datasets(download_dir=testdata_dir)
 
-    reader = S2_Band_Reader()
+    reader = Sentinel2Handler()
     reader.read_from_safe(
         in_dir=testdata_fname_unzipped,
         band_selection=['B02']

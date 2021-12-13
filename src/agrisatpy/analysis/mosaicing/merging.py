@@ -12,7 +12,7 @@ from collections import namedtuple
 from rasterio.merge import merge
 from rasterio.crs import CRS
 
-from agrisatpy.io import Sat_Data_Reader
+from agrisatpy.io import SatDataHandler
 from agrisatpy.utils.reprojection import reproject_raster_dataset
 
 
@@ -24,7 +24,7 @@ def _get_CRS_and_bounds(
     Returns the CRS and bounding box of a raster dataset
     """
 
-    ds = Sat_Data_Reader()
+    ds = SatDataHandler()
     ds.read_from_bandstack(
         fname_bandstack=in_file,
         **kwargs

@@ -1,20 +1,19 @@
 '''
-Created on Nov 24, 2021
-
-@author:    Lukas Graf
-
-@purpose:   This module contains a set of commonly used Vegetation
-            Indices (VIs). The formula are generic, i.e., they can be
-            applied to different remote sensing platforms. 
+This module contains a set of commonly used Vegetation Indices (VIs).
+The formula are generic by using color names. Thus, they can be applied
+to different remote sensing platforms and are not bound to a predefined band
+selection.
 '''
 
 import numpy as np
+
+from agrisatpy.io import SatDataHandler
 
 
 class VegetationIndices(object):
     """generic vegetation indices"""
 
-    # define spectral band names
+    # define color names
     blue = 'blue'
     green = 'green'
     red = 'red'
@@ -26,13 +25,17 @@ class VegetationIndices(object):
     swir_1 = 'swir_1'
     swir_2 = 'swir_2'
 
-    def __init__(self, reader):
+    def __init__(
+            self,
+            reader: SatDataHandler
+        ):
         """
         :param reader:
-            any class inheriting from Sat_Data_Reader
+           object of class ``SatDataHandler`` or inheriting class
         """
         # we only take the readers data attribute
         self._band_data = reader.data
+
 
     def calc_vi(self, vi: str) -> np.array:
         """
