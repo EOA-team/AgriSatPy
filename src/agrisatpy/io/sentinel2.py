@@ -1,45 +1,32 @@
 '''
-Created on Nov 24, 2021
+This module contains the ``S2_Band_Reader`` class that inherits from
+AgriSatPy's ``Sat_Data_Reader`` class.
 
-@author:    Lukas Graf (D-USYS, ETHZ)
+The ``S2_Band_Reader`` enables reading one or more spectral bands from Sentinel-2
+data. The data can be either band-stacked (i.e., AgriSatPy derived format) in .SAFE
+format which is ESA's standard format for distributing Sentinel-2 data.
 
-@purpose:   This module enables reading one or more
-            spectral bands from Sentinel-2 data in either band-stacked
-            (i.e., AgriSatPy derived format) or from the ESA derived
-            .SAFE archive structure supporting L1C and L2A processing
-            level
+The class handles data in L1C and L2A processing level.
 '''
 
 import numpy as np
-import rasterio as rio
-import rasterio.mask
 
 from matplotlib.pyplot import Figure
 from matplotlib import colors
-from rasterio.coords import BoundingBox
 from pathlib import Path
-from copy import deepcopy
 from typing import Optional
-from typing import Dict
 from typing import List
-from typing import Union
 
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
 from agrisatpy.utils.constants.sentinel2 import s2_gain_factor
 from agrisatpy.utils.constants.sentinel2 import SCL_Classes
-from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res
 from agrisatpy.utils.sentinel2 import get_S2_sclfile
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.utils.constants.sentinel2 import band_resolution
 from agrisatpy.io import Sat_Data_Reader
 from agrisatpy.utils.exceptions import BandNotFoundError
-from agrisatpy.utils.exceptions import BlackFillOnlyError
-from agrisatpy.config import get_settings
-
-
-logger = get_settings().logger
 
 
 class S2_Band_Reader(Sat_Data_Reader):
@@ -67,6 +54,48 @@ class S2_Band_Reader(Sat_Data_Reader):
 
         # check how many bands were selected
         return [s2_band_mapping[k] for k in band_selection]
+
+
+    def _generate_band_aliases(
+            self,
+            sel_bands: List[str]
+        ) -> None:
+        """
+        Helper method to generate Sentinel-2 band aliases
+
+        :param sel_bands:
+            list of selected Sentinel-2 bands
+        """
+        old_band_names = self.get_bandnames()
+        self.reset_bandnames(new_bandnames=sel_bands)
+        self.set_bandaliases(
+            band_names=self.get_bandnames(),
+            band_aliases=old_band_names
+        )
+
+
+    def _int16_to_float(self) -> None:
+        """
+        Converts Sentinel-2 16 bit integer arrays to float and applies a gain
+        factor to scale value between 0 and 1
+        """
+
+        for band_name in self.get_bandnames():
+            # SCL band is not converted
+            if band_name.upper() == 'SCL':
+                continue
+            if isinstance(self.data[band_name], np.ma.core.MaskedArray):
+                # apply gain factor to data part only
+                temp_data = self.data[band_name].data.astype(float) * \
+                    s2_gain_factor
+                temp_mask = self.data[band_name].mask
+                self.data[band_name] = np.ma.masked_array(
+                    data=temp_data,
+                    mask=temp_mask
+                )
+            else:
+                self.data[band_name] = self.data[band_name].astype(float) * \
+                    s2_gain_factor
 
 
     def plot_scl(
@@ -201,17 +230,15 @@ class S2_Band_Reader(Sat_Data_Reader):
             full_bounding_box_only: Optional[bool] = False,
             int16_to_float: Optional[bool] = True,
             band_selection: Optional[List[str]] = list(s2_band_mapping.keys())
-        ):
+        ) -> None:
         """
-        Reads Sentinel-2 spectral bands from a band-stacked geoTiff file
-        using the band description to extract the required spectral band
-        and store them in a dict with the required band names.
+        Reads Sentinel-2 spectral bands from a band-stacked geoTiff by calling
+        ``agrisatpy.io.Sat_Data_Reader`` as super-class. The bandstack is assumed
+        to originate from AgriSatPy and its ``resample_and_stack_s2`` function.
 
-        The method populates the self.data attribute that is a
-        dictionary with the following items:
-            <name-of-the-band>: <np.array> denoting the spectral band data
-            <meta>:<rasterio meta> denoting the georeferencation
-            <bounds>: <BoundingBox> denoting the bounding box of the band data
+        The function works on Sentinel-2 L1C and L2A processing level and reads by
+        default all 10 and 20m bands. If the processing level is L2A it also searches
+        for the scene classification layer (SCL) and provides it as additional band.
 
         :param fname_bandstack:
             file-path to the bandstacked geoTiff containing the Sentinel-2
@@ -261,18 +288,11 @@ class S2_Band_Reader(Sat_Data_Reader):
         sel_bands = self._check_band_selection(band_selection)
         sel_bands.remove('scl')
         # preserve "old" band names as aliases
-        old_band_names = self.get_bandnames()
-        self.reset_bandnames(new_bandnames=sel_bands)
-        self.set_bandaliases(
-            band_names=self.get_bandnames(),
-            band_aliases=old_band_names
-        )
+        self._generate_band_aliases(sel_bands=sel_bands)
 
         # apply type casting if selected
         if int16_to_float:
-            for band_name in self.get_bandnames():
-                self.data[band_name] = self.data[band_name].astype(float) * \
-                    s2_gain_factor
+            self._int16_to_float()
             # update datatype in meta
             self.data['meta']['dtype'] = 'float32'
 
@@ -330,19 +350,16 @@ class S2_Band_Reader(Sat_Data_Reader):
             int16_to_float: Optional[bool] = True,
             band_selection: Optional[List[str]] = list(s2_band_mapping.keys()),
             read_scl: Optional[bool] = True
-        ) -> Dict[str, np.array]:
+        ) -> None:
         """
-        Reads Sentinel-2 spectral bands from a band-stacked geoTiff file
-        using the band description to extract the required spectral band
-        and store them in a dict with the required band names. The spectral
-        bands are kept in the original spatial resolution.
+        Reads Sentinel-2 spectral bands from a dataset in .SAFE format by calling
+        ``agrisatpy.io.Sat_Data_Reader`` as super-class.. The .SAFE format is ESA's
+        standard format for distributing Sentinel-2 data.
 
-        The method populates the self.data attribute that is a
-        dictionary with the following items:
-                <name-of-the-band>: <np.array> denoting the spectral band data
-                <meta>:<rasterio meta> denoting the georeferencation per band
-                <bounds>: <BoundingBox> denoting the bounding box of the data per band
-    
+        The function works on Sentinel-2 L1C and L2A processing level and reads by
+        default all 10 and 20m bands. If the processing level is L2A it also searches
+        for the scene classification layer (SCL) and provides it as additional band.
+
         :param in_dir:
             file-path to the .SAFE directory containing Sentinel-2 data in
             L1C or L2A processing level
@@ -371,16 +388,8 @@ class S2_Band_Reader(Sat_Data_Reader):
             VIS bands.
         :param read_scl:
             read SCL file if available (default, L2A processing level).
-        :return:
-            dictionary with band names and corresponding band data as np.array.
-            In addition, two entries in the dict provide information about the
-            geo-localization ('meta') and the bounding box ('bounds') in image
-            coordinates per band.
         """
-    
-        # check which bands were selected
-        self.data = self._check_band_selection(band_selection=band_selection)
-    
+
         # determine which spatial resolutions are selected
         # (based on the native spatial resolution of Sentinel-2 bands)
         band_selection_spatial_res = [x[1] for x in band_resolution.items() if x[0] in band_selection]
@@ -413,98 +422,57 @@ class S2_Band_Reader(Sat_Data_Reader):
                 }
                 band_df_safe = band_df_safe.append(record, ignore_index=True)
             except Exception as e:
-                logger.error(f'Could not read SCL file: {e}')
+                raise Exception(f'Could not read SCL file: {e}')
 
-        # TODO: Use super().read_from_bandstack() instead
-
-        # check bounding box
-        masking = False
-        if in_file_aoi is not None:
-            masking = True
-            gdf_aoi = check_aoi_geoms(
-                in_file_aoi=in_file_aoi,
-                fname_sat=band_df_safe.band_path.iloc[0],
-                full_bounding_box_only=full_bounding_box_only
-            )
-
-        # Sentinel-2 supports band-aliasing
-        self._has_bandaliases = True
-
-        # loop over selected bands and read the data into a dict
-        meta_bands = {}
-        bounds_bands = {}
-
+        # loop over bands and add them to the reader object
+        self._from_bandstack = False
         for band_name in band_selection:
-    
+
             # get entry from dataframe with file-path of band
             band_safe = band_df_safe[band_df_safe.band_name == band_name]
             band_fpath = band_safe.band_path.values[0]
-            
-            with rio.open(band_fpath, 'r') as src:
-    
-                meta = src.meta
-                # and bounds which are helpful for plotting
-                bounds = src.bounds
 
-                # preserve the maapping between color and band name
-                self._band_aliases[s2_band_mapping[band_name]] = band_name
-                
-                if not masking:
-                    self.data[s2_band_mapping[band_name]] = src.read(1)
-                else:
-                    self.data[s2_band_mapping[band_name]], out_transform = rio.mask.mask(
-                        src,
-                        gdf_aoi.geometry,
-                        crop=True, 
-                        all_touched=True, # IMPORTANT!
-                        indexes=1,
-                        filled=False
-                    )
-                    # update meta dict to the subset
-                    meta.update(
-                        {
-                            'height': self.data[s2_band_mapping[band_name]].shape[0],
-                            'width': self.data[s2_band_mapping[band_name]].shape[1], 
-                            'transform': out_transform
-                         }
-                    )
-                    # and bounds
-                    left = out_transform[2]
-                    top = out_transform[5]
-                    right = left + meta['width'] * out_transform[0]
-                    bottom = top + meta['height'] * out_transform[4]
-                    bounds = BoundingBox(left=left, bottom=bottom, right=right, top=top)
-     
-                    # convert and rescale to float if selected
-                    if int16_to_float:
-                        # if SCL is selected, do not apply the conversion
-                        if not band_name.upper() == 'SCL':
-                            # apply conversion also to masked data pixels to avoid resampling errors
-                            if isinstance(self.data[s2_band_mapping[band_name]], np.ma.core.MaskedArray):
-                                # apply gain factor to data part only
-                                temp_data = self.data[s2_band_mapping[band_name]].data.astype(float) * \
-                                    s2_gain_factor
-                                temp_mask = self.data[s2_band_mapping[band_name]].mask
-                                self.data[s2_band_mapping[band_name]] = np.ma.masked_array(
-                                    temp_data, mask=temp_mask)
-                            else:
-                                self.data[s2_band_mapping[band_name]] = \
-                                    self.data[s2_band_mapping[band_name]].astype(float) * \
-                                    s2_gain_factor
-    
-            # store georeferencation and bounding box per band
-            meta_bands[s2_band_mapping[band_name]] = meta
-            bounds_bands[s2_band_mapping[band_name]] = bounds
+            # read band
+            try:
+                band_reader = Sat_Data_Reader()
+                band_reader.read_from_bandstack(
+                    fname_bandstack=band_fpath,
+                    in_file_aoi=in_file_aoi,
+                    full_bounding_box_only=full_bounding_box_only
+                )
 
-        # check for black-fill
-        is_blackfilled = self.is_blackfilled()
-        if is_blackfilled:
-            raise BlackFillOnlyError('AOI contains blackfill, only')
-    
-        self.data['meta'] = meta_bands
-        self.data['bounds'] = bounds_bands
+                # add band meta and bounds BEFORE assigning band data
+                band_reader_band = band_reader.get_bandnames()[0]
+                meta = band_reader.get_meta(band_reader_band)
+                self.set_meta(
+                    meta=meta,
+                    band_name=band_name
+                )
+                bounds = band_reader.get_band_bounds(
+                    band_name=band_reader_band,
+                    return_as_polygon=False
+                )
+                self.set_bounds(
+                    bounds=bounds,
+                    band_name=band_name
+                )
 
-        self._from_bandstack = False
+                # add band data
+                self.add_band(
+                    band_name=band_name,
+                    band_data=band_reader.get_band(band_reader_band),
+                )
+
+            except Exception as e:
+                raise Exception from e
+
+        # convert datatype if required
+        if int16_to_float:
+            self._int16_to_float()
+
+        # set band aliases
+        sel_bands = self._check_band_selection(band_selection=band_selection)
+        self._generate_band_aliases(sel_bands=sel_bands)
 
 
 if __name__ == '__main__':
@@ -554,6 +522,7 @@ if __name__ == '__main__':
         # unzip dataset
         unzip_datasets(download_dir=testdata_dir)
 
+    reader = S2_Band_Reader()
     reader.read_from_safe(
         in_dir=testdata_fname_unzipped,
         band_selection=['B02']
