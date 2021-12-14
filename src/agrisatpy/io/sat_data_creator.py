@@ -5,13 +5,13 @@ with geo-referenzation from numpy.arrays.
 
 from typing import Optional
 
-from agrisatpy.io import Sat_Data_Reader
+from agrisatpy.io import SatDataHandler
 from agrisatpy.utils.decorators import check_meta
 
 
-class Sat_Data_Creator(Sat_Data_Reader):
+class Sat_Data_Creator(SatDataHandler):
     """
-    class for creating new Sat_Data_Reader-like objects.
+    class for creating new SatDataHandler-like objects.
 
     :attribute is_bandstack:
         if False, allows bands to have different spatial resolutions and
@@ -23,7 +23,7 @@ class Sat_Data_Creator(Sat_Data_Reader):
             *args,
             **kwargs
         ):
-        Sat_Data_Reader.__init__(self, *args, **kwargs)
+        SatDataHandler.__init__(self, *args, **kwargs)
         self._from_bandstack = is_bandstack
 
 
@@ -95,12 +95,12 @@ class Sat_Data_Creator(Sat_Data_Reader):
 
     def copy_geoinfo_from_reader(
             self,
-            reader: Sat_Data_Reader,
+            reader: SatDataHandler,
             band_name: Optional[str] = None
         ) -> None:
         """
         copies the meta and bounds geo information from another
-        ``Sat_Data_Reader`` object into the current object
+        ``SatDataHandler`` object into the current object
 
         :param reader:
             reader object from which to copy the geo-info from

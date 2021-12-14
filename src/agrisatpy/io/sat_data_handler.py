@@ -991,17 +991,18 @@ class SatDataHandler(object):
                     # in addition, run pixel division since there will be too many NaN pixels
                     # when using only res from cv2 resize as it sets pixels without full
                     # spatial context to NaN
-                    try:
-                        res_pixel_div = upsample_array(
-                            in_array=band_data,
-                            scaling_factor=scaling_factor
-                        )
-                    except Exception as e:
-                        raise ResamplingFailedError(e)
+                    # TODO: there is a problem when working on AOIs using that approach!!
+                    # try:
+                    #     res_pixel_div = upsample_array(
+                    #         in_array=band_data,
+                    #         scaling_factor=scaling_factor
+                    #     )
+                    # except Exception as e:
+                    #     raise ResamplingFailedError(e)
 
                     # replace NaNs with values from pixel division; thus we will get all
                     # pixel values and the correct blackfill
-                    res[np.isnan(res)] = res_pixel_div[np.isnan(res)]
+                    # res[np.isnan(res)] = res_pixel_div[np.isnan(res)]
 
                     if type_casting:
                         res = res.astype(band_data.dtype)

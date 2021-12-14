@@ -7,8 +7,6 @@ selection.
 
 import numpy as np
 
-from agrisatpy.io import SatDataHandler
-
 
 class VegetationIndices(object):
     """generic vegetation indices"""
@@ -27,7 +25,7 @@ class VegetationIndices(object):
 
     def __init__(
             self,
-            reader: SatDataHandler
+            reader
         ):
         """
         :param reader:

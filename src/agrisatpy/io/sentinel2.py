@@ -16,6 +16,8 @@ from matplotlib import colors
 from pathlib import Path
 from typing import Optional
 from typing import List
+from typing import Dict
+from typing import Tuple
 
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
@@ -42,18 +44,19 @@ class Sentinel2Handler(SatDataHandler):
     @staticmethod
     def _check_band_selection(
             band_selection: List[str]
-        ) -> List[str]:
+        ) -> List[Tuple[str,str]]:
         """
-        Returns the Sentinel-2 color names for a given band selection
+        Returns the Sentinel-2 band and color names for a
+        given band selection
     
         :param band_selection:
             list of selected bands
         :return:
-            list of corresponding Sentinel-2 color names
+            list of tuples of color and band names
         """
 
         # check how many bands were selected
-        return [s2_band_mapping[k] for k in band_selection]
+        return [(k,v) for k,v in s2_band_mapping.items() if k in band_selection]
 
 
     def _generate_band_aliases(
@@ -285,10 +288,11 @@ class Sentinel2Handler(SatDataHandler):
 
         # post-treatment: loop over bands, set band and color names and 
         # convert and rescale to float if selected
-        sel_bands = self._check_band_selection(band_selection)
-        sel_bands.remove('scl')
-        # preserve "old" band names as aliases
-        self._generate_band_aliases(sel_bands=sel_bands)
+        sel_bands = self._check_band_selection(band_selection=band_selection)
+        old_bandnames = self.get_bandnames()
+        new_bandnames = [x[1] for x in sel_bands]
+        self.reset_bandnames(new_bandnames)
+        self.set_bandaliases(new_bandnames, old_bandnames)
 
         # apply type casting if selected
         if int16_to_float:
@@ -444,9 +448,13 @@ class Sentinel2Handler(SatDataHandler):
                 # add band meta and bounds BEFORE assigning band data
                 band_reader_band = band_reader.get_bandnames()[0]
                 meta = band_reader.get_meta(band_reader_band)
+
+                # get color name for saving meta and bounds
+                color_name = s2_band_mapping[band_name]
+
                 self.set_meta(
                     meta=meta,
-                    band_name=band_name
+                    band_name=color_name
                 )
                 bounds = band_reader.get_band_bounds(
                     band_name=band_reader_band,
@@ -454,12 +462,12 @@ class Sentinel2Handler(SatDataHandler):
                 )
                 self.set_bounds(
                     bounds=bounds,
-                    band_name=band_name
+                    band_name=color_name
                 )
 
                 # add band data
                 self.add_band(
-                    band_name=band_name,
+                    band_name=color_name,
                     band_data=band_reader.get_band(band_reader_band),
                 )
 
@@ -472,7 +480,9 @@ class Sentinel2Handler(SatDataHandler):
 
         # set band aliases
         sel_bands = self._check_band_selection(band_selection=band_selection)
-        self._generate_band_aliases(sel_bands=sel_bands)
+        band_names = self.get_bandnames()
+        band_aliases = [x[0] for x in sel_bands]
+        self.set_bandaliases(band_names, band_aliases)
 
 
 if __name__ == '__main__':
