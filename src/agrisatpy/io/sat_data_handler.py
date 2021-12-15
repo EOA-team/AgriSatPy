@@ -11,6 +11,7 @@ and stores the band data in a dict-like data structure preserving the geo-spatia
 '''
 
 import cv2
+import datetime
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -54,7 +55,29 @@ from agrisatpy.utils.reprojection import reproject_raster_dataset
 from agrisatpy.utils.decorators import check_band_names
 from agrisatpy.utils.decorators import check_meta
 from agrisatpy.utils.decorators import check_bounds
+from agrisatpy.utils.constants import ProcessingLevels
 
+
+class SceneProperties(object):
+    """
+    A class for storing scene-relevant properties
+
+    :attribute acquisition_time:
+        image acquisition time
+    :attribute platform:
+        name of the imaging platform
+    :attribute sensor:
+        name of the imaging sensor
+    :attribute processing_level:
+        processing level of the remotely sensed data (if
+        known and applicable)
+    """
+
+    acquisition_time: datetime.datetime = None
+    platform: str = ''
+    sensor: str = ''
+    processing_level: ProcessingLevels = ProcessingLevels.UNKNOWN
+    
 
 class SatDataHandler(object):
     """
@@ -63,10 +86,12 @@ class SatDataHandler(object):
     """
 
     def __init__(self):
-        self.data = {}
+
+        self.data = {'meta': None, 'bounds': None}
         self._from_bandstack = False
         self._has_bandaliases = False
         self._band_aliases = {}
+        self.scene_properties = SceneProperties()
 
 
     def from_bandstack(self) -> bool:
@@ -1343,3 +1368,12 @@ class SatDataHandler(object):
                 band_data = self.get_band(band_name=band).astype(dtype)
                 band_data = self._masked_array_to_nan(band_data)
                 dst.write(band_data, idx+1)
+
+
+    def to_xarray(
+            self
+        ):
+        """
+        Converts a SatDataHandler object to xarray
+        """
+        pass
