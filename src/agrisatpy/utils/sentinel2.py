@@ -54,6 +54,22 @@ def get_S2_processing_level(
         )
 
 
+def get_S2_acquistion_time_from_safe(
+        dot_safe_name: str
+    ) -> date:
+    """
+    Determines the image acquisition time of a dataset in .SAFE format
+    based on the file naming
+
+    :param dot_safe_name:
+        name of the .SAFE dataset
+    :return:
+        image acquistion time (full timestamp)
+    """
+
+    return datetime.strptime(dot_safe_name.name.split('_')[2], '%Y%m%dT%H%M%S')
+
+
 def get_S2_acquistion_date_from_safe(
         dot_safe_name: str
     ) -> date:
@@ -67,7 +83,23 @@ def get_S2_acquistion_date_from_safe(
         image acquistion date
     """
 
-    return datetime.strptime(dot_safe_name.split('_')[2][0:8], '%Y%m%d').date()
+    return get_S2_acquistion_date_from_safe(dot_safe_name).date()
+
+
+def get_S2_platform_from_safe(
+        dot_safe_name: str
+    ) -> str:
+    """
+    Determines the platform (e.g., S2A) from the dataset in .SAFE format
+    based on the file naming
+
+    :param dot_safe_name:
+        name of the .SAFE dataset
+    :return:
+        platform name
+    """
+
+    return dot_safe_name.name.split('_')[0]
 
 
 def get_S2_bandfiles(
