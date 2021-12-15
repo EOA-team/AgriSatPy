@@ -988,22 +988,29 @@ class SatDataHandler(object):
                         )
                     except Exception as e:
                         raise ResamplingFailedError(e)
+
                     # in addition, run pixel division since there will be too many NaN pixels
                     # when using only res from cv2 resize as it sets pixels without full
                     # spatial context to NaN
-                    # TODO: there is a problem when working on AOIs using that approach!!
-                    # try:
-                    #     res_pixel_div = upsample_array(
-                    #         in_array=band_data,
-                    #         scaling_factor=scaling_factor
-                    #     )
-                    # except Exception as e:
-                    #     raise ResamplingFailedError(e)
+                    try:
+                        res_pixel_div = upsample_array(
+                            in_array=band_data,
+                            scaling_factor=scaling_factor
+                        )
+                    except Exception as e:
+                        raise ResamplingFailedError(e)
 
                     # replace NaNs with values from pixel division; thus we will get all
-                    # pixel values and the correct blackfill
-                    # res[np.isnan(res)] = res_pixel_div[np.isnan(res)]
+                    # pixel values and the correct blackfill; when working on AOIs this might
+                    # fail because of shape mismatches; in this case keep the cv2 output, which means
+                    # loosing a few pixels but AOIs can usually be filled with data from other
+                    # scenes
+                    if res.shape == res_pixel_div.shape:
+                        res[np.isnan(res)] = res_pixel_div[np.isnan(res)]
+                    else:
+                        res[np.isnan(res)] = blackfill_value
 
+                    # cast back to original datatype if required
                     if type_casting:
                         res = res.astype(band_data.dtype)
 
