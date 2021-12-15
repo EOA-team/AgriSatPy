@@ -16,17 +16,18 @@ from matplotlib import colors
 from pathlib import Path
 from typing import Optional
 from typing import List
-from typing import Dict
 from typing import Tuple
 
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
 from agrisatpy.utils.constants.sentinel2 import s2_gain_factor
 from agrisatpy.utils.constants.sentinel2 import SCL_Classes
-from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res
+from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res,\
+    get_S2_platform_from_safe
 from agrisatpy.utils.sentinel2 import get_S2_sclfile
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.utils.constants.sentinel2 import band_resolution
+from agrisatpy.utils.sentinel2 import get_S2_acquistion_time_from_safe
 from agrisatpy.io import SatDataHandler
 from agrisatpy.utils.exceptions import BandNotFoundError
 
@@ -289,8 +290,10 @@ class Sentinel2Handler(SatDataHandler):
         # post-treatment: loop over bands, set band and color names and 
         # convert and rescale to float if selected
         sel_bands = self._check_band_selection(band_selection=band_selection)
-        old_bandnames = self.get_bandnames()
         new_bandnames = [x[1] for x in sel_bands]
+        old_bandnames = self.get_bandnames()
+        if 'scl' in new_bandnames:
+            new_bandnames.remove('scl')
         self.reset_bandnames(new_bandnames)
         self.set_bandaliases(new_bandnames, old_bandnames)
 
@@ -483,6 +486,15 @@ class Sentinel2Handler(SatDataHandler):
         band_names = self.get_bandnames()
         band_aliases = [x[0] for x in sel_bands]
         self.set_bandaliases(band_names, band_aliases)
+
+        # set scene properties (platform, sensor, acquisition date)
+        acqui_time = get_S2_acquistion_time_from_safe(dot_safe_name=in_dir)
+        platform = get_S2_platform_from_safe(dot_safe_name=in_dir)
+
+        self.scene_properties.set(prop='acquisition_time', value=acqui_time)
+        self.scene_properties.set(prop='platform', value=platform)
+        self.scene_properties.set(prop='sensor', value='MSI')
+        self.scene_properties.set(prop='processing_level', value=processing_level)
 
 
 if __name__ == '__main__':

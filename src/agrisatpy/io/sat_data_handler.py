@@ -34,6 +34,7 @@ from typing import Union
 from typing import Tuple
 from typing import NamedTuple
 from typing import Dict
+from typing import Any
 from matplotlib.colors import ListedColormap
 from matplotlib.pyplot import Figure
 from matplotlib.figure import figaspect
@@ -77,6 +78,36 @@ class SceneProperties(object):
     platform: str = ''
     sensor: str = ''
     processing_level: ProcessingLevels = ProcessingLevels.UNKNOWN
+
+    @classmethod
+    def set(
+            cls,
+            prop: str,
+            value: Any 
+        ):
+        """
+        sets a property value
+
+        :param prop:
+            name of the property for which to set a value
+        :param value:
+            value to set for the property
+        """
+        setattr(cls, prop, value)
+
+    @classmethod
+    def get(
+            cls,
+            prop: str        
+        ) -> Any:
+        """
+        returns the value of a property
+
+        :param prop:
+            name of the property for which to get a value
+        """
+
+        return eval(f'cls.{prop}')
     
 
 class SatDataHandler(object):
@@ -91,7 +122,7 @@ class SatDataHandler(object):
         self._from_bandstack = False
         self._has_bandaliases = False
         self._band_aliases = {}
-        self.scene_properties = SceneProperties()
+        self.scene_properties = SceneProperties
 
 
     def from_bandstack(self) -> bool:
@@ -379,6 +410,8 @@ class SatDataHandler(object):
                 raise ValueError(
                     'Band name must be provided when not from bandstack'
                 )
+            if self.data['meta'] is None:
+                self.data['meta'] = {}
             self.data['meta'][band_name] = meta
 
 
@@ -412,6 +445,8 @@ class SatDataHandler(object):
                 raise ValueError(
                     'Band name must be provided when not from bandstack'
                 )
+            if self.data['bounds'] is None:
+                self.data['bounds'] = {}
             self.data['bounds'][band_name] = bounds
 
 
