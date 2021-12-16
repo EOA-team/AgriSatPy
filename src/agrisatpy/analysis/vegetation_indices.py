@@ -6,6 +6,7 @@ selection.
 '''
 
 import numpy as np
+from typing import List
 
 
 class VegetationIndices(object):
@@ -34,6 +35,18 @@ class VegetationIndices(object):
         # we only take the readers data attribute
         self._band_data = reader.data
 
+
+    def get_vi_list(self) -> List[str]:
+        """
+        Returns a list of implemented Vegetation Indices (VIs)
+
+        :return:
+            list of VIs
+        """
+
+        return [x for x in dir(self) if not x.startswith('__') and not x.endswith('__') \
+                and not x.islower()]
+        
 
     def calc_vi(self, vi: str) -> np.array:
         """
@@ -247,32 +260,8 @@ class VegetationIndices(object):
 
 if __name__ == '__main__':
 
-    import cv2
-    from pathlib import Path
-    from agrisatpy.utils.io.sentinel2 import S2_Band_Reader
-    
-    testdata = Path('/mnt/ides/Lukas/04_Work/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
-    in_file_aoi = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/ZH_Polygons_2020_ESCH_EPSG32632.shp')
+    class Reader:
+        data = None
 
-    reader = S2_Band_Reader()
-    reader.read_from_bandstack(
-        fname_bandstack=testdata,
-        in_file_aoi=in_file_aoi
-    )
-
-    # resample to 10m spatial resolution using cubic interpolation
-    # reader.resample(target_resolution=10, resampling_method=cv2.INTER_CUBIC)
-
-    # calculate the NDVI
-    # no resampling is required since we already work on resampled data
-    vi_s2 = VegetationIndices(reader=reader)
-
-    vi_name = 'NDVI' # name is not case-sensitive but it must be consistent
-    ndvi = vi_s2.calc_vi(vi_name)
-
-    # add to reader
-    reader.add_band(band_name=vi_name, band_data=ndvi)
-
-    # plot the results
-    reader.plot_band(band_name=vi_name, colormap='summer')
-
+    vi = VegetationIndices(Reader)
+    vi_list = vi.get_vi_list()
