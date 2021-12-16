@@ -45,6 +45,7 @@ setuptools.setup(
                       'matplotlib', 
                       'geoalchemy2',
                       'opencv-python',
-                      'requests'
+                      'requests',
+                      'xarray'
                       ]
 )
