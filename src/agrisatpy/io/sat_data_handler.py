@@ -12,12 +12,13 @@ and stores the band data in a dict-like data structure preserving the geo-spatia
 
 import cv2
 import datetime
+import rasterio.mask
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import rasterio as rio
-import rasterio.mask
+import xarray as xr
 
 from rasterio import Affine
 from rasterio.coords import BoundingBox
@@ -200,6 +201,82 @@ class SatDataHandler(object):
 
         # return np array
         return self.data[band_name]
+
+
+    @check_band_names
+    def get_bands(
+            self,
+            band_names: Optional[List[str]] = None
+        ) -> np.array:
+        """
+        Returns a stack of all or a selected number of bands
+        as three-dimensional numpy array (bands are 2D).
+        Calls ``np.dstack()``, therefore all bands MUST have the same
+        shape.
+
+        :param band_names:
+            if not provided stacks all bands
+        :return:
+            3d array of stacked bands
+        """
+
+        if band_names is None:
+            band_names = self.get_bandnames()
+
+        # check band shapes
+        band_shapes = []
+        for band_name in band_names:
+            band_shapes.append(self.get_band_shape(band_name))
+
+        if len(set(band_shapes)) > 1:
+            raise InputError('All bands must have the same shape')
+
+        stack_bands = [self.get_band(x) for x in band_names]
+
+        # stack arrays along first axis
+        return np.stack(stack_bands, axis=0)
+
+
+    @check_band_names
+    def get_coordinates(
+            self,
+            band_name: str,
+            shift_to_center: Optional[bool] = True
+        ) -> Dict[str,np.array]:
+        """
+        Returns the coordinates in x and y dimension of a band.
+
+        IMPORTANT: GDAL provides pixel coordinates for the upper left corner
+        of a pixel while other applications (xarray) require the coordinates
+        of the pixel center
+
+        :param band_name:
+            name of the band for which to retrieve coordinates. If data was
+            read from band stack the coordinates are valid for all bands
+        :param shift_to_center:
+            if True (default) return pixel center coordinates, if False uses
+            the GDAL default and returns the upper left pixel coordinates.
+        :return:
+            dict with two entries "x" and "y" containing the numpy arrays
+            of coordinates
+        """
+
+        coords = {}
+        nx, ny = self.get_band(band_name).shape
+        transform = self.get_meta(band_name)['transform']
+
+        shift = 0.
+        if shift_to_center:
+            shift = 0.5
+
+        # taken from xarray.backends.rasterio.py#323
+        x, _ = transform * (np.arange(nx) + shift, np.zeros(nx) + shift)
+        _, y = transform * (np.zeros(ny) + shift, np.arange(ny) + shift)
+        
+        coords['x'] = x
+        coords['y'] = y
+
+        return coords
 
 
     @check_band_names
@@ -1645,7 +1722,8 @@ class SatDataHandler(object):
 
 
     def to_xarray(
-            self
+            self,
+            **kwargs
         ):
         """
         Converts a SatDataHandler object to xarray in memory without
@@ -1655,17 +1733,69 @@ class SatDataHandler(object):
         have the same spatial extent and dimensions.
         """
 
-        if not self.from_bandstack():
+        # check if data fulfills the bandstack criteria
+        if not self.check_is_bandstack():
             raise ValueError(
-                'Cannot convert SatDataHandler object to xarray when not bandstacked\n' \
-                'You might run check_is_bandstack() first'
+                'Cannot convert SatDataHandler object to xarray when not bandstacked\n'
             )
 
-        # TODO
+        band_array_stack = {}
+        for band_name in self.get_bandnames():
+            band_array_stack[band_name] = tuple([('x','y'), self.get_band(band_name)])
 
+        # get x, y coordinates and band names
+        master_band = self.get_bandnames()[0]
+        coords = self.get_coordinates(master_band)
 
+        # get further attributes
+        attrs = self.get_attrs()
+        crs = self.get_epsg(master_band)
 
+        # concat attributes across bands except for CRS and is_tiled
+        stack_attrs = {}
+        stack_attrs['crs'] = crs
+        stack_attrs['transform'] = self.get_meta(master_band)['transform']
+        stack_attrs['is_tiled'] = attrs[master_band]['is_tiled']
+        stack_attrs['time'] = self.scene_properties.get('acquisition_time')
 
+        attrs_keys = list(attrs[master_band].keys())
+        attrs_keys.remove('is_tiled')
 
+        # get attributes from all bands in the right format
+        band_attrs = dict.fromkeys(attrs_keys)
+        for band_name in self.get_bandnames():
+            for band_attr in band_attrs:
+                if band_attrs[band_attr] is None:
+                    band_attrs[band_attr] = []
+                band_attrs[band_attr].append(attrs[band_name][band_attr][0])
+
+        # convert lists to tuples and append to stack_attrs
+        for band_attr in band_attrs:
+            stack_attrs[band_attr] = tuple(band_attrs[band_attr])
+
+        xds = xr.DataArray(
+            data=band_array_stack,
+            coords=coords,
+            attrs=attrs,
+            **kwargs
+        )
+
+        x = xr.Dataset(
         
-
+            {
+        
+                "temperature_c": (
+        
+                    ("lat", "lon"),
+        
+                    20 * np.random.rand(4).reshape(2, 2),
+        
+                ),
+        
+                "precipitation": (("lat", "lon"), np.random.rand(4).reshape(2, 2)),
+        
+            },
+        
+            coords={"lat": [10, 20], "lon": [150, 160]},
+        
+        )
