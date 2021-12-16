@@ -451,21 +451,25 @@ class Sentinel2Handler(SatDataHandler):
                 # add band meta and bounds BEFORE assigning band data
                 band_reader_band = band_reader.get_bandnames()[0]
                 meta = band_reader.get_meta(band_reader_band)
+                attr = band_reader.get_attr(band_reader_band)
+                bounds = band_reader.get_bounds(
+                    band_name=band_reader_band,
+                    return_as_polygon=False
+                )
 
                 # get color name for saving meta and bounds
                 color_name = s2_band_mapping[band_name]
-
                 self.set_meta(
                     meta=meta,
                     band_name=color_name
                 )
-                bounds = band_reader.get_band_bounds(
-                    band_name=band_reader_band,
-                    return_as_polygon=False
-                )
                 self.set_bounds(
                     bounds=bounds,
                     band_name=color_name
+                )
+                self.set_attr(
+                    attr=attr,
+                    band_name=band_name
                 )
 
                 # add band data
@@ -506,16 +510,18 @@ if __name__ == '__main__':
 
     reader = Sentinel2Handler()
     band_selection = ['B02', 'B03', 'B04', 'B08']
-    in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
+    # in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
+    in_file_aoi = None
 
     # bandstack testcase
-    fname_bandstack = Path('/home/graflu/git/agrisatpy/data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
+    fname_bandstack = Path('/mnt/ides/Lukas/software/AgriSatPy/data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
     processing_level = ProcessingLevels.L2A
 
     reader.read_from_bandstack(
         fname_bandstack=fname_bandstack,
         in_file_aoi=in_file_aoi
     )
+    reader.get_band_coordinates('B02')
     fig_rgb = reader.plot_rgb()
     fig_scl = reader.plot_scl()
     cc = reader.get_cloudy_pixel_percentage()

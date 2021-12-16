@@ -54,9 +54,10 @@ from agrisatpy.spatial_resampling import upsample_array
 from agrisatpy.utils.arrays import count_valid
 from agrisatpy.utils.reprojection import reproject_raster_dataset
 from agrisatpy.utils.decorators import check_band_names
-from agrisatpy.utils.decorators import check_meta
-from agrisatpy.utils.decorators import check_bounds
+from agrisatpy.utils.decorators import check_metadata
 from agrisatpy.utils.constants import ProcessingLevels
+from agrisatpy.io.utils.raster import get_raster_attributes
+from agrisatpy.metadata.sentinel2.parsing import parse_s2_scene_metadata
 
 
 class SceneProperties(object):
@@ -118,7 +119,7 @@ class SatDataHandler(object):
 
     def __init__(self):
 
-        self.data = {'meta': None, 'bounds': None}
+        self.data = {'meta': None, 'bounds': None, 'attrs': None}
         self._from_bandstack = False
         self._has_bandaliases = False
         self._band_aliases = {}
@@ -169,9 +170,7 @@ class SatDataHandler(object):
             # find out, which band has the same shape (x, y dim) and copy
             # the 'meta' and 'bounds' from that band for the band to add
             band_data_shape = band_data.shape
-            for other_band in self.data.keys():
-                if other_band == 'meta' or other_band == 'bounds':
-                    continue
+            for other_band in self.get_bandnames():
                 if self.data[other_band].shape == band_data_shape:
                     self.data['meta'][band_name] = self.data['meta'][other_band]
                     self.data['bounds'][band_name] = self.data['bounds'][other_band]
@@ -305,16 +304,43 @@ class SatDataHandler(object):
 
 
     @check_band_names
+    def get_attr(
+            self,
+            band_name: Optional[str] = None
+        ) -> dict:
+        """
+        Returns the image attributes retrieved from GDAL datasets
+
+        :param band_name:
+            optional band name for retrieving image atrributes
+        :return:
+            meta dict with image attributes
+        """
+
+        # if data is band-stacked, attr is always the same
+        # otherwise it must be available for each band as entry
+        if not self.from_bandstack() and band_name is not None:
+            try:
+                return self.data['attr'][band_name]
+            except Exception:
+                raise BandNotFoundError(
+                    f'Could not find "{band_name}" in data dict'
+                )
+        else:
+            return self.data['attr']
+
+
+    @check_band_names
     def get_spatial_resolution(
             self,
-            band_name: str
+            band_name: Optional[str] = None
         ) -> NamedTuple:
         """
         Returns the spatial resolution in x and y direction of a band
 
         :param band_name:
             band name for retrieving spatial resolution
-            of a specific band
+            of a specific band (not required if from_bandstack)
         :return:
             spatial resolution in units of the image coordinate system
             in x and y direction
@@ -326,16 +352,16 @@ class SatDataHandler(object):
 
 
     @check_band_names
-    def get_band_bounds(
+    def get_bounds(
             self,
-            band_name: str,
+            band_name: Optional[str] = None,
             return_as_polygon: Optional[bool] = True
         ) -> Tuple[Polygon, BoundingBox]:
         """
         Returns the bounds (bounding box) of a band
 
         :param band_name:
-            band name for retrieving bounds
+            band name for retrieving bounds (not required if from_bandstack)
         :param return_as_polygon:
             if True returns a ``shapely`` polygon, if False a ``rasterio``
             bounding box object
@@ -364,13 +390,14 @@ class SatDataHandler(object):
     @check_band_names
     def get_band_epsg(
             self,
-            band_name: str
+            band_name: Optional[str] = None
         ) -> CRS:
         """
         Returns the EPSG code of a band
 
         :param band_name:
-            name of the band for which to extract the EPSG code
+            name of the band for which to extract the EPSG code (not required
+            if from_bandstack)
         :return:
             EPSG code of the band as ``rasterio.crs.CRS``
         """
@@ -379,7 +406,75 @@ class SatDataHandler(object):
         return meta['crs']
 
 
-    @check_meta
+    @check_band_names
+    def get_band_coordinates(
+            self,
+            band_name: str,
+            shift_to_center: Optional[bool] = True
+        ) -> Dict[str,np.array]:
+        """
+        Returns the coordinates in x and y dimension of a band.
+
+        IMPORTANT: GDAL provides pixel coordinates for the upper left corner
+        of a pixel while other applications (xarray) require the coordinates
+        of the pixel center
+
+        :param band_name:
+            name of the band for which to retrieve coordinates. If data was
+            read from band stack the coordinates are valid for all bands
+        :param shift_to_center:
+            if True (default) return pixel center coordinates, if False uses
+            the GDAL default and returns the upper left pixel coordinates.
+        :return:
+            dict with two entries "x" and "y" containing the numpy arrays
+            of coordinates
+        """
+
+        coords = {}
+        nx, ny = self.get_band(band_name).shape
+        transform = self.get_meta(band_name)['transform']
+
+        shift = 0.
+        if shift_to_center:
+            shift = 0.5
+
+        # taken from xarray.backends.rasterio.py#323
+        x, _ = transform * (np.arange(nx) + shift, np.zeros(nx) + shift)
+        _, y = transform * (np.zeros(ny) + shift, np.arange(ny) + shift)
+        
+        coords['y'] = y
+        coords['x'] = x
+
+        return coords
+
+    @check_metadata
+    def _set_image_metadata(
+            self,
+            metadata_key: str,
+            metadata_values: dict,
+            band_name: Optional[str],
+        ):
+        """
+        Backend method called by set_meta, set_bounds and set_attr
+        """
+
+        # check if metadata key entry is already populated
+        if metadata_key not in self.data.keys():
+            self.data[metadata_key] = {}
+
+        # check if the data is band stack
+        if self._from_bandstack:
+            self.data[metadata_key] = metadata_values
+        else:
+            if band_name is None:
+                raise ValueError(
+                    'Band name must be provided when not from bandstack'
+                )
+            if self.data[metadata_key] is None:
+                self.data[metadata_key] = {}
+            self.data[metadata_key][band_name] = metadata_values
+
+
     def set_meta(
             self,
             meta: dict,
@@ -398,24 +493,38 @@ class SatDataHandler(object):
             is not a bandstack, specifying a band name is mandatory!
         """
 
-        # check if meta is already populated
-        if 'meta' not in self.data.keys():
-            self.data['meta'] = {}
+        self._set_image_metadata(
+            metadata_key='meta',
+            metadata_values=meta,
+            band_name=band_name
+        )
+        
 
-        # check if the data is band stack
-        if self._from_bandstack:
-            self.data['meta'] = meta
-        else:
-            if band_name is None:
-                raise ValueError(
-                    'Band name must be provided when not from bandstack'
-                )
-            if self.data['meta'] is None:
-                self.data['meta'] = {}
-            self.data['meta'][band_name] = meta
+    def set_attr(
+            self,
+            attr: dict,
+            band_name: Optional[str] = None
+        ) -> None:
+        """
+        Adds image attributes to the current object.
+        
+        IMPORTANT: Overwrites image attributes if already existing!
 
+        :param meta:
+            image attrib dict
+        :param band_name:
+            name of the band for which attributes are added. If the
+            current object is not a bandstack, specifying a band name
+            is mandatory!
+        """
 
-    @check_bounds
+        self._set_image_metadata(
+            metadata_key='attr',
+            metadata_values=attr,
+            band_name=band_name
+        )
+        
+
     def set_bounds(
             self,
             bounds,
@@ -434,21 +543,11 @@ class SatDataHandler(object):
             is not a bandstack, specifying a band name is mandatory!
         """
 
-        # check if bounds is already populated
-        if 'bounds' not in self.data.keys():
-            self.data['bounds'] = {}
-    
-        if self._from_bandstack:
-            self.data['bounds'] = bounds
-        else:
-            if band_name is None:
-                raise ValueError(
-                    'Band name must be provided when not from bandstack'
-                )
-            if self.data['bounds'] is None:
-                self.data['bounds'] = {}
-            self.data['bounds'][band_name] = bounds
-
+        self._set_image_metadata(
+            metadata_key='bounds',
+            metadata_values=bounds,
+            band_name=band_name
+        )
 
     def reset_bandnames(
             self,
@@ -1180,7 +1279,8 @@ class SatDataHandler(object):
             in_file_aoi: Optional[Path] = None,
             full_bounding_box_only: Optional[bool] = False,
             blackfill_value: Optional[Union[int,float]] = 0,
-            band_selection: Optional[List[str]] = []
+            band_selection: Optional[List[str]] = [],
+            parse_attr: Optional[bool] = True
         ) -> None:
         """
         Reads spectral bands from a band-stacked geoTiff file
@@ -1216,6 +1316,9 @@ class SatDataHandler(object):
             value indicating black fill. Set to zero by default.
         :param band_selection:
             list of bands to read. Per default all bands available are read.
+        :param parse_attr:
+            if True (default) parses additional image attributes that are immutable
+            (i.e., not subject to reprojection, resampling) from the raster metadata.
         """
 
         # check bounding box
@@ -1238,6 +1341,9 @@ class SatDataHandler(object):
             meta = src.meta
             # and bounds which are helpful for plotting
             bounds = src.bounds
+            # optionally add further image metadata that is immutable
+            if parse_attr:
+                attrs = get_raster_attributes(riods=src)
             # read relevant bands and store them in dict
             band_names = src.descriptions
             self.data = dict.fromkeys(band_names)
@@ -1287,11 +1393,15 @@ class SatDataHandler(object):
         meta.update(
             {'count': len(self.data)}
         )
-        self.data['meta'] = meta
-        self.data['bounds'] = bounds
 
         self._from_bandstack = True
 
+        self.set_meta(meta)
+        self.set_bounds(bounds)
+        if parse_attr:
+            self.set_attr(attrs)
+
+        
 
     def write_bands(
             self,
@@ -1388,6 +1498,8 @@ class SatDataHandler(object):
             }
         )
 
+        # TODO: write attributes if any
+
         # open the result dataset and try to write the bands
         with rio.open(out_file, 'w+', **meta) as dst:
 
@@ -1405,10 +1517,40 @@ class SatDataHandler(object):
                 dst.write(band_data, idx+1)
 
 
+    def check_is_bandstack(self):
+        """
+        Helper function that checks if a SatDataHandler object fulfills
+        the ``from_bandstack()`` criteria.
+
+        These criteria are:
+            - all bands have the same CRS
+            - all bands have the same x and y dimension (number of rows and columns)
+        """
+        pass
+
+
     def to_xarray(
             self
         ):
         """
-        Converts a SatDataHandler object to xarray
+        Converts a SatDataHandler object to xarray in memory without
+        having to dump anything to disk.
+
+        IMPORTANT: Works on bandstacked files only. I.e., all bands MUST
+        have the same spatial extent and dimensions.
         """
-        pass
+
+        if not self.from_bandstack():
+            raise ValueError(
+                'Cannot convert SatDataHandler object to xarray when not bandstacked\n' \
+                'You might run check_is_bandstack() first'
+            )
+
+        # TODO
+
+
+
+
+
+        
+

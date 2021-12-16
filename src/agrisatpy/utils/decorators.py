@@ -93,40 +93,33 @@ def check_band_names(f):
     return wrapper
 
 
-def check_meta(f):
-    """validates if a meta(data) dict is valid (required by rasterio for writing)"""
+def check_metadata(f):
+    """validates if passed image metadata items are valid"""
     @wraps(f)
     def wrapper(self, *args, **kwargs):
 
-        meta = None
-        if len(args) > 0:
-            meta = args[0]
-        if kwargs != {}:
-            meta = kwargs.get('meta', meta)
+        meta_key, meta_values = None, None
 
-        meta_keys = ['driver', 'dtype', 'nodata', 'width', 'height', 'count', 'crs', 'transform']
-        if set(list(meta.keys())) !=  set(meta_keys):
-            raise Exception('The passed meta-dict is invalid')
+        if len(args) > 0:
+            meta_key = args[0]
+            meta_values = args[1]
+        if kwargs != {}:
+            meta_key = kwargs.get('metadata_key', meta_key)
+            meta_values = kwargs.get('metadata_values', meta_values)
+
+        # check different entries
+        # image metadata
+        if meta_key == 'meta':
+            meta_keys = ['driver', 'dtype', 'nodata', 'width', 'height', 'count', 'crs', 'transform']
+            if set(list(meta_values.keys())) !=  set(meta_keys):
+                raise Exception('The passed meta-dict is invalid')
+        # bounds
+        elif meta_key == 'bounds':
+            if not type(meta_values) == BoundingBox:
+                raise Exception('The passed bounds are not valid.')
 
         return f(self, *args, **kwargs)
 
     return wrapper
 
 
-def check_bounds(f):
-    """validates if passed image bounds are valid"""
-    @wraps(f)
-    def wrapper(self, *args, **kwargs):
-
-        bounds = None
-        if len(args) > 0:
-            bounds = args[0]
-        if kwargs != {}:
-            bounds = kwargs.get('bounds', bounds)
-
-        if not type(bounds) == BoundingBox:
-            raise Exception('The passed bounds are not valid.')
-
-        return f(self, *args, **kwargs)
-
-    return wrapper
