@@ -388,7 +388,7 @@ class SatDataHandler(object):
 
 
     @check_band_names
-    def get_band_epsg(
+    def get_epsg(
             self,
             band_name: Optional[str] = None
         ) -> CRS:

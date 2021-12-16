@@ -1,14 +1,12 @@
 '''
-Created on Dec 11, 2021
-
-@author: graflu
+Helper functions to read Sentinel-2 TCI (RGB quicklook) and Scene Classification Layer
+(SCL) file from a .SAFE dataset.
 '''
 
 from pathlib import Path
 from typing import Optional
 
-from agrisatpy.io import Sat_Data_Reader
-from agrisatpy.io.sentinel2 import S2_Band_Reader
+from agrisatpy.io import SatDataHandler
 from agrisatpy.utils.sentinel2 import get_S2_tci
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
@@ -17,7 +15,7 @@ from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 def read_s2_sclfile(
         in_dir: Path,
         in_file_aoi: Optional[Path] = None
-    ) -> Sat_Data_Reader:
+    ) -> SatDataHandler:
     """
     Reads the Sentinel-2 scene classification layer (SCL) file from
     a dataset in .SAFE format.
@@ -31,11 +29,11 @@ def read_s2_sclfile(
         optional vector geometry file defining an area of interest (AOI).
         If not provided, the entire spatial extent of the scene is read
     :return:
-        ``Sat_Data_Reader`` with SCL band data
+        ``SatDataHandler`` with SCL band data
     """
 
     # read SCL file and return
-    reader = S2_Band_Reader()
+    reader = SatDataHandler()
     reader.read_from_safe(
         in_dir=in_dir,
         in_file_aoi=in_file_aoi,
@@ -49,7 +47,7 @@ def read_s2_sclfile(
 def read_s2_tcifile(
         in_dir: Path,
         in_file_aoi: Optional[Path] = None
-    ) -> Sat_Data_Reader:
+    ) -> SatDataHandler:
     """
     Reads the Sentinel-2 RGB quicklook file from a dataset in
     .SAFE format (processing levels L1C and L2A)
@@ -60,7 +58,7 @@ def read_s2_tcifile(
         optional vector geometry file defining an area of interest (AOI).
         If not provided, the entire spatial extent of the scene is read
     :return:
-        ``Sat_Data_Reader`` with quicklook band data
+        ``SatDataHandler`` with quicklook band data
     """
 
     # determine processing level first
@@ -78,7 +76,7 @@ def read_s2_tcifile(
     except Exception as e:
         raise Exception from e
 
-    reader = Sat_Data_Reader()
+    reader = SatDataHandler()
     reader.read_from_bandstack(
         fname_bandstack=tci_file,
         in_file_aoi=in_file_aoi

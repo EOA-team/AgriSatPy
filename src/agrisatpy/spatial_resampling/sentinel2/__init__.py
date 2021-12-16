@@ -28,13 +28,12 @@ from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.config import get_settings
 from agrisatpy.processing import resampling
 from agrisatpy.config.sentinel2 import Sentinel2
-from agrisatpy.utils.constants.sentinel2 import s2_band_mapping,\
-    ProcessingLevels
-from agrisatpy.io.sat_data_reader import Sat_Data_Reader
+from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
+from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
+from agrisatpy.io import SatDataHandler
 from agrisatpy.io.utils.sentinel2 import read_s2_tcifile
 from agrisatpy.io.utils.sentinel2 import read_s2_sclfile
-from pickle import NONE
-from docutils.nodes import target
+
 
 Settings = get_settings()
 logger = Settings.logger
@@ -117,7 +116,7 @@ def _get_resampling_name(
 
 def create_rgb_preview(
         out_dir: Path,
-        reader: Sat_Data_Reader,
+        reader: SatDataHandler,
         out_filename: str
     ) -> None:
     """
@@ -146,7 +145,7 @@ def create_rgb_preview(
 
 def create_scl_preview(
         out_dir: Path,
-        reader: Sat_Data_Reader,
+        reader: SatDataHandler,
         out_filename: str
     ) -> None:
     """

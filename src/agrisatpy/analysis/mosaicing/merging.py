@@ -34,8 +34,8 @@ def _get_CRS_and_bounds(
     # take CRS and bounds from the first band since it must be
     # the same for all bands
     band_name = ds.get_bandnames()[0]
-    crs = ds.get_band_epsg(band_name)
-    bounds = ds.get_band_bounds(band_name)
+    crs = ds.get_epsg(band_name)
+    bounds = ds.get_bounds(band_name)
     meta = ds.get_meta(band_name)
 
     return Geo_Info(crs, bounds, meta)
