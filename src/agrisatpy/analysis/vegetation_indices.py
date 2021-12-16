@@ -46,7 +46,7 @@ class VegetationIndices(object):
 
         return [x for x in dir(self) if not x.startswith('__') and not x.endswith('__') \
                 and not x.islower()]
-        
+
 
     def calc_vi(self, vi: str) -> np.array:
         """

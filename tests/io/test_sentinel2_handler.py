@@ -115,6 +115,11 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     with pytest.raises(BandNotFoundError):
         non_existing_band = reader.get_band('B01')
 
+    # check band coordinates
+    coords_blue = reader.get_coordinates('blue')
+    assert coords_blue['y'].shape[0] == blue.shape[0], 'miss-match between number of y coordinates and rows'
+    assert coords_blue['x'].shape[0] == blue.shape[1], 'miss-match between number of x coordinates and columns'
+
     # check dataset metadata
 
     ###### attributes
@@ -203,6 +208,12 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     cloudy_pixels = reader.get_cloudy_pixel_percentage()
     assert 0 <= cloudy_pixels <= 100, 'cloud pixel percentage must be between 0 and 100%'
 
+    # check blackfill (there is some but not the entire scene is blackfilled)
+    assert not reader.is_blackfilled(), 'blackfill detection did not work out - to many false positives'
+    blackfill_mask = reader.get_blackfill('blue')
+    assert blackfill_mask.dtype == bool, 'A boolean mask is required for the blackfill'
+    assert 0 < np.count_nonzero(blackfill_mask) < np.count_nonzero(~blackfill_mask)
+
     # try masking using the SCL classes. Since SCL is not resampled yet this should fail
     with pytest.raises(Exception):
         reader.mask_clouds_and_shadows(bands_to_mask=['blue'])
@@ -247,3 +258,6 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     )
 
     assert datadir.joinpath('scl.tif').exists(), 'output raster file not found'
+
+    # try converting data to xarray
+    reader.to_xarray()
