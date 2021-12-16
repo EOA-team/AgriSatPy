@@ -1608,9 +1608,6 @@ class SatDataHandler(object):
         :param out_file:
             file-path where to save the raster to. The file-ending will determine
             the type of raster generated; we recommend to use geoTiff (*.tif)
-        :param driver:
-            one of the GDAL drivers supported by rasterio. By default, the geoTiff
-            driver is used since this driver is reported to be the most stable one.
         :param band_names:
             list of bands to export (optional). If empty all bands available are
             exported to raster.
