@@ -64,6 +64,11 @@ def check_band_names(f):
                         args = tuple(arg_list)
                     if kwargs != {} and 'band_name' in kwargs.keys():
                         kwargs.update({'band_name': band_name})
+                else:
+                    if band_name not in self.get_bandnames() and band_name not in white_list:
+                        raise BandNotFoundError(
+                            f'{band_names} not found in data dict'
+                    )
             elif isinstance(band_names, list):
                 # check if passed band names are aliases
                 new_band_names = []

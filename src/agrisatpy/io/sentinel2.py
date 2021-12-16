@@ -451,7 +451,7 @@ class Sentinel2Handler(SatDataHandler):
                 # add band meta and bounds BEFORE assigning band data
                 band_reader_band = band_reader.get_bandnames()[0]
                 meta = band_reader.get_meta(band_reader_band)
-                attr = band_reader.get_attr(band_reader_band)
+                attrs = band_reader.get_attrs(band_reader_band)
                 bounds = band_reader.get_bounds(
                     band_name=band_reader_band,
                     return_as_polygon=False
@@ -467,9 +467,9 @@ class Sentinel2Handler(SatDataHandler):
                     bounds=bounds,
                     band_name=color_name
                 )
-                self.set_attr(
-                    attr=attr,
-                    band_name=band_name
+                self.set_attrs(
+                    attr=attrs,
+                    band_name=color_name
                 )
 
                 # add band data
@@ -501,83 +501,31 @@ class Sentinel2Handler(SatDataHandler):
         self.scene_properties.set(prop='processing_level', value=processing_level)
 
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
 
-    # download test data (if not done yet)
-    import cv2
-    import requests
-    from agrisatpy.downloader.sentinel2.utils import unzip_datasets
+    # # download test data (if not done yet)
 
-    reader = Sentinel2Handler()
-    band_selection = ['B02', 'B03', 'B04', 'B08']
+    #
+    # reader = Sentinel2Handler()
+    # band_selection = ['B02', 'B03', 'B04', 'B08']
     # in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
-    in_file_aoi = None
-
-    # bandstack testcase
-    fname_bandstack = Path('/mnt/ides/Lukas/software/AgriSatPy/data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
-    processing_level = ProcessingLevels.L2A
-
-    reader.read_from_bandstack(
-        fname_bandstack=fname_bandstack,
-        in_file_aoi=in_file_aoi
-    )
-    reader.get_band_coordinates('B02')
-    fig_rgb = reader.plot_rgb()
-    fig_scl = reader.plot_scl()
-    cc = reader.get_cloudy_pixel_percentage()
-    fig_blue = reader.plot_band('blue')
-    
-    band_names = reader.get_bandnames()
-
-    # L2A testcase
-    url = 'https://data.mendeley.com/public-files/datasets/ckcxh6jskz/files/e97b9543-b8d8-436e-b967-7e64fe7be62c/file_downloaded'
-    
-    testdata_dir = Path('/mnt/ides/Lukas/debug/S2_Data')
-    in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/BY_AOI_2019_MNI_EPSG32632.shp')
-
-    testdata_fname = testdata_dir.joinpath('S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.zip')
-    testdata_fname_unzipped = Path(testdata_fname.as_posix().replace('.zip', '.SAFE'))
-
-    if not testdata_fname_unzipped.exists():
-        
-        # download dataset
-        r = requests.get(url, stream=True)
-        r.raise_for_status()
-        with open(testdata_fname, 'wb') as fd:
-            for chunk in r.iter_content(chunk_size=5096):
-                fd.write(chunk)
-
-        # unzip dataset
-        unzip_datasets(download_dir=testdata_dir)
-
-    reader = Sentinel2Handler()
-    reader.read_from_safe(
-        in_dir=testdata_fname_unzipped,
-        band_selection=['B02']
-    )
-    blue = reader.get_band('B02')
-
-    # check the RGB
-    fig_rgb = reader.plot_rgb()
-
-    # and the false-color near-infrared
-    fig_nir = reader.plot_false_color_infrared()
-
-    # check the scene classification layer
-    fig_scl = reader.plot_scl()
-
-    reader.resample(target_resolution=10, resampling_method=cv2.INTER_CUBIC, bands_to_exclude=['scl'])
-    reader.calc_vi(vi='NDVI')
-    reader.write_bands(
-        out_file=testdata_dir.joinpath('scl.tif'),
-        band_selection=['scl']
-    )
-
-    cloudy_pixels = reader.get_cloudy_pixel_percentage()
-
-    # resample SCL
-    reader.resample(target_resolution=10, pixel_division=True)
-
-    # mask the clouds (SCL classes 8,9,10) and cloud shadows (class 3)
-    reader.mask_clouds_and_shadows(bands_to_mask=['TCARI_OSAVI'])
-    reader.plot_band('TCARI_OSAVI', colormap='summer')
+    #
+    # # bandstack testcase
+    # fname_bandstack = Path('/home/graflu/git/agrisatpy/data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
+    # processing_level = ProcessingLevels.L2A
+    #
+    # reader.read_from_bandstack(
+    #     fname_bandstack=fname_bandstack,
+    #     in_file_aoi=in_file_aoi
+    # )
+    # reader.get_band_coordinates('B02')
+    # fig_rgb = reader.plot_rgb()
+    # fig_scl = reader.plot_scl()
+    # cc = reader.get_cloudy_pixel_percentage()
+    # fig_blue = reader.plot_band('blue')
+    #
+    # band_names = reader.get_bandnames()
+    #
+    # # L2A testcase
+    # url = 'https://data.mendeley.com/public-files/datasets/ckcxh6jskz/files/e97b9543-b8d8-436e-b967-7e64fe7be62c/file_downloaded'
+    #

@@ -57,7 +57,6 @@ from agrisatpy.utils.decorators import check_band_names
 from agrisatpy.utils.decorators import check_metadata
 from agrisatpy.utils.constants import ProcessingLevels
 from agrisatpy.io.utils.raster import get_raster_attributes
-from agrisatpy.metadata.sentinel2.parsing import parse_s2_scene_metadata
 
 
 class SceneProperties(object):
@@ -159,8 +158,14 @@ class SatDataHandler(object):
         self.data.update(band_dict)
 
         # check band aliasing
+        if self._has_bandaliases:
+            if band_alias is None:
+                band_alias = band_name
+        else:
+            if band_alias is not None:
+                self._has_bandaliases = True
+
         if band_alias is not None:
-            self._has_bandaliases = True
             self._band_aliases[band_name] = band_alias
 
         # check if the data comes from a bandstack (nothing to do)
@@ -174,6 +179,7 @@ class SatDataHandler(object):
                 if self.data[other_band].shape == band_data_shape:
                     self.data['meta'][band_name] = self.data['meta'][other_band]
                     self.data['bounds'][band_name] = self.data['bounds'][other_band]
+                    self.data['attrs'][band_name] = self.data['attrs'][other_band]
                     # leave loop and return
                     break
 
@@ -276,6 +282,24 @@ class SatDataHandler(object):
 
 
     @check_band_names
+    def get_band_shape(
+            self,
+            band_name: str
+        ) -> NamedTuple:
+        """
+        Returns the shape of a band in terms of rows and columns
+
+        :param band_name:
+            name of the band
+        :return:
+            tuple with number of rows and columns
+        """
+
+        Dimensions = namedtuple('dimensions', 'nrows ncols')
+        return Dimensions(*self.get_band(band_name).shape)
+
+
+    @check_band_names
     def get_meta(
             self,
             band_name: Optional[str] = None
@@ -304,7 +328,7 @@ class SatDataHandler(object):
 
 
     @check_band_names
-    def get_attr(
+    def get_attrs(
             self,
             band_name: Optional[str] = None
         ) -> dict:
@@ -321,34 +345,60 @@ class SatDataHandler(object):
         # otherwise it must be available for each band as entry
         if not self.from_bandstack() and band_name is not None:
             try:
-                return self.data['attr'][band_name]
+                return self.data['attrs'][band_name]
             except Exception:
                 raise BandNotFoundError(
                     f'Could not find "{band_name}" in data dict'
                 )
         else:
-            return self.data['attr']
+            return self.data['attrs']
 
 
     @check_band_names
     def get_spatial_resolution(
             self,
             band_name: Optional[str] = None
-        ) -> NamedTuple:
+        ) -> Union[Dict[str,NamedTuple],NamedTuple]:
         """
-        Returns the spatial resolution in x and y direction of a band
+        Returns the spatial resolution in x and y direction of all or
+        a selected band
 
         :param band_name:
             band name for retrieving spatial resolution
-            of a specific band (not required if from_bandstack)
+            of a specific band
         :return:
             spatial resolution in units of the image coordinate system
             in x and y direction
         """
+        
+        transform = {}
+        meta = self.get_meta(band_name=band_name)
 
-        transform = self.get_meta(band_name=band_name)['transform']
-        Spatial_Resolution = namedtuple('Spatial_Resolution', 'x y')
-        return Spatial_Resolution(transform[0], transform[4])
+        if not self.from_bandstack():
+            if band_name is not None:
+                transform = meta['transform']
+            else:
+                for band in self.get_bandnames():
+                    transform[band] = meta[band]['transform']
+        else:
+            transform = meta['transform']
+
+        # multiple bands
+        if isinstance(transform, dict):
+            res = {}
+            for band in self.get_bandnames():
+                Spatial_Resolution = namedtuple('Spatial_Resolution', 'x y')
+                res[band] = Spatial_Resolution(
+                    transform[band][0],
+                    transform[band][4]
+                )
+
+        # single band direct access to Affine object
+        else:
+            Spatial_Resolution = namedtuple('Spatial_Resolution', 'x y')
+            res = Spatial_Resolution(transform[0], transform[4])
+
+        return res
 
 
     @check_band_names
@@ -356,12 +406,12 @@ class SatDataHandler(object):
             self,
             band_name: Optional[str] = None,
             return_as_polygon: Optional[bool] = True
-        ) -> Tuple[Polygon, BoundingBox]:
+        ) -> Union[Union[BoundingBox,Polygon], Dict[str,Union[BoundingBox,Polygon]]]:
         """
         Returns the bounds (bounding box) of a band
 
         :param band_name:
-            band name for retrieving bounds (not required if from_bandstack)
+            optional band name for retrieving bounds
         :param return_as_polygon:
             if True returns a ``shapely`` polygon, if False a ``rasterio``
             bounding box object
@@ -372,7 +422,7 @@ class SatDataHandler(object):
         bounds = self.data['bounds']
 
         # check if the file is from band stack or if bounds are the same for each band
-        if not self.from_bandstack():
+        if not self.from_bandstack() and band_name is not None:
             try:
                 bounds = bounds[band_name]
             except Exception:
@@ -382,7 +432,13 @@ class SatDataHandler(object):
 
         # return bounding box or polygon
         if return_as_polygon:
-            bounds = box(*bounds)
+            if isinstance(bounds, dict):
+                res = {}
+                for band in self.get_bandnames():
+                    res[band] = box(*bounds[band])
+            else:
+                res = box(*bounds)
+            return res
 
         return bounds
 
@@ -391,19 +447,28 @@ class SatDataHandler(object):
     def get_epsg(
             self,
             band_name: Optional[str] = None
-        ) -> CRS:
+        ) -> Union[CRS,Dict[str,CRS]]:
         """
-        Returns the EPSG code of a band
+        Returns the EPSG code of all or a selected band
 
         :param band_name:
-            name of the band for which to extract the EPSG code (not required
-            if from_bandstack)
+            optional band name for which to retrieve the EPSG code
         :return:
-            EPSG code of the band as ``rasterio.crs.CRS``
+            EPSG code of the bands as ``rasterio.crs.CRS``
         """
 
         meta = self.get_meta(band_name=band_name)
-        return meta['crs']
+
+        if self.from_bandstack():
+            return meta['crs']
+        else:
+            if band_name is not None:
+                return meta['crs']
+            else:
+                res = {}
+                for band in self.get_bandnames():
+                    res[band] = meta[band]['crs']
+                return res
 
 
     @check_band_names
@@ -500,7 +565,7 @@ class SatDataHandler(object):
         )
         
 
-    def set_attr(
+    def set_attrs(
             self,
             attr: dict,
             band_name: Optional[str] = None
@@ -519,7 +584,7 @@ class SatDataHandler(object):
         """
 
         self._set_image_metadata(
-            metadata_key='attr',
+            metadata_key='attrs',
             metadata_values=attr,
             band_name=band_name
         )
@@ -585,7 +650,8 @@ class SatDataHandler(object):
             band_name: str
         ) -> None:
         """
-        Drops a selected band from the data dict.
+        Drops a selected band from the data dict. Also erases any
+        references to the band in the metadata.
 
         :param band_name:
             name of the band to drop
@@ -596,19 +662,32 @@ class SatDataHandler(object):
         except Exception as e:
             raise Exception from e
 
+        # handle band metadata
+        if not self.from_bandstack():
+            try:
+                del self.data['meta'][band_name]
+                del self.data['bounds'][band_name]
+                del self.data['attrs'][band_name]
+            except Exception as e:
+                raise Exception from e
+
 
     def reproject_bands(
             self,
             target_crs: Union[int, CRS],
             blackfill_value: Optional[Union[int,float]] = 0,
             resampling_method: Optional[int] = Resampling.nearest,
-            num_threads: Optional[int] = 1
+            num_threads: Optional[int] = 1,
+            dst_transform: Optional[Affine] = None
         ) -> None:
         """
         Reprojects all available bands from their source spatial reference
         system into another one.
 
         IMPORTANT: The original band data is overwritten by this method!
+        IMPORTANT: When possible use ``dst_transform`` to align the
+        re-projected raster with another raster that is already in the target
+        CRS and has the same spatial extent as the band you are working on.
 
         :param target_crs:
             EPSG code denoting the target coordinate system
@@ -621,6 +700,11 @@ class SatDataHandler(object):
             the same (e.g., from one UTM zone into another).
         :param num_threads:
             number of threads to use. The default is 1.
+        :param dst_transform:
+            per default AgriSatPy simply projects a raster from one CRS into
+            another one. This might distort, however, the resulting image and
+            change the pixel size. If you need the result to be aligned with
+            another raster provide dst_transform as a target ("snap") transformation
         """
 
         # get band names
@@ -630,16 +714,19 @@ class SatDataHandler(object):
         for band_name in band_names:
 
             # get band bounds and Affine transformation
-            src_bounds = self.get_band_bounds(band_name, return_as_polygon=False)
-            src_crs = self.get_band_epsg(band_name)
-            src_affine = self.get_meta(band_name)['transform']
+            src_bounds = self.get_bounds(band_name, return_as_polygon=False)
+            src_crs = self.get_epsg(band_name)
+            src_meta = deepcopy(self.get_meta(band_name))
+            src_affine = src_meta['transform']
 
             resampling_options = {
+                'src_crs': src_crs,
                 'src_transform': src_affine,
                 'dst_crs': target_crs,
                 'src_nodata': blackfill_value,
                 'resampling': resampling_method,
-                'num_threads': num_threads
+                'num_threads': num_threads,
+                'dst_transform': dst_transform
             }
 
             # reproject raster data
@@ -665,16 +752,23 @@ class SatDataHandler(object):
                 raise ReprojectionError(f'Could not re-project bounds of {band_name}: {e}')
 
             # overwrite band data
-            self.data[band_name] = out_data
+            self.data[band_name] = out_data[0,:,:]
 
-            # TODO: adopt meta-entries (CRS, coordinates, etc.)
-            
+            # adopt meta-entries (CRS, coordinates, etc.)
+            src_meta.update(
+                {
+                    'crs' : rio.crs.CRS.from_epsg(target_crs),
+                    'transform': out_transform,
+                    'height': out_data.shape[0],
+                    'width': out_data.shape[1]
+                }
+            )
             # overwrite meta and bounds
             if not self.from_bandstack():
-                self.data['meta'][band_name]['transform'] = out_transform
+                self.data['meta'][band_name] = src_meta
                 self.data['bounds'][band_name] = out_bounds
             else:
-                self.data['meta']['transform'] = out_transform
+                self.data['meta'] = src_meta
                 self.data['bounds'] = out_bounds
 
 
@@ -1036,11 +1130,7 @@ class SatDataHandler(object):
         # spatial resolution
 
         if len(band_selection) == 0:
-            band_selection = list(self.data.keys())
-            # remove those items not containing band data
-            band_selection.remove('meta')
-            band_selection.remove('bounds')
-
+            band_selection = self.get_bandnames()
         # check if bands are to exclude
         if len(bands_to_exclude) > 0:
             set_to_exclude = set(bands_to_exclude)
@@ -1073,8 +1163,8 @@ class SatDataHandler(object):
                 continue
 
             # get image boundaries
-            bounds = self.get_band_bounds(
-                band,
+            bounds = self.get_bounds(
+                band_name=band,
                 return_as_polygon=False
             )
 
@@ -1200,8 +1290,8 @@ class SatDataHandler(object):
             else:
                 meta_resampled = deepcopy(meta)
                 # update width, height and the transformation
-                meta_resampled['width'] = ncols_resampled
-                meta_resampled['height'] = nrows_resampled
+                meta_resampled['width'] = self.data[band].shape[1]
+                meta_resampled['height'] = self.data[band].shape[0]
                 affine_orig = meta_resampled['transform']
                 affine_resampled = Affine(
                     a=target_resolution,
@@ -1227,7 +1317,8 @@ class SatDataHandler(object):
             name_mask_band: str,
             mask_values: List[Union[int,float]],
             bands_to_mask: List[str],
-            keep_mask_values: Optional[bool]=False
+            keep_mask_values: Optional[bool] = False,
+            nodata_value: Optional[Union[int, float]] = 0.
         ) -> None:
         """
         Allows to mask parts of an image (i.e., single bands) based
@@ -1251,11 +1342,20 @@ class SatDataHandler(object):
         :param keep_mask_values:
             if False (Def) the provided `mask_values` are assumed to represent
             INVALID classes, if True the opposite is the case
+        :param nodata_value:
+            no data value to set masked pixels to in case the band data is of
+            datype integer. Pixels in arrays with floating point numbers are
+            set to np.nan.
         """
 
         # check if mask band is available
-        if not name_mask_band in self.data.keys():
+        if not name_mask_band in self.get_bandnames() and \
+        name_mask_band not in self.get_bandaliases().values():
             raise BandNotFoundError(f'{name_mask_band} is not in data dict')
+
+        # get band alias if specified
+        if name_mask_band not in self.get_bandnames():
+            name_mask_band = [k for (k,v) in self.get_bandaliases().items() if v == name_mask_band][0]
 
         # convert the mask to a temporary binary mask
         tmp = np.zeros_like(self.data[name_mask_band])
@@ -1267,10 +1367,17 @@ class SatDataHandler(object):
 
         # loop over bands specified and mask the invalid pixels
         for band_to_mask in bands_to_mask:
-            if band_to_mask not in self.data.keys():
+            if band_to_mask not in self.get_bandnames() and \
+            band_to_mask not in self.get_bandaliases().values():
                 raise BandNotFoundError(f'{band_to_mask} is not in data dict')
-            # set values to NaN where tmp is zero
-            self.data[band_to_mask][tmp == 0] = np.nan
+            # check alias
+            if band_to_mask not in self.get_bandnames():
+                band_to_mask = [k for (k,v) in self.get_bandaliases().items() if v == band_to_mask][0]
+            # set values to NaN or nodata where tmp is zero depending on the dtype
+            if self.data[band_to_mask].dtype == float:
+                self.data[band_to_mask][tmp == 0] = np.nan
+            elif self.data[band_to_mask].dtype == int:
+                self.data[band_to_mask][tmp == 0] = nodata_value
         
 
     def read_from_bandstack(
@@ -1391,7 +1498,7 @@ class SatDataHandler(object):
 
         # meta and bounds are saved as additional items of the dict
         meta.update(
-            {'count': len(self.data)}
+            {'count': len(self.get_bandnames())}
         )
 
         self._from_bandstack = True
@@ -1399,15 +1506,14 @@ class SatDataHandler(object):
         self.set_meta(meta)
         self.set_bounds(bounds)
         if parse_attr:
-            self.set_attr(attrs)
+            self.set_attrs(attrs)
 
-        
 
     def write_bands(
             self,
             out_file: Path,
-            band_selection: Optional[List[str]] = [],
-            band_aliases: Optional[List[str]] = []
+            band_names: Optional[List[str]] = [],
+            use_band_aliases: Optional[bool] = False
         ) -> None:
         """
         Writes one or multiple bands to a raster file using rasterio. By
@@ -1428,13 +1534,12 @@ class SatDataHandler(object):
         :param driver:
             one of the GDAL drivers supported by rasterio. By default, the geoTiff
             driver is used since this driver is reported to be the most stable one.
-        :param band_selection:
+        :param band_names:
             list of bands to export (optional). If empty all bands available are
             exported to raster.
-        :param band_aliases:
-            optional list of alias band names to overwrite the (color) names of
-            the bands available in the data dict (optional). If provided must
-            have the same length as bands to export.
+        :param use_band_aliases:
+            use band aliases (if available) instead of actual band names for
+            output band names
         """
 
         # check output file naming and driver
@@ -1446,26 +1551,25 @@ class SatDataHandler(object):
             )
 
         # check band_selection, if not provided use all available bands
-        if len(band_selection) > 0:
-            if not all(band_name in self.data.keys() for band_name in band_selection):
-                raise BandNotFoundError('Mismatch between selected and available bands')
+        if len(band_names) > 0:
+            # check if band selection is valid
+            if set(band_names).issubset(self.get_bandnames()):
+                band_selection = band_names
+            elif set(band_names).issubset(self.get_bandaliases().values()):
+                band_selection = [k for (k,v) in self.get_bandaliases().items() if v in band_names]
         else:
             band_selection = self.get_bandnames()
 
-        # check if band aliases (if provided) match the band_selection
-        if len(band_aliases) > 0:
-            if len(band_aliases) != len(band_selection):
-                raise ValueError(
-                    f'Number of selected bands ({len(band_selection)}) '\
-                    f'does not match number of aliases ({len(band_aliases)})'
-                )
+        # check if band aliases shall be used
+        if use_band_aliases:
+            if self._has_bandaliases:
+                band_selection = [k for (k,v) in self.get_bandaliases().items() if k in band_selection]
+
+        if len(band_selection) == 0:
+            raise ValueError('No band selected for writing to raster file')
 
         # check meta and update it with the selected driver for writing the result
-        if self._from_bandstack:
-            meta = self.get_band(band_name='meta')
-        else:
-            # if not from bandstack use the meta information of the first selected band
-            meta = self.get_band(band_name='meta').get(band_selection[0])
+        meta = deepcopy(self.get_meta(band_selection[0]))
 
         # check if all bands have the same shape, the first band determines the
         # shape all other bands have to follow
@@ -1473,7 +1577,7 @@ class SatDataHandler(object):
 
         if len(band_selection) > 1:
             for band_name in band_selection[1:]:
-                next_shape = self.get_band(band_name=band_name).shape
+                next_shape = self.get_band(band_name).shape
                 if first_shape != next_shape:
                     raise ValueError(
                         f'The shapes of band "{band_selection[0]}" and "{band_name}"'\
@@ -1503,21 +1607,18 @@ class SatDataHandler(object):
         # open the result dataset and try to write the bands
         with rio.open(out_file, 'w+', **meta) as dst:
 
-            for idx, band in enumerate(band_selection):
+            for idx, band_name in enumerate(band_selection):
 
                 # check with band name to set
-                band_name = band
-                if len(band_aliases) > 0:
-                    band_name = band_aliases[idx]
                 dst.set_band_description(idx+1, band_name)
 
                 # write band data
-                band_data = self.get_band(band_name=band).astype(dtype)
+                band_data = self.get_band(band_name).astype(dtype)
                 band_data = self._masked_array_to_nan(band_data)
                 dst.write(band_data, idx+1)
 
 
-    def check_is_bandstack(self):
+    def check_is_bandstack(self) -> bool:
         """
         Helper function that checks if a SatDataHandler object fulfills
         the ``from_bandstack()`` criteria.
@@ -1525,8 +1626,22 @@ class SatDataHandler(object):
         These criteria are:
             - all bands have the same CRS
             - all bands have the same x and y dimension (number of rows and columns)
+
+        :return:
+            True if the current object fulfills the criteria else False.
         """
-        pass
+
+        # loop over all bands and check the band CRS as well as their dims
+        crs_list = []
+        xdim_list = []
+        ydim_list = []
+
+        for band_name in self.get_bandnames():
+            crs_list.append(self.get_epsg(band_name))
+            xdim_list.append(self.get_band_shape(band_name).ncols)
+            ydim_list.append(self.get_band_shape(band_name).nrows)
+
+        return len(set(crs_list)) == 1 and len(set(xdim_list)) == 1 and len(set(ydim_list)) == 1
 
 
     def to_xarray(
