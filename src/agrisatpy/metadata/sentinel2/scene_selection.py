@@ -1,6 +1,7 @@
 '''
 Get a quick (visual) overview over the Sentinel-2 data available.
 '''
+# TODO: move to CLI
 
 import pandas as pd
 import numpy as np

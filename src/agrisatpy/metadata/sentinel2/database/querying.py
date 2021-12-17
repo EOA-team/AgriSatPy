@@ -101,7 +101,7 @@ def find_raw_data_by_tile(
     """
 
     # translate processing level
-    processing_level_db = ProcessingLevelsDB[processing_level.value]
+    processing_level_db = ProcessingLevelsDB[processing_level.name]
     
     query_statement = session.query(
         S2_Raw_Metadata.product_uri,

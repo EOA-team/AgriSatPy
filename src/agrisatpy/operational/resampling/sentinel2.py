@@ -44,14 +44,9 @@ Depending on your hardware this might take a while!
 
 import time
 import pandas as pd
-import numpy as np
 from datetime import date
 from pathlib import Path
 from joblib import Parallel, delayed
-from sqlalchemy import create_engine
-from sqlalchemy import and_
-from sqlalchemy import desc
-from sqlalchemy.orm import sessionmaker
 from typing import Optional
 from typing import Tuple
 from typing import Dict
@@ -62,33 +57,12 @@ from agrisatpy.spatial_resampling.sentinel2 import merge_split_scenes
 from agrisatpy.operational.utils import identify_split_scenes
 from agrisatpy.utils import reconstruct_path
 from agrisatpy.config import get_settings
-from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
 from agrisatpy.utils.constants import ProcessingLevels
-from agrisatpy.utils.constants.sentinel2 import ProcessingLevelsDB
 from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_tile
 
 
 Settings = get_settings()
 logger = Settings.logger
-
-
-# TODO: move to metadata
-def _get_db_url() -> str:
-    """
-    returns the database connection string
-    """
-
-    return f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
-
-# TODO: move to metadata
-def connect_db():
-    """
-    connects to AgriSatPy's metadata base and returns a session
-    object
-    """
-    DB_URL = _get_db_url()
-    engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
-    return sessionmaker(bind=engine)()
 
 
 def do_parallel(

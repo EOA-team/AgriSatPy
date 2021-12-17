@@ -213,12 +213,12 @@ def merge_split_scenes(
 
 if __name__ == '__main__':
 
-    sat_dir = Path('/run/media/graflu/ETH-KP-SSD6/SAT/Blackfill_Merging/Raw')
+    sat_dir = Path('/home/graflu/public/Evaluation/Satellite_data/Sentinel-2/Rawdata/L2A/CH/2018')
 
     scene_1 = sat_dir.joinpath('S2A_MSIL2A_20180518T104021_N0207_R008_T32TLT_20180518T124554')
     scene_2 = sat_dir.joinpath('S2A_MSIL2A_20180518T104021_N0207_R008_T32TLT_20180518T125548')
 
-    out_dir = Path('/run/media/graflu/ETH-KP-SSD6/SAT/Blackfill_Merging/Processed')
+    out_dir = Path('/mnt/ides/Lukas/debug/Processed')
 
     pixel_division = False
     options = {'pixel_division': pixel_division}
