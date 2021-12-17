@@ -84,4 +84,3 @@ def reproject_raster_dataset(
         raise Exception from e
 
     return dst, transform
-

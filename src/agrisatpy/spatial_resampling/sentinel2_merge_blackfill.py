@@ -1,11 +1,12 @@
 '''
-Created on Jul 9, 2021
-
-@author:    Lukas Graf (D-USYS, ETHZ)
-
-@puprose:   Deals with split S2 tiles due to data take end/beginning causing
-            scenes to be split into two datasets containing a significant amount
-            of blackfill
+Sentinel-2 records data in so-called datatakes. When a datatake is over and a new
+begins the acquired image data is written to different files (based on the datatake
+time). Sometimes, this cause scenes of a single acquisition date to be split into
+two datasets which differ in their datatake. Thus, both datasets have a reasonable
+amount of blackfill in those areas not covered by the datatake they belong to. For
+users of satellite data, however, it is much more convenient to have those split
+scenes merged into one since the division into two scenes by the datatake has
+technical reasons only.
 '''
 
 import os
@@ -15,10 +16,10 @@ import rasterio as rio
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from numba import jit
 
-from .sentinel2 import resample_and_stack_S2
-from .sentinel2 import scl_10m_resampling
 from agrisatpy.config import get_settings
+from agrisatpy.io.sentinel2 import Sentinel2Handler
 
 Settings = get_settings()
 logger = Settings.logger
@@ -28,21 +29,14 @@ def identify_split_scenes(
         metadata_df: pd.DataFrame,
     ) -> pd.DataFrame:
     """
-    Sentinel-2 records data in so-called datatakes. When a datatake is over and a new
-    begins the acquired image data is written to different files (based on the datatake
-    time). Sometimes, this cause scenes of a single acquisition date to be split into
-    two datasets which differ in their datatake. Thus, both datasets have a reasonable
-    amount of blackfill in those areas not covered by the datatake they belong to. For
-    users of satellite data, however, it is much more convenient to have those split
-    scenes merged into one since the division into two scenes by the datatake has
-    technical reasons only.
-
     With this function it is possible to identify those split scenes based on their
     sensing date. If two scenes from the same Sentinel-2 tile have the same sensing date
     then they are split by the datatake.
 
     :param metadata_df:
         dataframe containing extracted Sentinel-2 metadata (L1C or L2A level)
+    :return:
+        dataframe with split scenes
     """
     return metadata_df[metadata_df.sensing_date.duplicated(keep=False)]
 
@@ -67,23 +61,40 @@ def find_rgb_preview(
                      f'{os.path.splitext(os.path.basename(scene_out))[0]}.png')))
 
 
+@jit(nopython=True)
+def _merge_blackfill(
+        img_data_1: np.array,
+        img_data_2: np.array,
+        is_blackfill: np.array
+    ) -> np.array:
+    """
+    Helper function carrying out the blackfill merging on the array level
+    """
+    for row in range(is_blackfill.shape[0]):
+        if not any(is_blackfill[row,:]):
+            continue
+        for col in range(is_blackfill.shape[1]):
+            if is_blackfill[row, col]:
+                img_data_1[:,row, col] = img_data_2[:,row, col]
+
+    return img_data_1
+
+
 def merge_split_files(
         in_file_1: Path,
         in_file_2: Path,
         is_blackfill: np.array
     ) -> Tuple[dict, np.array]:
     """
-    takes two image files and fills the blackfilled values from the first
-    file with values from the second file.
-    Returns a tuple with the meta-dict and an array with the combined pixel
-    values
+    takes two band-stacked Sentinel-2 scenes from the same data strip
+    and merges them into a single raster dataset.
 
     :param in_file_1:
         first band-stacked geoTiff with blackfill
     :param in_file_2:
         second band-stacked geoTiff with blackfill
     :param is_blackfill:
-        bool array indicating the pixels in the first file that contain
+        bool array indicating those pixels in the first file that contain
         black fill
     """
     with rio.open(in_file_1, 'r') as src:
@@ -96,14 +107,10 @@ def merge_split_files(
         with rio.open(in_file_2, 'r') as src2:
             img_data_2 = src2.read()
 
-            for row in range(is_blackfill.shape[0]):
-                if not any(is_blackfill[row,:]):
-                    continue
-                for col in range(is_blackfill.shape[1]):
-                    if is_blackfill[row, col]:
-                        img_data_1[:,row, col] = img_data_2[:,row, col]
+        # carry out the actual merging
+        img_data = _merge_blackfill(img_data_1, img_data_2, is_blackfill)
 
-    return (meta, img_data_1)
+    return meta, img_data
 
 
 def get_blackfill(
@@ -111,19 +118,26 @@ def get_blackfill(
     ) -> np.array:
     """
     returns a bool array where each True elements indicates that
-    pixel is blackfill. Using this information it is possible to
-    fill black-filled values in one image with real values from the
-    second image
+    pixel is blackfilled based on the first spectral band of the input file
 
     :param in_file:
-        file path to the band-stack geoTiff file that containes
-        blackfill (all reflectance values are zero)
+        file path to the band-stack geoTiff
     :return is_blackfill:
         logical array indicating pixels that are black-filled
     """
-    with rio.open(in_file, 'r') as src:
-        is_blackfill = src.read(1) == 0
-    return is_blackfill
+
+    handler = Sentinel2Handler()
+    # read bandstack and use band B02 (blue) as the master band
+    handler.read_from_bandstack(
+        fname_bandstack=in_file,
+        band_selection=['B02']
+    )
+
+    # all pixels with zero reflectance are considered blackfill (default)
+    blackfill = handler.get_blackfill('B02')
+    handler = None
+
+    return blackfill
 
 
 def merge_split_scenes(
@@ -134,13 +148,13 @@ def merge_split_scenes(
         **kwargs
     ) -> dict:
     """
-    merges two datasets of the same sensing date and tile split by the datatake beginning/
-    end.
-    First, both scenes are resampled to 10m and stacked in temporary working directory;
+    merges two Sentinel-2 datasets in .SAFE formatof the same sensing date and tile
+    split by the datatake beginning/ end.
+
+    First, both scenes are resampled to 10m and stacked in a temporary working directory;
     second, they are merged together so that the blackfill of the first scenes is replaced
     by the values of the second one.
-    Returns a dictionary of the merged files including the actual reflectance values,
-    the preview RGB png-file and the scene classification layer (SCL)
+    SCL (if available) and previews are managed accordingly.
 
     :param scene_1:
         .SAFE directory containing the first of two scenes split by the datatake beginning/
@@ -158,22 +172,20 @@ def merge_split_scenes(
         key word arguments to pass to resample_and_stack_S2 and scl_10m_resampling.
         The out_dir option, however, is ignored
     """
-    # check if working directory exists
-    working_dir = out_dir.joinpath("temp_blackfill")
-    if not working_dir.exists():
-        os.mkdir(working_dir)
 
-    # save the outputs of the two scenes to different subdirectories within the working
+    # check if working directory exists
+    working_dir = out_dir.joinpath('temp_blackfill')
+    if not working_dir.exists():
+        working_dir.mkdir()
+
+    # save the outputs of the two scenes to different sub-directories within the working
     # directory to avoid to override the output
     out_dirs = [working_dir.joinpath('1'), working_dir.joinpath('2')]
     for out_dir in out_dirs:
         if out_dir.exists():
-            # for clean "start" of next loop iteration
+            # for clean start of next loop iteration
             shutil.rmtree(out_dir)
-        os.mkdir(out_dir)
-    
-    # kwargs for AOI and masking (if applicable)
-    masking = kwargs.get('masking', False)
+        out_dir.mkdir()
 
     # do the spatial resampling for the two scenes
     # first scene

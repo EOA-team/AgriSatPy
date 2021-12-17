@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from agrisatpy.io import SatDataHandler
+from agrisatpy.io.sentinel2 import Sentinel2Handler
 from agrisatpy.utils.sentinel2 import get_S2_tci
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
@@ -15,7 +16,7 @@ from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 def read_s2_sclfile(
         in_dir: Path,
         in_file_aoi: Optional[Path] = None
-    ) -> SatDataHandler:
+    ) -> Sentinel2Handler:
     """
     Reads the Sentinel-2 scene classification layer (SCL) file from
     a dataset in .SAFE format.
@@ -33,13 +34,13 @@ def read_s2_sclfile(
     """
 
     # read SCL file and return
-    reader = SatDataHandler()
+    reader = Sentinel2Handler()
     reader.read_from_safe(
         in_dir=in_dir,
         in_file_aoi=in_file_aoi,
         band_selection=['B05']
     )
-    reader.drop_band(band_name='red_edge_1')
+    reader.drop_band(band_name='B05')
 
     return reader
 
@@ -47,7 +48,7 @@ def read_s2_sclfile(
 def read_s2_tcifile(
         in_dir: Path,
         in_file_aoi: Optional[Path] = None
-    ) -> SatDataHandler:
+    ) -> Sentinel2Handler:
     """
     Reads the Sentinel-2 RGB quicklook file from a dataset in
     .SAFE format (processing levels L1C and L2A)

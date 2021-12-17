@@ -1,9 +1,5 @@
 '''
-Created on Jul 9, 2021
-
-@author:     Lukas Graf (D-USYS, ETHZ)
-
-@purpose:    Some auxiliary functions for spatial resampling of raster data
+Some auxiliary functions for spatial resampling of raster data
 '''
 
 import itertools
