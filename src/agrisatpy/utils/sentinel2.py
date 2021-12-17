@@ -139,7 +139,7 @@ def get_S2_sclfile(
     return the path to the S2 SCL (scene classification file). The method
     either searches for the SCL file in .SAFE structure (default, returning
     SCL file in 20m spatial resolution) or the resampled SCL file in case
-    a ``agrisatpy.processing.resampling`` derived band-stack was passed. 
+    a ``agrisatpy.operational.resampling`` derived band-stack was passed. 
 
     :param in_dir:
         either .SAFE directory (default use case) or the the directory

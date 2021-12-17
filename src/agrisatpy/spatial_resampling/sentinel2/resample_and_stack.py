@@ -220,7 +220,7 @@ def resample_and_stack_s2(
         target_resolution: Optional[Union[int, float]] = 10,
         resampling_method: Optional[int]=cv2.INTER_CUBIC,
         pixel_division: Optional[bool]=False
-    ) -> Dict[str,Path]:
+    ) -> Dict[str,Union[Path,str,int,float]]:
     """
     Function to spatially resample a S2 scene in *.SAFE format and write it to a
     single, stacked geoTiff. Creates also a RGB preview png-file of the scene and
@@ -260,6 +260,7 @@ def resample_and_stack_s2(
         from 20 to 10m, only.
     :return:
         dictionary with filepaths to bandstack, rgb_quicklook, and (L2A, only) SCL
+        and related metadata
     """
 
     # check passed spatial resolution
@@ -282,6 +283,9 @@ def resample_and_stack_s2(
         resampling_method=resampling_method_str,
         target_resolution=target_resolution
     )
+    # save resampling method and spatial resolution
+    out_file_names['resampling_method'] = resampling_method
+    out_file_names['spatial_resolution'] = target_resolution
 
     # get the TCI quicklook image first
     try:

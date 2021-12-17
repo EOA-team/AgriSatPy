@@ -149,7 +149,9 @@ def merge_split_scenes(
 
     fnames_out = {
         'bandstack': out_file,
-        'rgb_preview': fname_rgb_preview
+        'rgb_preview': fname_rgb_preview,
+        'scl': '',
+        'scl_preview': ''
     }
 
     # check if SCL must be merged as well (L2A)

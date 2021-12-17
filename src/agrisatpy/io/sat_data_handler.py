@@ -130,7 +130,7 @@ class SatDataHandler(object):
     def from_bandstack(self) -> bool:
         """
         checks if the data was read from bandstack derived from
-        `~agrisatpy.processing.resampling` or custom (i.e., sensor-
+        `~agrisatpy.operational.resampling` or custom (i.e., sensor-
         specific) file system structure such as .SAFE in case of
         Sentinel-2
         """
@@ -1473,7 +1473,7 @@ class SatDataHandler(object):
         and store them in a dict with the required band names.
 
         IMPORTANT: This method assumes that the band-stack was created in
-        the way `~agrisatpy.processing.resampling` does, i.e., assigning
+        the way `~agrisatpy.operational.resampling` does, i.e., assigning
         a name to each band in the geoTiff stack.
 
         IMPORTANT: To map band names to color names it might be necessary
