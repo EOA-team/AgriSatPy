@@ -170,8 +170,9 @@ def get_S2_sclfile(
         fname_splitted = in_file_bandstack.name.split('_')
         file_pattern_date = fname_splitted[0]
         file_pattern_tile = fname_splitted[1]
+        platform_level = fname_splitted[2]
         sensor = fname_splitted[3]
-        file_pattern = f'{file_pattern_date}_{file_pattern_tile}_{sensor}_SCL_*.tiff'
+        file_pattern = f'{file_pattern_date}_{file_pattern_tile}_{platform_level}_{sensor}_*SCL.tiff'
         search_pattern = str(in_dir.joinpath(Settings.SUBDIR_SCL_FILES).joinpath(file_pattern))
 
     try:

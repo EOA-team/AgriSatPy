@@ -42,6 +42,7 @@ from matplotlib.figure import figaspect
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from copy import deepcopy
 from collections import namedtuple
+from xarray import DataArray
 
 from agrisatpy.analysis.vegetation_indices import VegetationIndices
 from agrisatpy.utils.exceptions import NotProjectedError
@@ -1721,13 +1722,17 @@ class SatDataHandler(object):
     def to_xarray(
             self,
             **kwargs
-        ):
+        ) -> DataArray:
         """
         Converts a SatDataHandler object to xarray in memory without
         having to dump anything to disk.
 
         IMPORTANT: Works on bandstacked files only. I.e., all bands MUST
         have the same spatial extent and dimensions.
+
+        :return:
+            DataArray with spectral bands as dimensions and x and y
+            coordinates
         """
 
         # check if data fulfills the bandstack criteria
@@ -1770,6 +1775,7 @@ class SatDataHandler(object):
         for band_attr in band_attrs:
             stack_attrs[band_attr] = tuple(band_attrs[band_attr])
 
+        # TODO: debug
         xds = xr.DataArray(
             data=band_array_stack,
             coords=coords,
@@ -1777,22 +1783,76 @@ class SatDataHandler(object):
             **kwargs
         )
 
-        x = xr.Dataset(
+        return xds
+
+        # x = xr.Dataset(
+        #
+        #     {
+        #
+        #         "temperature_c": (
+        #
+        #             ("lat", "lon"),
+        #
+        #             20 * np.random.rand(4).reshape(2, 2),
+        #
+        #         ),
+        #
+        #         "precipitation": (("lat", "lon"), np.random.rand(4).reshape(2, 2)),
+        #
+        #     },
+        #
+        #     coords={"lat": [10, 20], "lon": [150, 160]},
+        #
+        # )
+
+
+    @check_band_names
+    def to_dataframe(
+            self,
+            band_names: Optional[List[str]] = None,
+            as_geodataframe: Optional[bool] = True,
+            pixels_as_polygons: Optional[bool] = False,
+            pixel_coordinates_centered: Optional[bool] = False
+        ):
+        """"
+        Converts all or selected number of bands to either pandas dataframe
+        or a geopandas geodataframe. The resulting dataframe has as many rows
+        as pixels in the current handler object and as many columns as bands plus
+        columns denoting the pixel coordinates. The spatial resolution of the bands
+        can differ as long as the bands share a common grid system with same origin.
+
+        In case a pandas dataframe is returned the pixel coordinates are returned
+        as x, y pairs.
+
+        In case a geopandas geodataframe is returned the pixel geometries are returned
+        either as shapely points or polygons.
+
+        If coordinates are returned as point-like objects (pandas and geopandas with
+        point geometries) the coordinates can be either given for the upper-left pixel
+        corner (GDAL default) or pixel center (required by, e.g., xarray).
+
+        All pixels currently read into memory are stored in the resulting dataframe
+        except pixels either masked out or set to nodata.
+
+        :param band_names:
+            optional subset of bands for which to extract pixel values. Per
+            default all bands are converted.
+        :param as_geodataframe:
+            if True (default) pixels are returned as geodataframe. If False the
+            resulting dataframe is a pandas dataframe.
+        :param pixels_as_polygons:
+            if False (default) pixels are modeled as point-like spatial objects.
+            If true, pixels are treated as polygons with four coordinates (top, left,
+            bottom, right).
+        :param pixel_coordinates_centered:
+            if False the GDAL default is used an the upper left pixel corner is returned
+            for point-like objects. If True the pixel center is used instead. This
+            option is ignored if pixels are returned as polygons.
+        :return:
+            pandas or geopandas (geo) dataframe with pixel values and their coordinates
+        """
+        pass
+
+
+
         
-            {
-        
-                "temperature_c": (
-        
-                    ("lat", "lon"),
-        
-                    20 * np.random.rand(4).reshape(2, 2),
-        
-                ),
-        
-                "precipitation": (("lat", "lon"), np.random.rand(4).reshape(2, 2)),
-        
-            },
-        
-            coords={"lat": [10, 20], "lon": [150, 160]},
-        
-        )

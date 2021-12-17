@@ -220,7 +220,7 @@ def resample_and_stack_s2(
         target_resolution: Optional[Union[int, float]] = 10,
         resampling_method: Optional[int]=cv2.INTER_CUBIC,
         pixel_division: Optional[bool]=False
-    ) -> Path:
+    ) -> Dict[str,Path]:
     """
     Function to spatially resample a S2 scene in *.SAFE format and write it to a
     single, stacked geoTiff. Creates also a RGB preview png-file of the scene and
@@ -428,6 +428,7 @@ def resample_and_stack_s2(
                 f'Wrote band {s2_band} - "{band_alias.upper()}" ({idx+1}/{len(s2_bands)}) ' \
                 f'from {in_dir} into {fname_bandstack}'
             )
+            src = None
 
         logger.info(f'Finished writing bands to {fname_bandstack}')
 
