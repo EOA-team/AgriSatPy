@@ -12,8 +12,6 @@ the spatial extent of Sentinel-2 scene (almost 110km by 110km) consider using
 '''
 
 import cv2
-import glob
-import numpy as np
 import rasterio as rio
 import matplotlib.pyplot as plt
 
@@ -26,7 +24,6 @@ from typing import Dict
 from agrisatpy.io.sentinel2 import Sentinel2Handler
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.config import get_settings
-from agrisatpy.processing import resampling
 from agrisatpy.config.sentinel2 import Sentinel2
 from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
@@ -118,7 +115,7 @@ def create_rgb_preview(
         out_dir: Path,
         reader: SatDataHandler,
         out_filename: str
-    ) -> None:
+    ) -> Path:
     """
     Creates the RGB quicklook image (stored in a sub-directory).
 
@@ -135,20 +132,24 @@ def create_rgb_preview(
     if not rgb_subdir.exists():
         rgb_subdir.mkdir()
 
+    out_file = rgb_subdir.joinpath(out_filename)
+
     fig_rgb = reader.plot_rgb()
     fig_rgb.savefig(
-        fname=rgb_subdir.joinpath(out_filename),
+        fname=out_file,
         bbox_inches='tight',
         dpi=150
     )
     plt.close(fig_rgb)
+
+    return out_file
 
 
 def create_scl_preview(
         out_dir: Path,
         reader: SatDataHandler,
         out_filename: str
-    ) -> None:
+    ) -> Path:
     """
     Creates the SCL quicklook image (stored in a sub-directory).
 
@@ -158,26 +159,32 @@ def create_scl_preview(
         opened S2_Band_Reader with 'scl' band
     :param out_filename:
         file name of the resulting SCL quicklook image (*.png)
+    :return:
+        path to output file
     """
     # SCL previews are stored in their own sub-directory alongside with the RGBs
     rgb_subdir = out_dir.joinpath(Settings.SUBDIR_RGB_PREVIEWS)
     if not rgb_subdir.exists():
         rgb_subdir.mkdir()
 
+    out_file = rgb_subdir.joinpath(out_filename)
+
     fig_scl = reader.plot_scl()
     fig_scl.savefig(
-        fname=rgb_subdir.joinpath(out_filename),
+        fname=out_file,
         bbox_inches='tight',
         dpi=150
     )
     plt.close(fig_scl)
+
+    return out_file
 
 
 def create_scl(
         out_dir: Path,
         reader: Sentinel2Handler,
         out_filename: str
-    ) -> None:
+    ) -> Path:
     """
     Creates the SCL raster datasets (stored in a sub-directory).
 
@@ -187,16 +194,21 @@ def create_scl(
         opened ``Sentinel2Handler`` with 'scl' band
     :param out_filename:
         file name of the resulting SCL raster image (*.tiff)
+    :return:
+        file-path of output dataset
     """
     
     scl_subdir = out_dir.joinpath(Settings.SUBDIR_SCL_FILES)
     if not scl_subdir.exists():
         scl_subdir.mkdir()
 
+    out_file = scl_subdir.joinpath(out_filename)
     reader.write_bands(
-        out_file=scl_subdir.joinpath(out_filename),
+        out_file=out_file,
         band_names=['scl']
     )
+
+    return out_file
 
 
 TARGET_RESOLUTIONS: List[int] = [10, 20]
@@ -279,11 +291,12 @@ def resample_and_stack_s2(
         return {}
     # save to file in RGB sub-directory
     try:
-        create_rgb_preview(
+        out_file_rgb_preview = create_rgb_preview(
             out_dir=out_dir,
             reader=tci,
             out_filename=out_file_names['rgb_preview']
         )
+        out_file_names.update({'rgb_preview': out_file_rgb_preview})
     except Exception as e:
         logger.error(f'Generation of RGB preview from {in_dir} failed: {e}')
         return {}
@@ -302,11 +315,12 @@ def resample_and_stack_s2(
             logger.error(f'Could not read SCL file from {in_dir}: {e}')
             return {}
         # save as preview image and geoTiff dataset after resampling to 10m
-        create_scl_preview(
+        out_file_scl_preview = create_scl_preview(
             out_dir=out_dir,
             reader=scl,
             out_filename=out_file_names['scl_preview']
         )
+        out_file_names.update({'scl_preview': out_file_scl_preview})
         # resample to 10m spatial resolution and save to geoTiff
         # we always use pixel division for the SCL file
         try:
@@ -319,11 +333,12 @@ def resample_and_stack_s2(
             return {}
         logger.info(f'Generated SCL preview image from {in_dir}')
         try:
-            create_scl(
+            out_file_scl = create_scl(
                 out_dir=out_dir,
                 reader=scl,
                 out_filename=out_file_names['scl']
             )
+            out_file_names.update({'scl': out_file_scl})
         except Exception as e:
             logger.error(f'Generation of SCL file from {in_dir} failed: {e}')
             return {}
@@ -336,6 +351,7 @@ def resample_and_stack_s2(
 
     # get driver for output file
     fname_bandstack = out_dir.joinpath(out_file_names['bandstack'])
+    out_file_names.update({'bandstack': fname_bandstack})
     driver = rio.drivers.driver_from_extension(fname_bandstack)
 
     # update meta dict
@@ -369,6 +385,7 @@ def resample_and_stack_s2(
                 src.read_from_safe(
                     in_dir=in_dir,
                     band_selection=[s2_band],
+                    int16_to_float=False,
                     read_scl=False
                 )
             except Exception as e:
@@ -415,17 +432,3 @@ def resample_and_stack_s2(
         logger.info(f'Finished writing bands to {fname_bandstack}')
 
     return out_file_names
-
-
-if __name__ == '__main__':
-
-    in_dir = Path('/mnt/ides/Lukas/04_Work/S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.SAFE')
-    out_dir = Path('/mnt/ides/Lukas/03_Debug/Sentinel2/Resampling')
-
-    pixel_division = True
-
-    resample_and_stack_s2(
-        in_dir=in_dir,
-        out_dir=out_dir,
-        pixel_division=pixel_division
-    )
