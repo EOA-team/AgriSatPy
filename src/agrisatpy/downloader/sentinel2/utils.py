@@ -1,7 +1,5 @@
 '''
-Created on Oct 29, 2021
-
-@author: graflu
+Helper functions for the downloader package.
 '''
 
 import os

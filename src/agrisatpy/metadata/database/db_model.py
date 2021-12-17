@@ -1,8 +1,8 @@
 '''
-Created on Jul 12, 2021
-
-@author: Lukas Graf (D-USYS; ETHZ)
+Implementation of a data model for AgriSatPy's metadata DB including
+platform specific tables for storing e.g., Sentinel-2 metadata
 '''
+
 
 from sqlalchemy import create_engine
 from sqlalchemy import MetaData

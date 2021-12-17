@@ -1,15 +1,13 @@
 '''
-Created on Aug 3, 2021
-
-@author: Gregor Perich & Lukas Graf (D-USYS, ETHZ)
+Get a quick (visual) overview over the Sentinel-2 data available.
 '''
 
-import os
-from datetime import datetime
-from datetime import date
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
+from datetime import datetime
+from datetime import date
 from pathlib import Path
 from sqlalchemy import desc
 from sqlalchemy import and_
@@ -17,7 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from agrisatpy.config import get_settings
-from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
+from agrisatpy.metadata.database import S2_Raw_Metadata
 
 Settings = get_settings()
 engine = create_engine(Settings.DB_URL, echo=Settings.ECHO_DB)
@@ -83,7 +81,10 @@ def scene_selection(
     metadata.to_csv(out_dir.joinpath(f'{query_time}_query.csv'), index=False)
 
     # Plot available scenes for query
-    fig = plt.figure(figsize = (8, 6), dpi = 300)
+    fig = plt.figure(
+        figsize=(8, 6),
+        dpi=300
+    )
     ax = fig.add_subplot(111)
     ax.plot(metadata['sensing_date'], metadata['cloudy_pixel_percentage'], 
             marker = 'o', markersize = 10)
@@ -93,10 +94,7 @@ def scene_selection(
     ax.set_title(f'Tile {tile} - No. of scenes: {metadata.shape[0]}'
                  + '\n' + f'Average cloud cover: {np.round(cc_avg, 2)}%')
     plt.savefig(
-        os.path.join(
-            out_dir,
-            f'{query_time}_query_CCplot.png'
-        ), 
+        out_dir.joinpath(f'{query_time}_query_CCplot.png'), 
         bbox_inches="tight"
     )
     plt.close()

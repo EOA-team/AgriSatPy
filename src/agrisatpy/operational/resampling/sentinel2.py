@@ -15,14 +15,33 @@ Usage example (assuming that the database has entries for the selected tile and 
 
 ```{python}
 
+from pathlib import Path
+from datetime import date
 from agrisatpy.operational.resampling.sentinel2 import exec_S2_pipeline
 
+# define location where to store outputs
+processed_data_archive = Path('/mnt/data/Sentinel-2/Processed')
 
+# define Sentinel-2 tile
+tile = 'T32TLT'
 
+# define time period to process
+date_start = date(2021,3,1)
+date_end = date(2021,8,31)
+
+# we leave the other options as defaults
+results = exec_pipeline(
+    processed_data_archive
+    date_start,
+    date_end,
+    tile
+)
 ```
+
+Depending on your hardware this might take a while!
+
 '''
 
-import os
 import time
 import pandas as pd
 import numpy as np
@@ -46,6 +65,7 @@ from agrisatpy.config import get_settings
 from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
 from agrisatpy.utils.constants import ProcessingLevels
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevelsDB
+from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_tile
 
 
 Settings = get_settings()
@@ -126,14 +146,12 @@ def do_parallel(
 
 
 def exec_pipeline(
-        target_s2_archive: Path,
+        processed_data_archive: Path,
         date_start: date,
         date_end: date,
         tile: str,
         processing_level: Optional[ProcessingLevels] = ProcessingLevels.L2A,
         n_threads: Optional[int] = 1,
-        use_database: Optional[bool] = True,
-        metadata_csv: Optional[Path] = None,
         **kwargs
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -150,11 +168,8 @@ def exec_pipeline(
     using multiple threads if ``n_threads`` is set to a value larger 1. This feature
     is experimental.
 
-    :param target_s2_archive:
-        target archive where the processed data should be stored. The
-        root of the archive where the L2A/ L1C sub-folders are located is required.
-        IMPORTANT: The archive structure must follow the AgripySat conventions. It is
-        recommended to use the provided archive creation functions!
+    :param processed_data_archive:
+        target archive where the processed data should be stored.
     :param date_start:
         start date of the period to process. NOTE: The temporal
         selection is bound by the available (i.e., downloaded) Sentinel-2 data!
@@ -168,11 +183,6 @@ def exec_pipeline(
     :param n_threads:
         number of threads to use for execution of the preprocessing depending on
         your computer hardware. Per default set to 1 (no parallelization).
-    :param use_database:
-        if True (default and strongly recommended) uses AgriSatPy's metadata base
-        to find datasets. If False, the filepath to the metadata_csv must be provided.
-    :param metadata_csv:
-        filepath to the metadata csv. Must be provided if ``use_database == False``
     :param kwargs:
         kwargs to pass to resample_and_stack_S2 and scl_10m_resampling (L2A, only)
     :return:
@@ -181,57 +191,21 @@ def exec_pipeline(
     """
 
     # make sub-directory for logging successfully processed scenes in out_dir
-    log_dir = target_s2_archive.joinpath('log')
+    log_dir = processed_data_archive.joinpath('log')
     if not log_dir.exists():
         log_dir.mkdir(parents=True, exist_ok=True)
 
-    # check the metadata from the database (recommended)
-    if use_database:
-
-        # translate processing level
-        processing_level_db = ProcessingLevelsDB[processing_level.value]
-
-        # TODO: move this function to metadata sub-package
-        session = connect_db()
-        query_statement = session.query(
-                S2_Raw_Metadata.product_uri,
-                S2_Raw_Metadata.scene_id,
-                S2_Raw_Metadata.storage_share,
-                S2_Raw_Metadata.storage_device_ip_alias,
-                S2_Raw_Metadata.storage_device_ip,
-                S2_Raw_Metadata.sensing_date
-            ).filter(
-                S2_Raw_Metadata.tile_id == tile
-            ).filter(
-                and_(
-                    S2_Raw_Metadata.sensing_date <= date_end,
-                    S2_Raw_Metadata.sensing_date >= date_start
-                )
-            ).filter(
-                S2_Raw_Metadata.processing_level == processing_level_db
-            ).order_by(
-                S2_Raw_Metadata.sensing_date.desc()
-            ).statement
-        metadata = pd.read_sql(
-            query_statement,
-            session.bind
+    # query metadata DB for available Sentinel-2 scenes
+    try:
+        metadata = find_raw_data_by_tile(
+            date_start=date_start,
+            date_end=date_end,
+            processing_level=processing_level,
+            tile=tile
         )
-    # or use the csv (not recommended but possible)
-    else:
-        try:
-            raw_metadata = pd.read_csv(metadata_csv)
-        except Exception as e:
-            raise Exception from e
-
-        raw_metadata.columns = raw_metadata.columns.str.lower()
-        metadata_filtered = raw_metadata[
-            (raw_metadata.tile_id == tile) & (raw_metadata.processing_level == processing_level)
-        ]
-        metadata = metadata_filtered[
-            pd.to_datetime(raw_metadata.sensing_date).between(
-                np.datetime64(date_start), np.datetime64(date_end), inclusive=True
-            )
-        ]
+    except Exception as e:
+        logger.error(f'Could not find Sentinel-2 data: {e}')
+        return
 
     # get "duplicates", i.e, scenes that have the same sensing date because of datastrip
     # beginning/end issue
@@ -254,7 +228,7 @@ def exec_pipeline(
         delayed(do_parallel)(
             in_df=metadata, 
             loopcounter=idx, 
-            out_dir=target_s2_archive,
+            out_dir=processed_data_archive,
             **kwargs
             ) for idx in range(metadata.shape[0]))
     logger.info(f'Execution time: {time.time()-t} seconds.')
@@ -291,7 +265,7 @@ def exec_pipeline(
                 res = merge_split_scenes(
                     scene_1=scene_1,
                     scene_2=scene_2,
-                    out_dir=target_s2_archive, 
+                    out_dir=processed_data_archive, 
                     **kwargs
                 )
                 res.update(
@@ -306,7 +280,7 @@ def exec_pipeline(
                     bandstack_meta = bandstack_meta.append(res, ignore_index=True)
 
                 # write to log file
-                scenes_log_file = target_s2_archive.joinpath('log').joinpath(
+                scenes_log_file = processed_data_archive.joinpath('log').joinpath(
                     Settings.PROCESSING_CHECK_FILE_BF
                 )
                 creation_time = datetime.now().strftime('%Y%m%d-%H%M%S')

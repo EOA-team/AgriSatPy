@@ -1,15 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon May  6 13:09:42 2019
-
-Updated on Fri Jun 25 2021
-
-@author: Lukas Graf
-
-This module contains functions to extract relevant
-scene-specific Sentinel-2 metadata supporting
-L1C and L2A (sen2core-derived) processing level
+This module contains functions to extract relevant scene-specific
+Sentinel-2 metadata supporting L1C and L2A (sen2core-derived) processing levels
 """
 
 import os

@@ -12,24 +12,13 @@ Created on Jul 9, 2021
 
 import os
 import sys
-import pandas as pd
-import numpy as np
-import geopandas as gpd
 from typing import List
-from datetime import date
 from sqlalchemy import create_engine
 from pathlib import Path
 
 from agrisatpy.config import Sentinel2
 from agrisatpy.utils.decorators import check_processing_level
-from agrisatpy.utils.exceptions import RegionNotFoundError
 from agrisatpy.utils.exceptions import ArchiveCreationError
-from agrisatpy.downloader.sentinel2.creodias import query_creodias
-from agrisatpy.downloader.sentinel2.creodias import download_datasets
-from agrisatpy.downloader.sentinel2.creodias import ProcessingLevels
-from agrisatpy.utils.constants.sentinel2 import ProcessingLevelsDB
-from agrisatpy.metadata.sentinel2.database import Regions
-from agrisatpy.metadata.sentinel2.database import S2_Raw_Metadata
 from agrisatpy.config import get_settings
 
 
@@ -164,106 +153,3 @@ def create_archive_struct(
                         logger.error(f'Could not create {tile_dir}: {e}')
                         sys.exit()
                     logger.info(f'Created {tile_dir}')
-
-
-def pull_from_creodias(
-        start_date: date,
-        end_date: date,
-        processing_level: ProcessingLevels,
-        path_out: Path,
-        region: str
-    ) -> pd.DataFrame:
-    '''
-    Checks if CREODIAS has Sentinel-2 datasets not yet available locally
-    and downloads these datasets.
-
-    :param start_date:
-        Start date of the database & creodias query
-    :param end_date:
-        End date of the database & creodias query
-    :param processing_level:
-        Select S2 processing level L1C or L2A
-    :param path_out:
-        Out directory where the additional data from creodias should be downloaded
-    :param region:
-        Region identifier of the Sentinel-2 archive. By region we mean a
-        geographic extent (bounding box) in which the data is organized. The bounding
-        box extent is taken from the metadata base based on the region identifier.
-    :return:
-        dataframe with downloaded datasets
-    '''
-
-    # select processing level for DB query
-    processing_level_db = ProcessingLevelsDB[processing_level.name]
-
-    # query database to get the bounding box of the selected region
-    query = f"""
-    SELECT
-        geom
-    FROM
-        {Regions.__tablename__}
-    WHERE
-        region_uid = '{region}';
-    """
-    region_gdf = gpd.read_postgis(query, engine)
-    if region_gdf.empty:
-        raise RegionNotFoundError(f'{region} is not defined in the metadata base!')
-
-    bounding_box = region_gdf.geometry.iloc[0]
-    bounding_box_wkt = bounding_box.wkt
-
-    # local database query
-    query = f"""
-        SELECT
-            product_uri, cloudy_pixel_percentage
-        FROM
-            {S2_Raw_Metadata.__tablename__}
-        WHERE
-            sensing_time between '{start_date}' and '{end_date}'
-        AND
-            processing_level = '{processing_level_db}'
-        AND
-            ST_Intersects(
-                geom,
-                ST_GeomFromText('{bounding_box_wkt}', 4326)
-            );
-    """
-    meta_db_df = pd.read_sql(query, engine)
-
-    # determine max_records and cloudy_pixel_perecentage thresholds from local DB
-    max_records = 1.25 * meta_db_df.shape[0]
-    max_records = int(np.round(max_records,0))
-    # Creodias has a hard cap of 2001 max_records
-    if max_records > 2000:
-        max_records = 2000
-        logger.info(f"No. of max. records greater than the allowed max of 2001. "
-                    f"Query set to {max_records}")
-    else:
-        logger.info(f'Set number of maximum records for Creodias query to {max_records}')
-
-    cloud_cover_threshold = int(meta_db_df['cloudy_pixel_percentage'].max())
-    logger.info(f'Set cloudy pixel percentage for Creodias query to {cloud_cover_threshold}')
-
-    # check for available datasets
-    datasets = query_creodias(
-        start_date=start_date,
-        end_date=end_date,
-        max_records=max_records,
-        processing_level=processing_level,
-        bounding_box=bounding_box,
-        cloud_cover_threshold=cloud_cover_threshold
-    )
-
-    # get .SAFE from croedias datasets
-    datasets['product_uri'] = datasets.properties.apply(lambda x: Path(x['productIdentifier']).name)
-
-    # compare with records from local meta database and keep those records not available locally
-    missing_datasets = np.setdiff1d(datasets['product_uri'].values,
-                                    meta_db_df['product_uri'].values)
-    datasets_filtered = datasets[datasets.product_uri.isin(missing_datasets)]
-
-    # download those scenes not available in the local database from Creodias
-    # TODO: debug from here
-    download_datasets(datasets_filtered, path_out)
-
-    return datasets_filtered

@@ -1,15 +1,28 @@
 '''
-Created on Sep 20, 2021
+REST-API based downloading of Copernicus datasets from CREODIAS.
 
-@author: Lukas Graf (D-USYS, ETHZ)
+Make sure to have a valid CREODIAS account and provide your username and password
+as environmental variables:
+
+On a Linux system you can specify your credentials in the current Python environment
+by:
+
+```{bash}
+export CREODIAS_USER = "<your-user-name>"
+export CREODIAS_PASSWORD= "<your-password>"
+```
+
 '''
 
 import os
 import requests
+import pandas as pd
+
+from pathlib import Path
 from datetime import date
 from shapely.geometry import Polygon
 from typing import Optional
-import pandas as pd
+from typing import Union
 
 from agrisatpy.config import get_settings
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
@@ -140,7 +153,7 @@ def get_keycloak() -> str:
 
 def download_datasets(
         datasets: pd.DataFrame,
-        download_dir: str
+        download_dir: Union[Path,str]
     ) -> None:
     """
     Function for actual dataset download from CREODIAS.
@@ -158,7 +171,7 @@ def download_datasets(
     keycloak_token = get_keycloak()
 
     # change into download directory
-    os.chdir(download_dir)
+    os.chdir(str(download_dir))
 
     # loop over datasets to download them sequentially
     scene_counter = 1

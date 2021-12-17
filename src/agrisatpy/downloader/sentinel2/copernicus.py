@@ -1,14 +1,19 @@
 '''
-Created on Aug 28, 2021
+This module is a very basic approach to query the Sentinel Copernicus
+archive using the Sentinelsat package as API client.
+Before executing, make sure to have DHUS_USER and DHUS_PASSWORD
+stored as environmental variables (and to have access to the API hub).
+See also the Sentinelsat docs for more information:
+https://sentinelsat.readthedocs.io/en/stable/index.html
 
-@author:    Lukas Graf, (D-USYS, ETHZ)
+On a Linux system you can specify your credentials in the current Python environment
+by:
 
-@purpose:   This script is a very basic approach to query the Sentinel Copernicus
-            archive using the Sentinelsat package as API client.
-            Before executing, make sure to have DHUS_USER and DHUS_PASSWORD
-            stored as environmental variables (and to have access to the API hub).
-            See also the Sentinelsat docs for more information:
-            https://sentinelsat.readthedocs.io/en/stable/index.html
+```{bash}
+export DHUS_USER = "<your-user-name>"
+export DHUS_PASSWORD= "<your-password>"
+```
+
 '''
 
 import os
