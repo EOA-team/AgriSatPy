@@ -1,14 +1,20 @@
 '''
-Scriptable high-level function interfaces to Sentinel-2 processing pipeline
+Scriptable high-level function interfaces to Sentinel-2 processing pipeline and
+related operational functionalities.
+
+IMPORTANT: All of the functions make use of AgriSatPy's metadata DB.
 '''
 
 import shutil
+import matplotlib.pyplot as plt
+import numpy as np
 
 from pathlib import Path
 from datetime import date
 from datetime import datetime
 from typing import Optional
 from typing import Dict
+from typing import Union
 
 from agrisatpy.operational.resampling.sentinel2 import exec_pipeline
 from agrisatpy.operational.archive.sentinel2 import pull_from_creodias
@@ -18,6 +24,7 @@ from agrisatpy.downloader.sentinel2.utils import unzip_datasets
 from agrisatpy.metadata.sentinel2.parsing import parse_s2_scene_metadata
 from agrisatpy.metadata.sentinel2.database.ingestion import metadata_dict_to_database
 from agrisatpy.config import get_settings
+from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_tile
 
 logger = get_settings().logger
 
@@ -34,7 +41,7 @@ def cli_s2_pipeline_fun(
     ) -> None:
     """
     Function calling Sentinel-2 processing pipeline (resampling and merging
-    withhin single tiles
+    withhin single tiles)
 
     TODO: add doc string
     """
@@ -76,6 +83,7 @@ def cli_s2_creodias_update(
         s2_raw_data_archive: Path,
         region: str,
         processing_level: ProcessingLevels,
+        cloud_cover_threshold: Optional[int] = 100,
         path_options: Optional[Dict[str, str]] = None
     ) -> None:
     """
@@ -115,6 +123,9 @@ def cli_s2_creodias_update(
         stored as a entry in the metadata base.
     :param processing_level:
         Sentinel-2 processing level (L1C or L2A) to check.
+    :param cloud_cover_threshold:
+        optional cloud cover threshold to filter out to cloudy scenes as integer
+        between 0 and 100%.
     :param path_options:
         optional dictionary specifying storage_device_ip, storage_device_ip_alias
         (if applicable) and mount point in case the data is stored on a NAS
@@ -144,7 +155,8 @@ def cli_s2_creodias_update(
                 end_date=date(year, 12, 31),
                 processing_level=processing_level,
                 path_out=path_out,
-                region=region
+                region=region,
+                cloud_cover_threshold=cloud_cover_threshold
             )
 
             if downloaded_ds.empty:
@@ -210,3 +222,79 @@ def cli_s2_creodias_update(
                         line = processing_date + ',' + error[0] + ',' + str(error[1])
                         src.writelines(line + '\n')
 
+
+def cli_s2_scene_selection(
+        tile: str,
+        date_start: date,
+        date_end: date,
+        processing_level: ProcessingLevels,
+        out_dir: Path,
+        cloud_cover_threshold: Optional[Union[int, float]] = 100
+    ) -> None:
+    """
+    Function to query the Sentinel-2 metadata using a set of search criteria, including
+    filtering by date range, cloud cover and Sentinel-2 tile.
+
+    As a result, a CSV file with those metadata entries fulfilling the criteria is
+    returned plus a plot showing the cloud cover (extracted from the scene metadata)
+    per image acquisition date.
+
+    :param tile:
+        Sentinel-2 tile for which the scene selection should be performed. For instance,
+        'T32TMT'
+    :param date_start:
+        start date for filtering the data
+    :param end_date:
+        end data for filtering the data
+    :param processing_level:
+        Sentinel-2 processing level (L1C or L2A).
+    :param out_dir:
+        directory where to store the subset metadata CSV file and the cloud cover plot.
+    :param cloud_cover_threshold:
+        optional cloud cover threshold to filter out to cloudy scenes as integer
+        between 0 and 100%.
+    """
+
+    # query metadata from database
+    try:
+        metadata = find_raw_data_by_tile(
+            date_start=date_start,
+            date_end=date_end,
+            processing_level=processing_level,
+            tile=tile,
+            cloud_cover_threshold=cloud_cover_threshold
+        )
+    except Exception as e:
+        logger.error(f'Metadata query for Sentinel-2 data failed: {e}')
+        return
+
+    # drop xml columns
+    metadata.drop('mtd_tl_xml', axis=1, inplace=True)
+    metadata.drop('mtd_msi_xml', axis=1, inplace=True)
+
+    # calculate average cloud cover for the selected scenes
+    cc_avg = metadata.cloudy_pixel_percentage.mean()
+
+    # get timestamp of query execution
+    query_time = datetime.now().strftime('%Y%m%d_%H%M%S')
+    # write out metadata of the query as CSV
+    metadata.to_csv(out_dir.joinpath(f'{query_time}_query.csv'), index=False)
+
+    # Plot available scenes for query
+    fig = plt.figure(
+        figsize=(8, 6),
+        dpi=300
+    )
+    ax = fig.add_subplot(111)
+    ax.plot(metadata['sensing_date'], metadata['cloudy_pixel_percentage'], 
+            marker = 'o', markersize = 10)
+    ax.set_xlabel('Sensing Date')
+    ax.set_ylabel('Cloud cover [%]')
+    ax.set_ylim(0., 100.)
+    ax.set_title(f'Tile {tile} - No. of scenes: {metadata.shape[0]}'
+                 + '\n' + f'Average cloud cover: {np.round(cc_avg, 2)}%')
+    plt.savefig(
+        out_dir.joinpath(f'{query_time}_query_CCplot.png'), 
+        bbox_inches="tight"
+    )
+    plt.close()

@@ -1,21 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed May 26 12:32:07 2021
+Coerce extracted parcel-wise CSV pixel (i.e., regularly-gridded) values to geoTiff raster file.
 
-@author:     Gregor Perich & Lukas Graf (D-USYS, ETHZ)
+There are four options:
+    1) write all field parcels into a single geoTiff file (makes sense if all fields are
+       spatially adjoint)
+    2) write each field parcel into a single geoTiff file (one file per parcel; makes sense if the
+       fields are spatially widely scattered)
+    3) same as 1) but with the option to exclude one or more field parcels
+    4) same as 2) but with the option to exclude one or more field parcels
 
-@purpose:    Coerce extracted parcel-wise CSV reflectances (or other raster values) to geoTiff raster file.
-
-            There are four options:
-                1) write all field parcels into a single geoTiff file (makes sense if all fields are
-                   spatially adjoint)
-                2) write each field parcel into a single geoTiff file (one file per parcel; makes sense if the
-                   fields are spatially widely scattered)
-                3) same as 1) but with the option to exclude one or more field parcels
-                4) same as 2) but with the option to exclude one or more field parcels
-
-            This script is meant to be generic, i.e., it should be able to handle ANY kind of raster data!
+This script is meant to be generic, i.e., it should be able to handle ANY kind of raster data!
 """
+
+# TODO: update if necessary!
 
 import os
 import sys
@@ -36,9 +34,10 @@ Settings = get_settings()
 logger = Settings.logger
 
 
-def extract_epsg(df: pd.DataFrame,
-                 col_crs: str='CRS_epsg'
-                 ) -> int:
+def extract_epsg(
+        df: pd.DataFrame,
+        col_crs: str='CRS_epsg'
+    ) -> int:
     """
     returns the EPSG code from a Dataframe that has a EPSG column.
     Assumes that the EPSG is the same for the entire dataframe.
