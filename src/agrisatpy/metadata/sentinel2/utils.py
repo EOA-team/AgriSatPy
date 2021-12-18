@@ -1,7 +1,11 @@
 '''
+Reconstruct path to datasets on the file system based on the entries in the
+metadata DB.
 
+IMPORTANT: This function is somewhat experimental and might be changed in the future.
 '''
 
+# TODO: test this function
 
 import os
 import subprocess
@@ -12,10 +16,16 @@ from typing import Union
 from agrisatpy.utils.exceptions import DataNotFoundError
 
 
-def _check_linux_cifs(ip: Union[str,Path]):
+def _check_linux_cifs(
+        ip: Union[str,Path]
+    ) -> Path:
     """
     Searches for mount point of an external file system on a Linux
     operating system
+
+    :ip:
+        IP or network address of the NAS device for which
+        to search the mount point.
     """
     
     res = Path('')
@@ -71,7 +81,7 @@ def reconstruct_path(
             # if no mount point is found raise an error
             if str(mount_point) == '':
                 raise DataNotFoundError(
-                    'Couldnot find mount point for external file system'
+                    'Could not find mount point for external file system'
                 )
                 
             share = mount_point.joinpath(record.storage_share)
@@ -79,22 +89,34 @@ def reconstruct_path(
         # Windows does not know about mount points, it should be able to work with network paths
         elif os.name == 'nt':
             
-            share = Path(record.storage_device_ip).joinpath()
-            # TODO: test alias if available
-    
+            share = Path(record.storage_device_ip).joinpath(record.storage_share)
+            # if share is not available test alias if available
+            if not share.exists():
+                if record.storage_device_ip_alias == '':
+                    raise DataNotFoundError(
+                        'Could not find network path for external file system'
+                    )
+
+                share = Path(record.storage_device_ip.alias).joinpath(record.storage_share)
+
+    # path is to local filesystem or does not require mount points
+    else:
+        share = Path(record.storage_share)
+
+    # the path should work 'as it is' on Windows machines by replacing the slashes
+    if os.name == 'nt':
+        # TODO test on Windows
+        tmp = str(share)
+        tmp = tmp.replace(r'//', r'\\').replace(r'/', os.sep)
+        share = Path(tmp)
+
+    if not share.exists():
+        raise DataNotFoundError(f'Could not find {share}')
 
     if is_raw_data:
         in_dir = share.joinpath(record.product_uri)
     else:
         in_dir = share
-
-    # the path should work 'as it is' on Windows machines by replacing the
-    # slashes
-    if os.name == 'nt':
-        # TODO test on Windows
-        tmp = str(in_dir)
-        tmp = tmp.replace(r'//', r'\\').replace(r'/', os.sep)
-        in_dir = Path(tmp)
 
     # handle products not ending with '.SAFE' (e.g., when data comes from Mundi)
     if not in_dir.exists():
