@@ -1,5 +1,5 @@
 '''
-This module defines the ``Sat_Data_Reader`` class which is the basic class for reading, handling
+This module defines the ``SatDataHandler`` class which is the basic class for reading, handling
 and writing raster data. It relies on ``rasterio`` for all in- and output operations. For
 data handling it implements a dict-like data structure that allows for storing image data,
 geo-information and related metadata on a per-band basis.
@@ -247,9 +247,10 @@ class SatDataHandler(object):
         """
         Returns the coordinates in x and y dimension of a band.
 
-        IMPORTANT: GDAL provides pixel coordinates for the upper left corner
-        of a pixel while other applications (xarray) require the coordinates
-        of the pixel center
+        ATTENTION:
+            GDAL provides pixel coordinates for the upper left corner
+            of a pixel while other applications (xarray) require the coordinates
+            of the pixel center
 
         :param band_name:
             name of the band for which to retrieve coordinates. If data was
@@ -558,9 +559,10 @@ class SatDataHandler(object):
         """
         Returns the coordinates in x and y dimension of a band.
 
-        IMPORTANT: GDAL provides pixel coordinates for the upper left corner
-        of a pixel while other applications (xarray) require the coordinates
-        of the pixel center
+        ATTENTION:
+            GDAL provides pixel coordinates for the upper left corner
+            of a pixel while other applications (xarray) require the coordinates
+            of the pixel center
 
         :param band_name:
             name of the band for which to retrieve coordinates. If data was
@@ -627,7 +629,8 @@ class SatDataHandler(object):
         Adds image metadata to the current object. Image metadata is an essential
         pre-requisite for writing image data to raster files.
 
-        IMPORTANT: Overwrites image metadata if already existing!
+        ATTENTION:
+            Overwrites image metadata if already existing!
 
         :param meta:
             image metadata dict
@@ -651,7 +654,8 @@ class SatDataHandler(object):
         """
         Adds image attributes to the current object.
         
-        IMPORTANT: Overwrites image attributes if already existing!
+        ATTENTION:
+            Overwrites image attributes if already existing!
 
         :param meta:
             image attrib dict
@@ -677,7 +681,8 @@ class SatDataHandler(object):
         Adds image bounds to the current object. Image bounds are required for
         plotting.
 
-        IMPORTANT: Overwrites image bounds if already existing!
+        ATTENTION:
+            Overwrites image bounds if already existing!
 
         :param meta:
             image metadata dict
@@ -762,10 +767,12 @@ class SatDataHandler(object):
         Reprojects all available bands from their source spatial reference
         system into another one.
 
-        IMPORTANT: The original band data is overwritten by this method!
-        IMPORTANT: When possible use ``dst_transform`` to align the
-        re-projected raster with another raster that is already in the target
-        CRS and has the same spatial extent as the band you are working on.
+        ATTENTION:
+            The original band data is overwritten by this method!
+        ATTENTION:
+            When possible use ``dst_transform`` to align the
+            re-projected raster with another raster that is already in the target
+            CRS and has the same spatial extent as the band you are working on.
 
         :param target_crs:
             EPSG code denoting the target coordinate system
@@ -1160,19 +1167,20 @@ class SatDataHandler(object):
         ) -> None:
         """
         resamples band data on the fly if required into a user-definded spatial
-        resolution. The resampling algorithm used is cv2.resize and allows the
+        resolution. The resampling algorithm used is `~cv2.resize` and allows the
         following options:
 
-        INTER_NEAREST - a nearest-neighbor interpolation
-        INTER_LINEAR - a bilinear interpolation (used by default)
-        INTER_AREA - resampling using pixel area relation.
-        INTER_CUBIC - a bicubic interpolation over 4x4 pixel neighborhood
-        INTER_LANCZOS4 -  a Lanczos interpolation over 8x8 pixel neighborhood
+        - INTER_NEAREST - a nearest-neighbor interpolation
+        - INTER_LINEAR - a bilinear interpolation (used by default)
+        - INTER_AREA - resampling using pixel area relation.
+        - INTER_CUBIC - a bicubic interpolation over 4x4 pixel neighborhood
+        - INTER_LANCZOS4 -  a Lanczos interpolation over 8x8 pixel neighborhood
 
-        IMPORTANT: The method overwrites the original band data when resampling
-        is required!
+        ATTENTION:
+            The method overwrites the original band data when resampling
+            is required!
 
-        IMPORTANT: If using one of cv2 methods it is crucial to provide a
+        ATTENTION: If using one of cv2 methods it is crucial to provide a
         blackfill (no-data) value. Blackfill is where the satellite image has no
         data.
 
@@ -1472,14 +1480,16 @@ class SatDataHandler(object):
         using the band description to extract the required spectral band
         and store them in a dict with the required band names.
 
-        IMPORTANT: This method assumes that the band-stack was created in
-        the way `~agrisatpy.operational.resampling` does, i.e., assigning
-        a name to each band in the geoTiff stack.
+        ATTENTION:
+            This method assumes that the band-stack was created in
+            the way `~agrisatpy.operational.resampling` does, i.e., assigning
+            a name to each band in the geoTiff stack.
 
-        IMPORTANT: To map band names to color names it might be necessary
-        to implement this method in the inheriting classes. See
-        `agrisatpy.utils.io.sentinel2` for an example how to override this
-        method
+        ATTENTION:
+            To map band names to color names it might be necessary
+            to implement this method in the inheriting classes. See
+            `~agrisatpy.utils.io.sentinel2` for an example how to override this
+            method
 
         The method populates the self.data attribute that is a
         dictionary with the following items:
@@ -1598,12 +1608,12 @@ class SatDataHandler(object):
         default a geoTiff is written since rasterio recommends this option over
         other geospatial image formats such as JPEG2000.
 
-        IMPORTANT: The method can only write bands to file that have the same
+        ATTENTION: The method can only write bands to file that have the same
         spatial resolution and extent. If that's not the case you eiher have to
         resample the data first using the ``resample`` method or write only those
         bands that fullfil the aforementioned criteria.
 
-        IMPORTANT: If the bands do not have the same datatype they will be all set
+        ATTENTION: If the bands do not have the same datatype they will be all set
         to ``numpy.float64``.
 
         :param out_file:
@@ -1724,11 +1734,12 @@ class SatDataHandler(object):
             **kwargs
         ) -> DataArray:
         """
-        Converts a SatDataHandler object to xarray in memory without
+        Converts a ``SatDataHandler`` object to ``xarray`` in memory without
         having to dump anything to disk.
 
-        IMPORTANT: Works on bandstacked files only. I.e., all bands MUST
-        have the same spatial extent and dimensions.
+        ATTENTION:
+            Works on bandstacked files only. I.e., all bands MUST
+            have the same spatial extent and dimensions.
 
         :return:
             DataArray with spectral bands as dimensions and x and y

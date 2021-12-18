@@ -1,7 +1,5 @@
 '''
-Created on Nov 24, 2021
-
-@author: graflu
+Defines some static attributes of Sentinel-2 MSI.
 '''
 
 from enum import Enum

@@ -21,8 +21,8 @@ def read_s2_sclfile(
     Reads the Sentinel-2 scene classification layer (SCL) file from
     a dataset in .SAFE format.
 
-    IMPORTANT: The SCL file is available in Level-2 processing level,
-    only
+    ATTENTION:
+        The SCL file is available in Level-2 processing level, only
 
     :param in_dir:
         .SAFE Sentinel-2 archive in Level-2A

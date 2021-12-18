@@ -1,16 +1,16 @@
 agrisatpy.metadata.sentinel2 package
 ====================================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   agrisatpy.metadata.sentinel2.database
+
 Submodules
 ----------
-
-agrisatpy.metadata.sentinel2.database module
---------------------------------------------
-
-.. automodule:: agrisatpy.metadata.sentinel2.database
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 agrisatpy.metadata.sentinel2.parsing module
 -------------------------------------------
@@ -20,10 +20,10 @@ agrisatpy.metadata.sentinel2.parsing module
    :undoc-members:
    :show-inheritance:
 
-agrisatpy.metadata.sentinel2.scene\_selection module
-----------------------------------------------------
+agrisatpy.metadata.sentinel2.utils module
+-----------------------------------------
 
-.. automodule:: agrisatpy.metadata.sentinel2.scene_selection
+.. automodule:: agrisatpy.metadata.sentinel2.utils
    :members:
    :undoc-members:
    :show-inheritance:
