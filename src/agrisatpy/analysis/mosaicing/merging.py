@@ -53,7 +53,8 @@ def merge_datasets(
     the data into a common spatial reference system either provided in the function
     call or infered from the first dataset in the list.
 
-    IMPORTANT: All datasets must have the same number of bands and data type!
+    ATTENTION:
+        All datasets must have the same number of bands and data type!
 
     :param datasets:
         list of datasets (as path-like objects or opened raster datasets)

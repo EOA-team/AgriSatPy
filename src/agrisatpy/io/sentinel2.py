@@ -2,7 +2,7 @@
 This module contains the ``Sentinel2Handler`` class that inherits from
 AgriSatPy's ``SatDataHandler`` class.
 
-The ``S2_Band_Reader`` enables reading one or more spectral bands from Sentinel-2
+The ``Sentinel2Handler`` enables reading one or more spectral bands from Sentinel-2
 data. The data can be either band-stacked (i.e., AgriSatPy derived format) in .SAFE
 format which is ESA's standard format for distributing Sentinel-2 data.
 

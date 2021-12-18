@@ -9,10 +9,10 @@ https://sentinelsat.readthedocs.io/en/stable/index.html
 On a Linux system you can specify your credentials in the current Python environment
 by:
 
-```{bash}
-export DHUS_USER = "<your-user-name>"
-export DHUS_PASSWORD= "<your-password>"
-```
+.. code-block:: shell
+
+    export DHUS_USER = "<your-user-name>"
+    export DHUS_PASSWORD= "<your-password>"
 
 '''
 

@@ -4,9 +4,9 @@ and writing raster data. It relies on ``rasterio`` for all in- and output operat
 data handling it implements a dict-like data structure that allows for storing image data,
 geo-information and related metadata on a per-band basis.
 
-The ``Sat_Data_Reader`` is a super class from which sensor-specific classes for reading
-(satellite) raster image data might inherit. The ``Sat_Data_Reader`` class provides
-methods to read arbitrary raster data from files (or URIs) using rasterio's GDAL drivers,
+The ``SatDataHandler`` is a super class from which sensor-specific classes for reading
+(satellite) raster image data might inherit. The ``SatDataHandler`` class provides
+methods to read arbitrary raster data from files (or URIs) using ``rasterio``'s ``GDAL`` drivers,
 and stores the band data in a dict-like data structure preserving the geo-spatial metadata.
 '''
 

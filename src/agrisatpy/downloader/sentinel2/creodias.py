@@ -7,10 +7,10 @@ as environmental variables:
 On a Linux system you can specify your credentials in the current Python environment
 by:
 
-```{bash}
-export CREODIAS_USER = "<your-user-name>"
-export CREODIAS_PASSWORD= "<your-password>"
-```
+.. code-block:: shell
+
+    export CREODIAS_USER = "<your-user-name>"
+    export CREODIAS_PASSWORD= "<your-password>"
 
 '''
 

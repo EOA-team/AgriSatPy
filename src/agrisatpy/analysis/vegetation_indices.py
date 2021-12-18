@@ -51,7 +51,7 @@ class VegetationIndices(object):
     def calc_vi(self, vi: str) -> np.array:
         """
         Calculates the selected vegetation index (VI) for
-        spectral band data derived from `~agrisatpy.utils.io`.
+        spectral band data derived from `~agrisatpy.io.sat_data_handler.SatDataHandler`.
         The resulting vi is returned as numpy array.
 
         :param vi:
@@ -256,12 +256,3 @@ class VegetationIndices(object):
         nir = kwargs.get(cls.nir_1)
         swir_1 = kwargs.get(cls.swir_1)
         return ((swir_1 + red) - (nir + blue)) / ((swir_1 + red) + (nir + blue))
-
-
-if __name__ == '__main__':
-
-    class Reader:
-        data = None
-
-    vi = VegetationIndices(Reader)
-    vi_list = vi.get_vi_list()

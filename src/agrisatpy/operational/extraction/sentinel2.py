@@ -22,9 +22,9 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from agrisatpy.processing.extraction.utils import buffer_fieldpolygons
-from agrisatpy.processing.extraction.utils import DataNotFoundError
-from agrisatpy.processing.extraction.utils import compute_parcel_stat
+from agrisatpy.operational.extraction.utils import buffer_fieldpolygons
+from agrisatpy.operational.extraction.utils import DataNotFoundError
+from agrisatpy.operational.extraction.utils import compute_parcel_stat
 from agrisatpy.utils.sentinel2 import get_S2_bandfiles
 from agrisatpy.utils.sentinel2 import get_S2_sclfile
 from agrisatpy.config.sentinel2 import Sentinel2

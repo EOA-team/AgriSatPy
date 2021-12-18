@@ -1,4 +1,5 @@
 '''
+Raster utilities
 '''
 
 import numpy as np
