@@ -417,19 +417,22 @@ class Sentinel2Handler(SatDataHandler):
         )
 
         # search SCL file if processing level is L2A
-        if is_L2A and read_scl:
-            band_selection.append('SCL')
-            try:
-                scl_file = get_S2_sclfile(in_dir)
-                # append to dataframe
-                record = {
-                    'band_name': 'SCL',
-                    'band_path': str(scl_file),
-                    'band_resolution': 20
-                }
-                band_df_safe = band_df_safe.append(record, ignore_index=True)
-            except Exception as e:
-                raise Exception(f'Could not read SCL file: {e}')
+        if is_L2A:
+            if read_scl:
+                try:
+                    scl_file = get_S2_sclfile(in_dir)
+                    # append to dataframe
+                    record = {
+                        'band_name': 'SCL',
+                        'band_path': str(scl_file),
+                        'band_resolution': 20
+                    }
+                    band_df_safe = band_df_safe.append(record, ignore_index=True)
+                except Exception as e:
+                    raise Exception(f'Could not read SCL file: {e}')
+            else:
+                if 'SCL' in band_selection:
+                    band_selection.remove('SCL')
 
         # loop over bands and add them to the reader object
         self._from_bandstack = False

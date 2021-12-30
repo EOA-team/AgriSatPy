@@ -105,3 +105,19 @@ def get_polygons():
         )
         return testdata_polys
     return _get_polygons
+
+
+@pytest.fixture()
+def get_polygons_2():
+    """
+    Returns path to agricultural field polygons to use for masking
+    """
+    
+    def _get_polygons():
+        
+        testdata_dir = Path('../../data')
+        testdata_polys = testdata_dir.joinpath(
+            Path('sample_polygons').joinpath('BY_AOI_2019_CLOUDS_EPSG32632.shp')
+        )
+        return testdata_polys
+    return _get_polygons

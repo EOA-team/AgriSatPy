@@ -50,6 +50,9 @@ def test_read_from_bandstack_with_mask(datadir, get_bandstack, get_polygons):
     assert coords['y'].shape[0] == handler.get_meta()['height'], 'mismatch in image height information'
     assert handler.get_meta()['count'] == 10, 'mismatch in number of bands'
 
+    # check attributes
+    assert len(handler.get_attrs()['nodata']) == 10, 'attributes not set correctly'
+
     # check conversion to xarray dataset. The masked integer array should be converted to float
     # and masked pixels be set to NaN
     xds = handler.to_xarray()

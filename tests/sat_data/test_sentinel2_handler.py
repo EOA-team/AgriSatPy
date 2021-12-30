@@ -11,7 +11,15 @@ from matplotlib.figure import Figure
 from datetime import date
 
 from agrisatpy.io.sentinel2 import Sentinel2Handler
-from agrisatpy.utils.exceptions import BandNotFoundError
+from agrisatpy.utils.exceptions import BandNotFoundError, InputError
+
+
+def test_read_from_bandstack_l1c():
+    pass
+
+
+def test_read_from_safe_l1c():
+    pass
 
 
 def test_read_from_bandstack_l2a(datadir, get_bandstack, get_polygons):
@@ -24,6 +32,10 @@ def test_read_from_bandstack_l2a(datadir, get_bandstack, get_polygons):
     fname_polygons = get_polygons()
 
     handler = Sentinel2Handler()
+
+    # attempt to read from .SAFE archive but single geoTiff provided -> must fail
+    with pytest.raises(Exception):
+        handler.read_from_safe(in_dir=fname_bandstack)
 
     # read data for field parcels, only
     handler.read_from_bandstack(
@@ -46,6 +58,8 @@ def test_read_from_bandstack_l2a(datadir, get_bandstack, get_polygons):
 
     # check attributes
     assert len(handler.get_attrs()['scales']) == 11, 'wrong number of bands in attributes'
+    assert len(handler.get_attrs()['descriptions']) == 11, 'wrong number of bands in attributes'
+    assert set(handler.get_attrs()['descriptions']) == set(handler.get_bandaliases().values())
 
     # check conversion to xarray
     xds = handler.to_xarray()
@@ -56,11 +70,132 @@ def test_read_from_bandstack_l2a(datadir, get_bandstack, get_polygons):
     assert handler.get_band('B02').data[100,100].astype(float) == xds.blue.data[100,100], 'incorrect values after conversion'
     assert (np.isnan(xds.blue.data)).any(), 'xarray band has no NaNs although it should'
 
+    # read data from bandstack without applying int to float conversion
+    band_selection = ['B02', 'B03', 'B04']
+
+    handler = Sentinel2Handler()
+    handler.read_from_bandstack(
+        fname_bandstack=fname_bandstack,
+        in_file_aoi=fname_polygons,
+        full_bounding_box_only=True,
+        int16_to_float=False,
+        band_selection=band_selection
+    )
+
+    assert handler.get_band('blue').dtype == 'uint16', 'wrong data type for spectral band data'
+    assert handler.get_band('scl').dtype == 'uint8', 'wrong data type for SCL'
 
 
-def test_read_from_safe_with_mask_l2a(datadir, get_s2_safe_l2a):
+
+def test_read_from_safe_with_mask_l2a(datadir, get_s2_safe_l2a, get_polygons, get_polygons_2):
     """handling Sentinel-2 data from .SAFE archives (masking)"""
-    pass
+
+    in_dir = get_s2_safe_l2a()
+    in_file_aoi = get_polygons()
+
+    # read using polygons outside of the tile extent -> should fail
+    handler = Sentinel2Handler()
+    with pytest.raises(Exception):
+        handler.read_from_safe(
+            in_dir=in_dir,
+            in_file_aoi=in_file_aoi
+        )
+
+    # read using polygons overlapping the tile extent
+    in_file_aoi = get_polygons_2()
+
+    handler.read_from_safe(
+        in_dir=in_dir,
+        in_file_aoi=in_file_aoi
+    )
+
+    assert not handler.check_is_bandstack(), 'data read from SAFE archive cannot be a bandstack'
+
+    # to_xarray should fail because of different spatial resolutions
+    with pytest.raises(ValueError):
+        handler.to_xarray()
+
+    # as well as the calculation of the TCARI-OSAVI ratio
+    with pytest.raises(Exception):
+        handler.calc_vi('TCARI_OSAVI')
+
+    # but calculation of NDVI should work because it requires the 10m bands only
+    handler.calc_vi('NDVI')
+    assert 'NDVI' in handler.get_bandnames(), 'NDVI not added to handler'
+    assert 'NDVI' in handler.get_attrs().keys(), 'NDVI not added to dataset attributes'
+
+    # stacking bands should fail because of different spatial resolutions
+    with pytest.raises(InputError):
+        handler.get_bands()
+
+    # dropping all 20m should then allow stacking operations and conversion to xarray
+    bands_to_drop = ['B05', 'B06', 'B07', 'B8A', 'B11', 'B12', 'scl']
+    for band_to_drop in bands_to_drop:
+        handler.drop_band(band_to_drop)
+
+    assert len(handler.get_bandnames()) == 5, 'too many bands left'
+    assert handler.check_is_bandstack(), 'data should now fulfill bandstack criteria'
+
+    xds = handler.to_xarray()
+
+    # make sure attributes were set correctly in xarray
+    assert len(xds.attrs['scales']) == len(handler.get_bandnames()), 'wrong number of bands in attributes'
+
+
+def test_ignore_scl(datadir, get_s2_safe_l2a, get_polygons_2):
+    """ignore the SCL on reading"""
+
+    in_dir = get_s2_safe_l2a()
+    in_file_aoi = get_polygons_2()
+
+    # read using polygons outside of the tile extent -> should fail
+    handler = Sentinel2Handler()
+    handler.read_from_safe(
+        in_dir=in_dir,
+        in_file_aoi=in_file_aoi,
+        read_scl=False
+    )
+    assert 'scl' not in handler.get_bandnames(), 'SCL band should not be available'
+
+    # read with weird band ordering
+    band_selection = ['B08','B06']
+    handler = Sentinel2Handler()
+    handler.read_from_safe(
+        in_dir=in_dir,
+        in_file_aoi=in_file_aoi,
+        band_selection=band_selection,
+        read_scl=False
+    )
+    assert 'scl' not in handler.get_bandnames(), 'SCL band should not be available'
+    assert handler.get_bandnames() == ['nir_1', 'red_edge_2'], 'wrong order of bands'
+    with pytest.raises(BandNotFoundError):
+        handler.get_meta('scl')
+
+
+def test_band_selections(datadir, get_s2_safe_l2a, get_polygons, get_polygons_2,
+                         get_bandstack):
+    """testing invalid band selections"""
+
+    in_dir = get_s2_safe_l2a()
+    in_file_aoi = get_polygons_2()
+
+    # attempt to read no-existing bands
+    handler = Sentinel2Handler()
+    with pytest.raises(IndexError):
+        handler.read_from_safe(
+            in_dir=in_dir,
+            in_file_aoi=in_file_aoi,
+            band_selection=['B02','B13']
+        )
+
+    fname_bandstack = get_bandstack()
+    in_file_aoi = get_polygons()
+    handler = Sentinel2Handler()
+    with pytest.raises(InputError):
+        handler.read_from_bandstack(
+            fname_bandstack=fname_bandstack,
+            band_selection=['B02','B13']
+        )
 
 
 def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):

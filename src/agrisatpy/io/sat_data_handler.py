@@ -197,7 +197,12 @@ class SatDataHandler(object):
             for attr in self.data['attrs']:
                 if isinstance(self.data['attrs'][attr], tuple):
                     update_list = list(self.data['attrs'][attr])
-                    update_list.append(self.data['attrs'][attr][0])
+                    
+                    if attr == 'descriptions':
+                        update_list.append(band_name.upper())
+                    else:
+                        update_list.append(self.data['attrs'][attr][0])
+
                     updated_attr = tuple(update_list)
                     self.data['attrs'].update(
                         {
@@ -1806,7 +1811,17 @@ class SatDataHandler(object):
         coords = self.get_coordinates(master_band)
 
         # get further attributes
-        attrs = deepcopy(self.get_attrs())
+        attrs = deepcopy(self.get_attrs(master_band))
+
+        # if data does not originate from single band stack, adopt the attributes accordingly
+        if not self.from_bandstack():
+            n_bands = len(self.get_bandnames())
+            for attr in self.get_attrs(master_band).keys():
+                if isinstance(attrs[attr], tuple):
+                    updated_attr = np.repeat(attrs[attr][0], n_bands)
+                    attrs.update(
+                        {attr: updated_attr}
+                    )
         crs = self.get_epsg(master_band)
 
         # concat attributes across bands except for CRS and is_tiled
