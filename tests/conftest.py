@@ -63,7 +63,8 @@ def get_s2_safe_l2a():
             # download dataset
             r = requests.get(url, stream=True)
             r.raise_for_status()
-            with open(testdata_fname, 'wb') as fd:
+            testdata_fname_zip = str(testdata_fname).replace('.SAFE','.zip')
+            with open(testdata_fname_zip, 'wb') as fd:
                 for chunk in r.iter_content(chunk_size=5096):
                     fd.write(chunk)
         
@@ -73,6 +74,42 @@ def get_s2_safe_l2a():
         return testdata_fname
 
     return _get_s2_safe_l2a
+
+
+@pytest.fixture()
+def get_s2_safe_l1c():
+    """
+    Get Sentinel-2 testing data in L1C processing level. If not available yet
+    download the data from the Menedely dataset link provided (might take a while
+    depending on your internet connection)
+    """
+
+    def _get_s2_safe_l1c():
+
+        testdata_dir = Path('../../data')
+        testdata_fname = testdata_dir.joinpath(
+            'S2B_MSIL1C_20190725T100039_N0208_R122_T33UWP_20190725T123957.SAFE'
+        )
+    
+        # download URL
+        url = 'https://data.mendeley.com/public-files/datasets/ckcxh6jskz/files/52abe583-c322-4ef1-8825-883fbfefe495/file_downloaded'
+    
+        if not testdata_fname.exists():
+        
+            # download dataset
+            r = requests.get(url, stream=True)
+            r.raise_for_status()
+            testdata_fname_zip = str(testdata_fname).replace('.SAFE','.zip')
+            with open(testdata_fname_zip, 'wb') as fd:
+                for chunk in r.iter_content(chunk_size=5096):
+                    fd.write(chunk)
+        
+            # unzip dataset
+            unzip_datasets(download_dir=testdata_dir)
+            
+        return testdata_fname
+
+    return _get_s2_safe_l1c
 
 
 @pytest.fixture()
