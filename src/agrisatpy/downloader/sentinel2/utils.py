@@ -42,7 +42,7 @@ def unzip_datasets(
     for idx, dot_safe_zip in enumerate(dot_safe_zips):
 
         os.chdir(download_dir)
-        arg_list = ['unzip', '-n', dot_safe_zip]
+        arg_list = ['unzip', '-n', Path(dot_safe_zip).name]
         process = subprocess.Popen(
             arg_list,
             stdout=subprocess.PIPE,

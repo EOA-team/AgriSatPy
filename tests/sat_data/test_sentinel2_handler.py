@@ -18,8 +18,33 @@ def test_read_from_bandstack_l1c():
     pass
 
 
-def test_read_from_safe_l1c():
-    pass
+def test_read_from_safe_l1c(get_s2_safe_l1c):
+    """handling of Sentinel-2 data in L1C processing level from .SAFE archives"""
+
+    in_dir = get_s2_safe_l1c()
+
+     # read without AOI file
+    reader = Sentinel2Handler()
+    band_selection = ['B04', 'B05', 'B8A']
+    reader.read_from_safe(
+        in_dir=in_dir,
+        band_selection=band_selection
+    )
+
+    # check if the object can be considered a band stack -> should not be the case
+    assert not reader.check_is_bandstack(), 'data is labelled as band-stack but it should not'
+
+    # check scene properties
+    acquisition_time = reader.scene_properties.get('acquisition_time')
+    assert acquisition_time.date() == date(2019,7,25), 'acquisition date is wrong'
+    assert reader.scene_properties.get('sensor') == 'MSI', 'wrong sensor'
+    assert reader.scene_properties.get('platform') == 'S2B', 'wrong platform'
+    assert reader.scene_properties.get('processing_level').value == 'LEVEL1C', 'wrong processing level'
+
+    # check band list
+    bands = reader.get_bandnames()
+    assert len(bands) == len(band_selection), 'number of bands is wrong'
+    assert 'scl' not in bands, 'SCL band cannot be available for L1C data'
 
 
 def test_read_from_bandstack_l2a(datadir, get_bandstack, get_polygons):
