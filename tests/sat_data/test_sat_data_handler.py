@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 
 from agrisatpy.io import SatDataHandler
+from agrisatpy.utils.exceptions import InputError, BandNotFoundError
 
 
 def test_read_from_bandstack_with_mask(datadir, get_bandstack, get_polygons):
@@ -28,6 +29,10 @@ def test_read_from_bandstack_with_mask(datadir, get_bandstack, get_polygons):
         ndvi = handler.calc_vi('NDVI')
 
     assert handler.get_band('B12').dtype == 'uint16', 'wrong band data type'
+
+    # attempt to access non-existing band
+    with pytest.raises(BandNotFoundError):
+        handler.get_band('notthere')
 
     # check coordinates
     coords = handler.get_coordinates('B03', shift_to_center=False)
@@ -70,3 +75,15 @@ def test_read_from_bandstack_with_mask(datadir, get_bandstack, get_polygons):
     xds = handler.to_xarray()
 
     assert not (np.isnan(xds.B02.data)).any(), 'NaNs encountered'
+
+    # add a band with x,y shape smaller than bandstack -> must fail
+    band_to_add = np.zeros((10,10))
+
+    with pytest.raises(InputError):
+        handler.add_band(band_name='test', band_data=band_to_add)
+
+    # add a band with correct shape, should work
+    band_to_add = np.zeros_like(handler.get_band('B02'))
+    handler.add_band(band_name='test', band_data=band_to_add)
+    assert (handler.get_band('test') == band_to_add).all(), 'array not the same after adding it'
+
