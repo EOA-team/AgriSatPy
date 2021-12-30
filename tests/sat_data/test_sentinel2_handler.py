@@ -75,7 +75,7 @@ def test_read_from_bandstack_l2a(datadir, get_bandstack, get_polygons):
     assert handler.check_is_bandstack() == True, 'expected band-stacked object'
 
     # check bands, SCL must be available
-    assert 'scl' in handler.get_bandnames(), 'scene classification layer not read'
+    assert 'scl' in handhttps://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2019_2585-1130/swissalti3d_2019_2585-1130_2_2056_5728.tifler.get_bandnames(), 'scene classification layer not read'
     assert handler.get_band('scl').dtype == 'uint8', 'wrong datatype for SCL'
     assert len(handler.get_bandnames()) == 11, 'wrong number of bands read'
     assert len(handler.get_bandaliases()) == 11, 'band aliases not provided correctly'

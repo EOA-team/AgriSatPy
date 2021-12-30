@@ -90,3 +90,43 @@ def test_read_from_bandstack_with_mask(datadir, get_bandstack, get_polygons):
     handler.add_band(band_name='test', band_data=band_to_add)
     assert (handler.get_band('test') == band_to_add).all(), 'array not the same after adding it'
 
+
+@pytest.mark.parametrize(
+    'url',
+    ['https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2019_2585-1130/swissalti3d_2019_2585-1130_2_2056_5728.tif']
+)
+def test_from_cloudoptimized_geotiff(datadir, url):
+    """
+    tests reading and handling data from cloud-optimized geoTiff (digital elevation
+    model tile from Swisstopo)
+    """
+
+    handler = SatDataHandler()
+    handler.read_from_bandstack(
+        fname_bandstack=url
+    )
+
+    assert len(handler.get_bandnames()) > 0, 'no data read'
+    band_data = handler.get_band('B1')
+    assert isinstance(band_data, np.ndarray), 'band data not read correctly'
+    assert band_data.dtype == 'float32', 'expected floating point data'
+    assert len(handler.get_attrs()) > 0, 'no attributes parsed'
+    assert handler.get_attrs()['units'][0] == 'metre', 'physical unit attribute missing or wrong'
+    meta = handler.get_meta()
+    assert meta['crs'] == 2056, 'wrong CRS parsed'
+
+    # reproject into UTM zone 32 using nearest neighbor (def.) and save file to disk
+    handler.reproject_bands(
+        target_crs=32632,
+        blackfill_value=handler.get_attrs()['nodatavals'][0]
+    )
+    assert handler.get_epsg() == 32632, 'EPSG not updated'
+    band_data_utm = handler.get_band('B1')
+    assert band_data_utm.max() == band_data.max(), 'nearest neighbor interpolation must not change raster values'
+    assert band_data.shape != band_data_utm.shape, 'shape of array should change after reprojection when no dst affine is provided'
+    assert handler.get_band_shape('B1').nrows == handler.get_meta()['height'], 'mismatch between rows and image height'
+    assert handler.get_band_shape('B1').ncols == handler.get_meta()['width'], 'mismatch between cols and image width'
+
+    # convert to xarray
+    xds = handler.to_xarray()
+    assert (xds.B1.data == band_data_utm).all()

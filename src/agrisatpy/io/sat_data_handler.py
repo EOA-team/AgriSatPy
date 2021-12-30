@@ -869,8 +869,8 @@ class SatDataHandler(object):
                 {
                     'crs' : rio.crs.CRS.from_epsg(target_crs),
                     'transform': out_transform,
-                    'height': out_data.shape[0],
-                    'width': out_data.shape[1]
+                    'height': out_data.shape[1],
+                    'width': out_data.shape[2]
                 }
             )
             # overwrite meta and bounds
