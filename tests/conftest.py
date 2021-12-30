@@ -44,13 +44,16 @@ def datadir(tmppath, request):
 def get_s2_safe_l2a():
     """
     Get Sentinel-2 testing data in L2A processing level. If not available yet
-    download the data from the Menedely dataset link provided
+    download the data from the Menedely dataset link provided (might take a while
+    depending on your internet connection)
     """
 
     def _get_s2_safe_l2a():
 
         testdata_dir = Path('../../data')
-        testdata_fname = testdata_dir.joinpath('S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.SAFE')
+        testdata_fname = testdata_dir.joinpath(
+            'S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.SAFE'
+        )
     
         # download URL
         url = 'https://data.mendeley.com/public-files/datasets/ckcxh6jskz/files/e97b9543-b8d8-436e-b967-7e64fe7be62c/file_downloaded'
@@ -70,3 +73,35 @@ def get_s2_safe_l2a():
         return testdata_fname
 
     return _get_s2_safe_l2a
+
+
+@pytest.fixture()
+def get_bandstack():
+    """
+    Returns path to multi-band tiff file (bandstack)
+    """
+
+    def _get_bandstack():
+
+        testdata_dir = Path('../../data')
+        testdata_fname = testdata_dir.joinpath(
+            '20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff'
+        )
+        return testdata_fname
+    return _get_bandstack
+
+
+@pytest.fixture()
+def get_polygons():
+    """
+    Returns path to agricultural field polygons to use for masking
+    """
+    
+    def _get_polygons():
+        
+        testdata_dir = Path('../../data')
+        testdata_polys = testdata_dir.joinpath(
+            Path('sample_polygons').joinpath('ZH_Polygons_2020_ESCH_EPSG32632.shp')
+        )
+        return testdata_polys
+    return _get_polygons

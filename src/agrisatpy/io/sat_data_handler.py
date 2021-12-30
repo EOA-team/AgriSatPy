@@ -170,7 +170,7 @@ class SatDataHandler(object):
         if band_alias is not None:
             self._band_aliases[band_name] = band_alias
 
-        # check if the data comes from a bandstack (nothing to do)
+        # check if the data comes from a bandstack 
         # or from single band files where the metadata needs to be added
         # for each band
         if not self.from_bandstack():
@@ -184,6 +184,26 @@ class SatDataHandler(object):
                     self.data['attrs'][band_name] = self.data['attrs'][other_band]
                     # leave loop and return
                     break
+        # in case of a band stack, the attributes need to be extended by copying them
+        # from a reference band
+        else:
+            # since all bands have the same shape we can simply use the first band as reference
+            other_band = self.get_bandnames()[0]
+            # to be sure, check array shapes
+            if not self.get_band(other_band).shape == band_data.shape:
+                raise InputError(
+                    f'The shape of the band to add ({band_data.shape}) does not '\
+                    f'match the reference ({self.get_band(other_band).shape})')
+            for attr in self.data['attrs']:
+                if isinstance(self.data['attrs'][attr], tuple):
+                    update_list = list(self.data['attrs'][attr])
+                    update_list.append(self.data['attrs'][attr][0])
+                    updated_attr = tuple(update_list)
+                    self.data['attrs'].update(
+                        {
+                            attr: updated_attr
+                        }
+                    )
 
 
     @check_band_names
@@ -264,7 +284,7 @@ class SatDataHandler(object):
         """
 
         coords = {}
-        nx, ny = self.get_band(band_name).shape
+        ny, nx = self.get_band(band_name).shape
         transform = self.get_meta(band_name)['transform']
 
         shift = 0.
@@ -275,8 +295,8 @@ class SatDataHandler(object):
         x, _ = transform * (np.arange(nx) + shift, np.zeros(nx) + shift)
         _, y = transform * (np.zeros(ny) + shift, np.arange(ny) + shift)
         
-        coords['x'] = x
         coords['y'] = y
+        coords['x'] = x
 
         return coords
 
@@ -1539,9 +1559,11 @@ class SatDataHandler(object):
             # optionally add further image metadata that is immutable
             if parse_attr:
                 attrs = get_raster_attributes(riods=src)
+
             # read relevant bands and store them in dict
             band_names = src.descriptions
             self.data = dict.fromkeys(band_names)
+            band_selection_idx = []
             for idx, band_name in enumerate(band_names):
 
                 # handle empty band_names
@@ -1552,7 +1574,7 @@ class SatDataHandler(object):
                 if check_band_selection:
                     if band_name not in band_selection:
                         continue
-
+                band_selection_idx.append(idx)
                 if not masking:
                     self.data[band_name] = src.read(idx+1)
                 else:
@@ -1593,8 +1615,23 @@ class SatDataHandler(object):
 
         self.set_meta(meta)
         self.set_bounds(bounds)
+
         if parse_attr:
-            self.set_attrs(attrs)
+            # filter out bands not selected
+            if len(band_selection) > 0:
+                attrs_filtered = {}
+                for key in attrs.keys():
+                    if isinstance(attrs[key], tuple):
+                        # use band_selection_idx to filter selected bands
+                        attrs_filtered[key] = tuple(
+                            [x for ii, x in enumerate(attrs[key]) if ii in band_selection_idx]
+                        )
+                    else:
+                        attrs_filtered[key] = attrs[key]
+                self.set_attrs(attrs_filtered)
+            # no band selection, use all available bands
+            else:
+                self.set_attrs(attrs)
 
 
     def write_bands(
@@ -1754,67 +1791,37 @@ class SatDataHandler(object):
 
         band_array_stack = {}
         for band_name in self.get_bandnames():
-            band_array_stack[band_name] = tuple([('x','y'), self.get_band(band_name)])
+            band_data = deepcopy(self.get_band(band_name))
+            # unfortunately, xarray does not support masked arrays, we have to convert
+            # the image data to float (if not yet) and fill missing values with NaNs
+            if isinstance(band_data, np.ma.core.masked_array):
+                if band_data.dtype == 'uint8' or band_data.dtype == 'uint16':
+                    band_data = band_data.astype(float)
+                band_data = self._masked_array_to_nan(band_data)
+                
+            band_array_stack[band_name] = tuple([('y','x'), band_data])
 
         # get x, y coordinates and band names
         master_band = self.get_bandnames()[0]
         coords = self.get_coordinates(master_band)
 
         # get further attributes
-        attrs = self.get_attrs()
+        attrs = deepcopy(self.get_attrs())
         crs = self.get_epsg(master_band)
 
         # concat attributes across bands except for CRS and is_tiled
-        stack_attrs = {}
-        stack_attrs['crs'] = crs
-        stack_attrs['transform'] = self.get_meta(master_band)['transform']
-        stack_attrs['is_tiled'] = attrs[master_band]['is_tiled']
-        stack_attrs['time'] = self.scene_properties.get('acquisition_time')
+        attrs['crs'] = crs
+        attrs['transform'] = tuple(self.get_meta(master_band)['transform'])
+        attrs['time'] = self.scene_properties.get('acquisition_time')
 
-        attrs_keys = list(attrs[master_band].keys())
-        attrs_keys.remove('is_tiled')
-
-        # get attributes from all bands in the right format
-        band_attrs = dict.fromkeys(attrs_keys)
-        for band_name in self.get_bandnames():
-            for band_attr in band_attrs:
-                if band_attrs[band_attr] is None:
-                    band_attrs[band_attr] = []
-                band_attrs[band_attr].append(attrs[band_name][band_attr][0])
-
-        # convert lists to tuples and append to stack_attrs
-        for band_attr in band_attrs:
-            stack_attrs[band_attr] = tuple(band_attrs[band_attr])
-
-        # TODO: debug
-        xds = xr.DataArray(
-            data=band_array_stack,
+        xds = xr.Dataset(
+            band_array_stack,
             coords=coords,
             attrs=attrs,
             **kwargs
         )
 
         return xds
-
-        # x = xr.Dataset(
-        #
-        #     {
-        #
-        #         "temperature_c": (
-        #
-        #             ("lat", "lon"),
-        #
-        #             20 * np.random.rand(4).reshape(2, 2),
-        #
-        #         ),
-        #
-        #         "precipitation": (("lat", "lon"), np.random.rand(4).reshape(2, 2)),
-        #
-        #     },
-        #
-        #     coords={"lat": [10, 20], "lon": [150, 160]},
-        #
-        # )
 
 
     @check_band_names

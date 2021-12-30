@@ -14,8 +14,57 @@ from agrisatpy.io.sentinel2 import Sentinel2Handler
 from agrisatpy.utils.exceptions import BandNotFoundError
 
 
+def test_read_from_bandstack_l2a(datadir, get_bandstack, get_polygons):
+    """
+    handling Sentinel-2 bandstacked geoTiff files derived from AgriSatPy's
+    default processing pipeline using masks
+    """
+
+    fname_bandstack = get_bandstack()
+    fname_polygons = get_polygons()
+
+    handler = Sentinel2Handler()
+
+    # read data for field parcels, only
+    handler.read_from_bandstack(
+        fname_bandstack=fname_bandstack,
+        in_file_aoi=fname_polygons
+    )
+
+    # check data types
+    assert handler.get_band('blue').dtype == float, 'wrong  data type for spectral band, expected float'
+    assert isinstance(handler.get_band('blue'), np.ma.core.MaskedArray), 'expected masked array'
+
+    assert handler.check_is_bandstack() == True, 'expected band-stacked object'
+
+    # check bands, SCL must be available
+    assert 'scl' in handler.get_bandnames(), 'scene classification layer not read'
+    assert handler.get_band('scl').dtype == 'uint8', 'wrong datatype for SCL'
+    assert len(handler.get_bandnames()) == 11, 'wrong number of bands read'
+    assert len(handler.get_bandaliases()) == 11, 'band aliases not provided correctly'
+    assert (handler.get_band('B02').data == handler.get_band('blue').data).all(), 'band aliasing not working'
+
+    # check attributes
+    assert len(handler.get_attrs()['scales']) == 11, 'wrong number of bands in attributes'
+
+    # check conversion to xarray
+    xds = handler.to_xarray()
+
+    assert xds.crs == 32632, 'wrong CRS in xarray'
+    assert len(xds.attrs.keys()) > 0, 'no image attributes set'
+    assert isinstance(xds.blue.data, np.ndarray), 'image data not converted to xarray'
+    assert handler.get_band('B02').data[100,100].astype(float) == xds.blue.data[100,100], 'incorrect values after conversion'
+    assert (np.isnan(xds.blue.data)).any(), 'xarray band has no NaNs although it should'
+
+
+
+def test_read_from_safe_with_mask_l2a(datadir, get_s2_safe_l2a):
+    """handling Sentinel-2 data from .SAFE archives (masking)"""
+    pass
+
+
 def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
-    """reading Sentinel-2 data from .SAFE archives"""
+    """handling Sentinel-2 data from .SAFE archives (no masking)"""
 
     in_dir = get_s2_safe_l2a()
 
@@ -227,4 +276,12 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     assert datadir.joinpath('scl.tif').exists(), 'output raster file not found'
 
     # try converting data to xarray
-    reader.to_xarray()
+    xds = reader.to_xarray()
+
+    assert xds.crs == 32633, 'EPSG got lost in xarray dataset'
+    dims = dict(xds.dims)
+    assert list(dims.keys()) == ['y', 'x'], 'wrong coordinate keys'
+    assert tuple(dims.values()) == reader.get_band('blue').shape, 'wrong shape of array in xarray dataset'
+
+
+

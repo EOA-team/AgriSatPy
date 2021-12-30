@@ -501,23 +501,28 @@ class Sentinel2Handler(SatDataHandler):
         self.scene_properties.set(prop='processing_level', value=processing_level)
 
 
-# if __name__ == '__main__':
+if __name__ == '__main__':
 
-    # # download test data (if not done yet)
+    handler = SatDataHandler()
+    band_selection = ['B02', 'B03', 'B04', 'B08']
+    in_file_aoi = Path('/mnt/ides/Lukas/software/AgriSatPy/data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
+    
+    # bandstack testcase
+    fname_bandstack = Path('/mnt/ides/Lukas/software/AgriSatPy/data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
+    
+    handler.read_from_bandstack(
+        fname_bandstack=fname_bandstack,
+        in_file_aoi=in_file_aoi,
+        band_selection=band_selection
+    )
 
-    #
-    # reader = Sentinel2Handler()
-    # band_selection = ['B02', 'B03', 'B04', 'B08']
-    # in_file_aoi = Path('/home/graflu/git/agrisatpy/data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
-    #
-    # # bandstack testcase
-    # fname_bandstack = Path('/home/graflu/git/agrisatpy/data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
-    # processing_level = ProcessingLevels.L2A
-    #
-    # reader.read_from_bandstack(
-    #     fname_bandstack=fname_bandstack,
-    #     in_file_aoi=in_file_aoi
-    # )
+    assert handler.check_is_bandstack() == True, 'not recognized as bandstack although data should'
+    assert isinstance(handler.get_band('B02'), np.ma.core.MaskedArray), 'band data was not masked'
+
+    xarr = handler.to_xarray()
+
+    
+
     # reader.get_band_coordinates('B02')
     # fig_rgb = reader.plot_rgb()
     # fig_scl = reader.plot_scl()
