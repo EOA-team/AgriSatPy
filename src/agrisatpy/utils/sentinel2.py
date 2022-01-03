@@ -172,7 +172,7 @@ def get_S2_sclfile(
         file_pattern_tile = fname_splitted[1]
         # platform_level = fname_splitted[2]
         sensor = fname_splitted[3]
-        file_pattern = f'{file_pattern_date}_{file_pattern_tile}_*{sensor}*SCL*tiff'
+        file_pattern = f'{file_pattern_date}_{file_pattern_tile}*{sensor}*SCL*tiff'
         search_pattern = str(in_dir.joinpath(Settings.SUBDIR_SCL_FILES).joinpath(file_pattern))
 
     try:

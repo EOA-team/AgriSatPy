@@ -284,7 +284,7 @@ def resample_and_stack_s2(
         target_resolution=target_resolution
     )
     # save resampling method and spatial resolution
-    out_file_names['resampling_method'] = resampling_method
+    out_file_names['resampling_method'] = resampling_method_str
     out_file_names['spatial_resolution'] = target_resolution
 
     # get the TCI quicklook image first

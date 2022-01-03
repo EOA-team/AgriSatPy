@@ -338,9 +338,10 @@ class Sentinel2Handler(SatDataHandler):
                 raise Exception(f'Could not read SCL file: {e}')
 
             # add SCL as new band
+            band_name_scl = scl_reader.get_bandnames()[0]
             self.add_band(
                 band_name='scl',
-                band_data=scl_reader.get_band('B1'),
+                band_data=scl_reader.get_band(band_name_scl),
                 band_alias='SCL'
             )
 
@@ -419,6 +420,8 @@ class Sentinel2Handler(SatDataHandler):
         # search SCL file if processing level is L2A
         if is_L2A:
             if read_scl:
+                if 'SCL' not in band_selection:
+                    band_selection.append('SCL')
                 try:
                     scl_file = get_S2_sclfile(in_dir)
                     # append to dataframe

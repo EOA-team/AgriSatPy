@@ -8,7 +8,7 @@ from typing import Optional
 
 from agrisatpy.io import SatDataHandler
 from agrisatpy.io.sentinel2 import Sentinel2Handler
-from agrisatpy.utils.sentinel2 import get_S2_tci
+from agrisatpy.utils.sentinel2 import get_S2_tci, get_S2_sclfile
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 

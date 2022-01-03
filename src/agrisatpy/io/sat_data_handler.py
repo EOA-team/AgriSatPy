@@ -1596,6 +1596,7 @@ class SatDataHandler(object):
                 # check band selection if required
                 if check_band_selection:
                     if band_name not in band_selection:
+                        self.data.pop(band_name)
                         continue
                 band_selection_idx.append(idx)
                 if not masking:
