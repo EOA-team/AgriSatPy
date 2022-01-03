@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import rasterio as rio
 import xarray as xr
+import geopandas as gpd
 
 from rasterio import Affine
 from rasterio.coords import BoundingBox
@@ -42,6 +43,7 @@ from matplotlib.figure import figaspect
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from copy import deepcopy
 from collections import namedtuple
+from numbers import Number
 from xarray import DataArray
 
 from agrisatpy.analysis.vegetation_indices import VegetationIndices
@@ -145,16 +147,25 @@ class SatDataHandler(object):
             band_alias: Optional[str] = None
         ):
         """
-        Adds a band to an existing band dict instance
+        Adds a band to an existing band dict instance. Band name and band
+        alias (if provided) must be unique!
 
         :param band_name:
-            name of the band to add (existing bands with the same name
-            will be overwritten!); corresponds to the dict key
+            name of the band to add (must not exist already)
         :param band_data:
             band data to add; corresponds to the dict value
         :param band_alias:
-            optional band name alias (existing alias will be overwritten)
+            optional band name alias (must not exist already)
         """
+
+        # check band name and alias if applicable
+        if band_name in self.get_bandnames():
+            raise KeyError(f'Duplicated name for band: {band_name}')
+        if band_alias is not None:
+            if band_alias in self.get_bandaliases().values():
+                raise KeyError(
+                    f'Duplicated alias for band {band_name}: {band_alias}'
+                )
 
         band_dict = {band_name: band_data}
         self.data.update(band_dict)
@@ -1176,7 +1187,10 @@ class SatDataHandler(object):
         try:
             vi_obj = VegetationIndices(reader=self)
             vi_data = vi_obj.calc_vi(vi)
-            self.add_band(band_name=vi, band_data=vi_data)
+            self.add_band(
+                band_name=vi,
+                band_data=vi_data
+            )
         except Exception as e:
             raise Exception(f'Could not calculate vegetation index "{vi}": {e}')
 
@@ -1429,7 +1443,7 @@ class SatDataHandler(object):
             mask_values: List[Union[int,float]],
             bands_to_mask: List[str],
             keep_mask_values: Optional[bool] = False,
-            nodata_value: Optional[Union[int, float]] = 0.
+            nodata_values: Optional[Union[Number,List[Number]]] = None
         ) -> None:
         """
         Allows to mask parts of an image (i.e., single bands) based
@@ -1453,23 +1467,17 @@ class SatDataHandler(object):
         :param keep_mask_values:
             if False (Def) the provided `mask_values` are assumed to represent
             INVALID classes, if True the opposite is the case
-        :param nodata_value:
-            no data value to set masked pixels to in case the band data is of
-            datype integer. Pixels in arrays with floating point numbers are
-            set to np.nan.
+        :param nodata_values:
+            no data values to set masked pixels. Can be set for each band by specifying
+            a list of nodata values or for all bands. If None (default), the no-data
+            value is inferred from the image attributes.
         """
 
-        # check if mask band is available
-        if not name_mask_band in self.get_bandnames() and \
-        name_mask_band not in self.get_bandaliases().values():
-            raise BandNotFoundError(f'{name_mask_band} is not in data dict')
-
-        # get band alias if specified
-        if name_mask_band not in self.get_bandnames():
-            name_mask_band = [k for (k,v) in self.get_bandaliases().items() if v == name_mask_band][0]
+        # get band to use for masking
+        mask_band = self.get_band(band_name=name_mask_band)
 
         # convert the mask to a temporary binary mask
-        tmp = np.zeros_like(self.data[name_mask_band])
+        tmp = np.zeros_like(mask_band)
         # set valid classes to 1, the other ones are zero
         if keep_mask_values:
             tmp[np.isin(self.data[name_mask_band], mask_values)] = 1
@@ -1477,19 +1485,29 @@ class SatDataHandler(object):
             tmp[~np.isin(self.data[name_mask_band], mask_values)] = 1
 
         # loop over bands specified and mask the invalid pixels
-        for band_to_mask in bands_to_mask:
+        for idx, band_to_mask in enumerate(bands_to_mask):
             if band_to_mask not in self.get_bandnames() and \
             band_to_mask not in self.get_bandaliases().values():
                 raise BandNotFoundError(f'{band_to_mask} is not in data dict')
             # check alias
             if band_to_mask not in self.get_bandnames():
-                band_to_mask = [k for (k,v) in self.get_bandaliases().items() if v == band_to_mask][0]
-            # set values to NaN or nodata where tmp is zero depending on the dtype
-            if self.data[band_to_mask].dtype == float:
-                self.data[band_to_mask][tmp == 0] = np.nan
-            elif self.data[band_to_mask].dtype == int:
-                self.data[band_to_mask][tmp == 0] = nodata_value
-        
+                band_to_mask = [k for (k,v) in self.get_bandaliases().items() \
+                                if v == band_to_mask][0]
+
+            # check nodata value; take from image attributes if not provided
+            if nodata_values is None:
+                band_idx = self.get_bandnames().index(band_to_mask)
+                nodata_value = self.get_attrs(band_to_mask)['nodatavals'][band_idx]
+            else:
+                if isinstance(nodata_values, list):
+                    try:
+                        nodata_value = nodata_values[idx]
+                    except IndexError as e:
+                        raise Exception from e
+
+            # set values nodata where tmp is zero
+            self.data[band_to_mask][tmp == 0] = nodata_value
+
 
     def read_from_bandstack(
             self,
@@ -1843,36 +1861,24 @@ class SatDataHandler(object):
     def to_dataframe(
             self,
             band_names: Optional[List[str]] = None,
-            as_geodataframe: Optional[bool] = True,
             pixels_as_polygons: Optional[bool] = False,
             pixel_coordinates_centered: Optional[bool] = False
-        ):
+        ) -> gpd.GeoDataFrame:
         """"
-        Converts all or selected number of bands to either pandas dataframe
-        or a geopandas geodataframe. The resulting dataframe has as many rows
-        as pixels in the current handler object and as many columns as bands plus
-        columns denoting the pixel coordinates. The spatial resolution of the bands
-        can differ as long as the bands share a common grid system with same origin.
+        Converts all or selected number of bands to a geopandas geodataframe.
+        The resulting dataframe has as many rows as pixels in the current handler object
+        and as many columns as bands plus a column denoting the pixel geometries.
+        The spatial resolution of the bands can differ as long as the bands share a
+        common grid system with same origin.
 
-        In case a pandas dataframe is returned the pixel coordinates are returned
-        as x, y pairs.
+        NOTE:
+            If the band data is a masked array, ignores masked pixels.
 
-        In case a geopandas geodataframe is returned the pixel geometries are returned
-        either as shapely points or polygons.
-
-        If coordinates are returned as point-like objects (pandas and geopandas with
-        point geometries) the coordinates can be either given for the upper-left pixel
-        corner (GDAL default) or pixel center (required by, e.g., xarray).
-
-        All pixels currently read into memory are stored in the resulting dataframe
-        except pixels either masked out or set to nodata.
+        The pixel geometries are returned either as shapely points or polygons.
 
         :param band_names:
             optional subset of bands for which to extract pixel values. Per
             default all bands are converted.
-        :param as_geodataframe:
-            if True (default) pixels are returned as geodataframe. If False the
-            resulting dataframe is a pandas dataframe.
         :param pixels_as_polygons:
             if False (default) pixels are modeled as point-like spatial objects.
             If true, pixels are treated as polygons with four coordinates (top, left,
@@ -1884,7 +1890,44 @@ class SatDataHandler(object):
         :return:
             pandas or geopandas (geo) dataframe with pixel values and their coordinates
         """
-        pass
+
+        # use all bands if no selection is provided
+        if band_names is None:
+            band_names = self.get_bandnames()
+
+        if band_names is None or len(band_names) == 0:
+            raise BandNotFoundError(f'Invalid band selection or no bands read')
+
+        # if polygons shall be returned, uses GDAL pixel coordinate convention
+        if pixels_as_polygons:
+            pixel_coordinates_centered = False
+
+        # two cases are possible: the data fulfills the bandstack criteria or not
+        # if bandstacked, we can convert the data in a single rush
+        if self.check_is_bandstack():
+            # get coordinates of the first band, all bands share the same coords
+            coords = self.get_band_coordinates(
+                band_name=band_names[0],
+                shift_to_center=pixel_coordinates_centered
+            )
+            flattened = self.get_bands(band_names)
+        # otherwise we have to loop over the bands because they differ in shape
+        # and do the conversion for all bands sharing the same shape
+        else:
+            
+            # loop over bands and extract the band values alongside with the coordinates
+            for band_name in band_names:
+                # get band coordinates
+                coords = self.get_band_coordinates(
+                    band_name=band_name,
+                    shift_to_center=pixel_coordinates_centered
+                )
+                # extract band values; masked pixels are ignored
+                band_data = deepcopy(self.get_band(band_name))
+                columns = [band_name, coords.keys()[0], coords.keys()[1]]
+                if isinstance(band_name, np.ndarray):
+                    # flatten band values from 2d to 1d along columns (order=F(ortran))
+                    flattened = band_data.reshape(-1, order='F')
 
 
 
