@@ -38,3 +38,7 @@ class BlackFillOnlyError(Exception):
 class ReprojectionError(Exception):
     pass
 
+class DataExtractionError(Exception):
+    pass
+
+
