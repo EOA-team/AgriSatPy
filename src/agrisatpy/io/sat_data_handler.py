@@ -317,6 +317,46 @@ class SatDataHandler(object):
         return coords
 
 
+    def _flatten_coordinates(
+        self,
+        band_name: str,
+        pixel_coordinates_centered: bool,
+        
+        ) -> Dict[str, np.array]:
+        """
+        Flattens band coordinates. To be used when converting an array to
+        ``geopandas.GeoDataFrame``.
+
+        :param band_name:
+            name of the band to convert
+        :param pixel_coordinates_centered:
+            if False the GDAL default is used an the upper left pixel corner is returned
+            for point-like objects. If True the pixel center is used instead.
+        :return:
+            dict of ``numpy.ndarray`` containing the x and y coordinates
+        """
+             
+        # get coordinates
+        coords = self.get_coordinates(
+            band_name=band_name,
+            shift_to_center=pixel_coordinates_centered
+        )
+        # get band shape in terms of rows and columns
+        band_shape = self.get_band_shape(band_name)
+    
+        # flatten x coordinates along the y-axis
+        flat_x_coords = np.repeat(coords['x'], band_shape.nrows)
+        # flatten y coordinates along the x-axis
+        flat_y_coords = np.tile(coords['y'], band_shape.ncols)
+    
+        out_coords = {
+            'x': flat_x_coords,
+            'y': flat_y_coords
+        }
+    
+        return out_coords
+
+
     @check_band_names
     def get_blackfill(
             self,
@@ -1052,12 +1092,8 @@ class SatDataHandler(object):
             # no colormap required
             colormap = None
 
-        # check if band data is a masked array
-        # band_data = self._masked_array_to_nan(band_data=band_data)
-        if isinstance(band_data, np.ma.core.MaskedArray):
-            mask = band_data.mask
-            band_data = deepcopy(band_data.data)
-            band_data[mask] = np.nan
+        # convert masked array to NaN (if applicable at all)
+        band_data = self._masked_array_to_nan(band_data=band_data)
 
         # adjust transparency in case of RGBA arrays
         if len(band_data.shape) == 3 and band_data.dtype == float:
@@ -1906,22 +1942,36 @@ class SatDataHandler(object):
         # two cases are possible: the data fulfills the bandstack criteria or not
         # if bandstacked, we can convert the data in a single rush
         if self.check_is_bandstack():
-            # get coordinates of the first band, all bands share the same coords
-            coords = self.get_band_coordinates(
-                band_name=band_names[0],
-                shift_to_center=pixel_coordinates_centered
+            # get coordinates of the first band in flattened format
+            coords = self._flatten_coordinates(
+                band_name=self.get_bandnames()[0],
+                pixel_coordinates_centered=pixel_coordinates_centered
             )
-            flattened = self.get_bands(band_names)
+            # get image bands and reshape them from 3d to 2d
+            stack_array = self.get_bands(band_names)
+            new_shape = (stack_array.shape[0], stack_array.shape[1]*stack_array.shape[2])
+            flattened = stack_array.reshape(new_shape, order='F')
+
+            # if the band is a masked array, compress it
+            if isinstance(stack_array, np.ma.MaskedArray):
+                # compress array (removes masked values)
+                flattened = flattened.compressed()
+                # and stack back to 2d array
+                flattened = np.stack(flattened)
+            
+            
+
         # otherwise we have to loop over the bands because they differ in shape
         # and do the conversion for all bands sharing the same shape
         else:
             
             # loop over bands and extract the band values alongside with the coordinates
             for band_name in band_names:
-                # get band coordinates
-                coords = self.get_band_coordinates(
+                # get band coordinates in flattened format
+                coords = flatten_coordinates(
+                    handler=self,
                     band_name=band_name,
-                    shift_to_center=pixel_coordinates_centered
+                    pixel_coordinates_centered=pixel_coordinates_centered
                 )
                 # extract band values; masked pixels are ignored
                 band_data = deepcopy(self.get_band(band_name))
