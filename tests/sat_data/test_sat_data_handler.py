@@ -24,7 +24,11 @@ def test_add_band_from_shp(datadir, get_bandstack, get_polygons):
         in_file_vector=fname_polygons,
         snap_band='B02'
     )
-    
+
+    assert len(handler.get_bandnames()) == 12, 'wrong number of bands'
+    assert 'GIS_ID' in handler.get_bandnames(), 'band GIS_ID not rasterized from vector file'
+    assert 'NUTZUNGSCO' in handler.get_bandnames(), 'band NUTZUNGSCO not rasterized from vector file'
+
 
 def test_conversion_to_gpd(datadir, get_bandstack, get_polygons):
     """tests the conversion of raster band data to a geopandas GeoDataFrame"""

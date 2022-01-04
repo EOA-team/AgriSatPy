@@ -63,7 +63,10 @@ from agrisatpy.utils.decorators import check_band_names
 from agrisatpy.utils.decorators import check_metadata
 from agrisatpy.utils.constants import ProcessingLevels
 from agrisatpy.io.utils.raster import get_raster_attributes
-from geojson import feature
+from agrisatpy.config import get_settings
+
+
+logger = get_settings().logger
 
 
 class SceneProperties(object):
@@ -230,18 +233,40 @@ class SatDataHandler(object):
             self,
             in_file_vector: Path,
             snap_band: str,
-            feature_selection: Optional[List[str]] = None
+            feature_selection: Optional[List[str]] = None,
+            blackfill_value: Optional[Union[int, float]] = None,
+            default_float_type: Optional[str] = 'float32'
         ) -> None:
         """
         Adds data from a vector (e.g., ESRI shapefile) file by rasterizing it and
         adding it attributes (or a selection thereof) as band entries into the
         current ``SatDataHandler`` object.
+    
+        NOTE:
+            Vector attributes must be of type (u)int8 to (u)int32 or float32/ float64.
+            Since `geopandas` unfortunately handles all vector attributes as object
+            datypes, it is necessary to infer the datatype. To avoid data losses, the
+            method tries to cast all numeric attributes to float32 (default). If higher
+            precision is required 'float64' can be used instead.
         """
 
         # get snap raster transformation first
         snap_affine = self.get_meta(snap_band)['transform']
         snap_shape = self.get_band_shape(snap_band)
         snap_shape = (snap_shape.nrows, snap_shape.ncols)
+
+        # take blackfill value from image attributes (nodatavalue) if not provided
+        if blackfill_value is None:
+            blackfill_value = self.get_attrs(snap_band)['nodatavals']
+            if isinstance(blackfill_value, tuple):
+                blackfill_value = blackfill_value[0]
+
+        # check default float type
+        supported_floats = ['float32', 'float64']
+        if default_float_type not in supported_floats:
+            raise ValueError(
+                f'Default floating dtype must be one of {supported_floats}'
+            )
 
         # check input vector file
         if not in_file_vector.exists():
@@ -288,18 +313,40 @@ class SatDataHandler(object):
                 f'Could not clip input vector features to snap raster bounds: {e}'
             )
 
-        # TODO: rasterization
+        # rasterization using rasterio. We have to conduct it for each feature separately
         # https://gis.stackexchange.com/questions/151339/rasterize-a-shapefile-with-geopandas-or-fiona-python
-        try:
-            shapes = in_gdf_clipped.to_json()
-            burned = features.rasterize(
-                shapes=shapes,
-                out_shape=snap_shape,
-                transform=snap_affine,
-                all_touched=True
+        for feature in feature_selection:
+            try:
+                # infer the datatype (i.e., try if it is possible to cast the
+                # attribute to float32, otherwise do not process the feature)
+                try:
+                    in_gdf_clipped[feature].astype(default_float_type)
+                except ValueError as e:
+                    logger.warn(f'Skipped feature "{feature}": {e}')
+                    continue
+
+                shapes = (
+                    (geom,value) for geom, value in zip(
+                        in_gdf_clipped.geometry,
+                        in_gdf_clipped[feature].astype(default_float_type)
+                    )
+                )
+                rasterized = features.rasterize(
+                    shapes=shapes,
+                    out_shape=snap_shape,
+                    transform=snap_affine,
+                    all_touched=True,
+                    fill=blackfill_value
+                )
+            except Exception as e:
+                raise Exception(
+                    f'Could not rasterize feature "{feature}" from {in_file_vector}: {e}'
+                )
+            # add band to handler
+            self.add_band(
+                band_name=feature,
+                band_data=rasterized
             )
-        except Exception as e:
-            pass
 
 
     @check_band_names
