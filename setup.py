@@ -46,6 +46,7 @@ setuptools.setup(
                       'geoalchemy2',
                       'opencv-python',
                       'requests',
-                      'xarray'
+                      'xarray',
+                      'rtree'
                       ]
 )
