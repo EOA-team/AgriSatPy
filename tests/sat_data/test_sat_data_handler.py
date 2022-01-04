@@ -6,6 +6,26 @@ from agrisatpy.io import SatDataHandler
 from agrisatpy.utils.exceptions import InputError, BandNotFoundError
 
 
+def test_add_band_from_shp(datadir, get_bandstack, get_polygons):
+    """tests adding a band from a shapefile (rasterization)"""
+
+    fname_bandstack = get_bandstack()
+    fname_polygons = get_polygons()
+
+    handler = SatDataHandler()
+
+    # read data for field parcels, only (masked array)
+    handler.read_from_bandstack(
+        fname_bandstack=fname_bandstack,
+        in_file_aoi=fname_polygons
+    )
+
+    handler.add_bands_from_vector(
+        in_file_vector=fname_polygons,
+        snap_band='B02'
+    )
+    
+
 def test_conversion_to_gpd(datadir, get_bandstack, get_polygons):
     """tests the conversion of raster band data to a geopandas GeoDataFrame"""
 
@@ -80,7 +100,7 @@ def test_conversion_to_gpd(datadir, get_bandstack, get_polygons):
 
     assert not (gdf.geometry.x == gdf2.geometry.x).any(), 'x coordinates not shifted'
     assert not (gdf.geometry.y == gdf2.geometry.y).any(), 'y coordinates not shifted'
-
+    assert (gdf['B02'] == gdf['B02']).all(), 'band values distorted'
 
 
 def test_read_from_bandstack_with_mask(datadir, get_bandstack, get_polygons):
