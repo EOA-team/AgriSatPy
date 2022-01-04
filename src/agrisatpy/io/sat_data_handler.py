@@ -45,6 +45,7 @@ from copy import deepcopy
 from collections import namedtuple
 from numbers import Number
 from xarray import DataArray
+from shapely.geometry import Point
 
 from agrisatpy.analysis.vegetation_indices import VegetationIndices
 from agrisatpy.utils.exceptions import NotProjectedError
@@ -202,6 +203,7 @@ class SatDataHandler(object):
             other_band = self.get_bandnames()[0]
             # to be sure, check array shapes
             if not self.get_band(other_band).shape == band_data.shape:
+                self.drop_band(band_name)
                 raise InputError(
                     f'The shape of the band to add ({band_data.shape}) does not '\
                     f'match the reference ({self.get_band(other_band).shape})')
@@ -271,7 +273,11 @@ class SatDataHandler(object):
         stack_bands = [self.get_band(x) for x in band_names]
 
         # stack arrays along first axis
-        return np.stack(stack_bands, axis=0)
+        # we need np.ma in case the array is a masked array
+        if isinstance(stack_bands[0], np.ma.MaskedArray):
+            return np.ma.stack(stack_bands, axis=0)
+        else:
+            return np.stack(stack_bands, axis=0)
 
 
     @check_band_names
@@ -1800,15 +1806,22 @@ class SatDataHandler(object):
                 dst.write(band_data, idx+1)
 
 
-    def check_is_bandstack(self) -> bool:
+    def check_is_bandstack(
+            self,
+            band_selection: Optional[List[str]] = None
+        ) -> bool:
         """
         Helper function that checks if a SatDataHandler object fulfills
-        the ``from_bandstack()`` criteria.
+        the ``from_bandstack()`` criteria. Optionally, the check can be carried
+        out for a selected subset of bands.
 
         These criteria are:
             - all bands have the same CRS
             - all bands have the same x and y dimension (number of rows and columns)
 
+        :param band_selection:
+            if not None, checks only a list of selected bands. By default,
+            all bands of the current object are checked.
         :return:
             True if the current object fulfills the criteria else False.
         """
@@ -1818,7 +1831,13 @@ class SatDataHandler(object):
         xdim_list = []
         ydim_list = []
 
-        for band_name in self.get_bandnames():
+        if band_selection is None:
+            band_selection = self.get_bandnames()
+        else:
+            if not all(elem in self.get_bandnames() for elem in band_selection):
+                raise BandNotFoundError(f'Invalid selection of bands')
+
+        for band_name in band_selection:
             crs_list.append(self.get_epsg(band_name))
             xdim_list.append(self.get_band_shape(band_name).ncols)
             ydim_list.append(self.get_band_shape(band_name).nrows)
@@ -1898,28 +1917,24 @@ class SatDataHandler(object):
     def to_dataframe(
             self,
             band_names: Optional[List[str]] = None,
-            pixels_as_polygons: Optional[bool] = False,
             pixel_coordinates_centered: Optional[bool] = False
         ) -> gpd.GeoDataFrame:
         """"
         Converts all or selected number of bands to a geopandas geodataframe.
         The resulting dataframe has as many rows as pixels in the current handler object
         and as many columns as bands plus a column denoting the pixel geometries.
-        The spatial resolution of the bands can differ as long as the bands share a
-        common grid system with same origin.
+        The spatial resolution of the bands selected must be the same as well as their
+        spatial extent.
 
         NOTE:
-            If the band data is a masked array, ignores masked pixels.
+            If the band data is a masked array, masked pixels are **not** written to the
+            resulting ``GeoDataFrame``.
 
         The pixel geometries are returned either as shapely points or polygons.
 
         :param band_names:
             optional subset of bands for which to extract pixel values. Per
             default all bands are converted.
-        :param pixels_as_polygons:
-            if False (default) pixels are modeled as point-like spatial objects.
-            If true, pixels are treated as polygons with four coordinates (top, left,
-            bottom, right).
         :param pixel_coordinates_centered:
             if False the GDAL default is used an the upper left pixel corner is returned
             for point-like objects. If True the pixel center is used instead. This
@@ -1933,53 +1948,62 @@ class SatDataHandler(object):
             band_names = self.get_bandnames()
 
         if band_names is None or len(band_names) == 0:
-            raise BandNotFoundError(f'Invalid band selection or no bands read')
-
-        # if polygons shall be returned, uses GDAL pixel coordinate convention
-        if pixels_as_polygons:
-            pixel_coordinates_centered = False
+            raise BandNotFoundError(
+                f'Invalid band selection or no bands available'
+            )
 
         # two cases are possible: the data fulfills the bandstack criteria or not
         # if bandstacked, we can convert the data in a single rush
-        if self.check_is_bandstack():
-            # get coordinates of the first band in flattened format
-            coords = self._flatten_coordinates(
-                band_name=self.get_bandnames()[0],
-                pixel_coordinates_centered=pixel_coordinates_centered
+        if not self.check_is_bandstack(band_selection=band_names):
+            raise InputError(
+                'Bands selected for conversion to geodataframe must have same spatial extent'
             )
-            # get image bands and reshape them from 3d to 2d
-            stack_array = self.get_bands(band_names)
-            new_shape = (stack_array.shape[0], stack_array.shape[1]*stack_array.shape[2])
-            flattened = stack_array.reshape(new_shape, order='F')
-
-            # if the band is a masked array, compress it
-            if isinstance(stack_array, np.ma.MaskedArray):
-                # compress array (removes masked values)
-                flattened = flattened.compressed()
-                # and stack back to 2d array
-                flattened = np.stack(flattened)
-            
-            
-
-        # otherwise we have to loop over the bands because they differ in shape
-        # and do the conversion for all bands sharing the same shape
-        else:
-            
-            # loop over bands and extract the band values alongside with the coordinates
-            for band_name in band_names:
-                # get band coordinates in flattened format
-                coords = flatten_coordinates(
-                    handler=self,
-                    band_name=band_name,
-                    pixel_coordinates_centered=pixel_coordinates_centered
-                )
-                # extract band values; masked pixels are ignored
-                band_data = deepcopy(self.get_band(band_name))
-                columns = [band_name, coords.keys()[0], coords.keys()[1]]
-                if isinstance(band_name, np.ndarray):
-                    # flatten band values from 2d to 1d along columns (order=F(ortran))
-                    flattened = band_data.reshape(-1, order='F')
-
-
-
         
+        # get coordinates of the first band in flattened format
+        coords = self._flatten_coordinates(
+            band_name=self.get_bandnames()[0],
+            pixel_coordinates_centered=pixel_coordinates_centered
+        )
+        # get EPSG code
+        epsg = self.get_epsg()
+
+        # get image bands and reshape them from 3d to 2d
+        stack_array = self.get_bands(band_names)
+        new_shape = (stack_array.shape[0], stack_array.shape[1]*stack_array.shape[2])
+
+        # if the band is a masked array, we need numpy.ma functions
+        if isinstance(stack_array, np.ma.MaskedArray):
+            flattened = np.ma.reshape(stack_array, new_shape, order='F')
+            # save mask to array
+            mask = flattened[0,:].mask
+            # compress array (removes masked values) along the bands
+            flattened = [f.compressed() for f in flattened]
+            # mask band coordinates
+            for coord in coords:
+                coord_masked = np.ma.MaskedArray(data=coords[coord], mask=mask)
+                coord_compressed = coord_masked.compressed()
+                coords.update(
+                    {
+                        coord: coord_compressed
+                    }
+                )
+
+        # otherwise we can use numpy ndarray's functions
+        else:
+            flattened = np.reshape(flattened, new_shape, order='F')
+
+        # convert the coordinates to shapely geometries
+        coordinate_geoms = [Point(c[0], c[1]) for c in list(zip(coords['x'], coords['y']))]
+        # call the GeoDataFrame constructor
+        gdf = gpd.GeoDataFrame(geometry=coordinate_geoms, crs=epsg)
+
+        # add band data
+        gdf[band_names] = None
+        if isinstance(flattened, list):
+            for idx, band_name in enumerate(band_names):
+                gdf[band_name] = flattened[idx]
+        else:
+            for idx, band_name in enumerate(band_names):
+                gdf[band_name] = flattened[idx,:]
+
+        return gdf
