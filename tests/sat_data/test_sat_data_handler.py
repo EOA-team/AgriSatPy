@@ -1,8 +1,86 @@
 import pytest
 import numpy as np
 
+
 from agrisatpy.io import SatDataHandler
 from agrisatpy.utils.exceptions import InputError, BandNotFoundError
+
+
+def test_conversion_to_gpd(datadir, get_bandstack, get_polygons):
+    """tests the conversion of raster band data to a geopandas GeoDataFrame"""
+
+    # test from bandstack with multiple bands masked to the extent of polygons
+    # spatial resolutions are all the same
+    fname_bandstack = get_bandstack()
+    fname_polygons = get_polygons()
+
+    handler = SatDataHandler()
+
+    # read data for field parcels, only (masked array)
+    handler.read_from_bandstack(
+        fname_bandstack=fname_bandstack,
+        in_file_aoi=fname_polygons
+    )
+
+    # conversion using the default settings
+    gdf = handler.to_dataframe()
+
+    assert gdf.crs == 32632, 'geodataframe has wrong CRS'
+    assert gdf.shape[1] == 11, 'geodataframe has wrong number of bands'
+    assert gdf.shape[0] == 29674, 'geodataframe has wrong number of pixels'
+    assert (gdf.geom_type == 'Point').all(), 'geodataframe is not of type Point geometry'
+    assert 'geometry' in gdf.columns, 'no geometry column found'
+    assert gdf.dtypes['geometry'] == 'geometry', 'geometry column has no proper geom datatpye'
+    assert all(elem in gdf.columns for elem in handler.get_bandnames()), 'band names not passed'
+    assert all(gdf.dtypes[handler.get_bandnames()] == 'uint16'), 'band data has wrong datatype'
+
+    # conversion using only one band
+    gdf2 = handler.to_dataframe(band_names=['B02'])
+
+    assert gdf2.shape[1] == 2, 'too many columns'
+    assert gdf2.shape[0] == 29674, 'geodataframe has wrong number of pixels'
+    assert 'B02' in gdf2.columns, 'selected band name not used as column name'
+    assert all(gdf['B02'] == gdf2['B02']), 'band data not inserted correctly into geodataframe'
+
+    # conversion using two bands
+    gdf3 = handler.to_dataframe(band_names=['B03','B02'])
+
+    assert gdf3.shape[1] == 3, 'too many columns'
+    assert gdf3.shape[0] == 29674, 'geodataframe has wrong number of pixels'
+    assert all(gdf['B02'] == gdf3['B02']), 'band data not inserted correctly into geodataframe'
+    assert all(gdf['B03'] == gdf3['B03']), 'band data not inserted correctly into geodataframe'
+
+    # read data for entire area of interest (will result in np.ndarrays instead of np.ma.MaskedArray)
+    handler = SatDataHandler()
+
+    # read data for field parcels, only (masked array)
+    handler.read_from_bandstack(
+        fname_bandstack=fname_bandstack,
+        in_file_aoi=fname_polygons,
+        full_bounding_box_only=True
+    )
+
+    gdf = handler.to_dataframe()
+
+    band_shape = handler.get_band_shape('B02')
+    num_pixels = band_shape.nrows * band_shape.ncols
+    assert gdf.shape[0] == num_pixels, 'wrong number of pixels in dataframe'
+    assert gdf.shape[1] == 11, 'wrong number of columns in dataframe'
+
+    # check coordinates
+    band_coords = handler.get_coordinates('B02', shift_to_center=False)
+    assert (band_coords['x'] == gdf.geometry.x.unique()).all(), 'x coordinates distorted in dataframe'
+    assert (band_coords['y'] == gdf.geometry.y.unique()).all(), 'y coordinates distored in dataframe'
+
+    # shift pixel coordinates to center and check again
+    gdf2 = handler.to_dataframe(band_names=['B02'], pixel_coordinates_centered=True)
+    band_coords = handler.get_coordinates('B02', shift_to_center=True)
+    assert (band_coords['x'] == gdf2.geometry.x.unique()).all(), 'x coordinates distorted in dataframe'
+    assert (band_coords['y'] == gdf2.geometry.y.unique()).all(), 'y coordinates distored in dataframe'
+
+    assert not (gdf.geometry.x == gdf2.geometry.x).any(), 'x coordinates not shifted'
+    assert not (gdf.geometry.y == gdf2.geometry.y).any(), 'y coordinates not shifted'
+
 
 
 def test_read_from_bandstack_with_mask(datadir, get_bandstack, get_polygons):
@@ -19,7 +97,7 @@ def test_read_from_bandstack_with_mask(datadir, get_bandstack, get_polygons):
         in_file_aoi=fname_polygons
     )
 
-    assert handler.check_is_bandstack() == True, 'not recognized as bandstack although data should'
+    assert handler.check_is_bandstack(), 'not recognized as bandstack although data should'
     assert isinstance(handler.get_band('B02'), np.ma.core.MaskedArray), 'band data was not masked'
     assert len(handler.get_bandnames()) == 10, 'wrong number of bands'
     assert len(handler.get_bandaliases()) == 0, 'band aliases available although they should not'
@@ -51,7 +129,7 @@ def test_read_from_bandstack_with_mask(datadir, get_bandstack, get_polygons):
     assert handler.get_meta()['count'] == 10, 'mismatch in number of bands'
 
     # check attributes
-    assert len(handler.get_attrs()['nodata']) == 10, 'attributes not set correctly'
+    assert len(handler.get_attrs()['nodatavals']) == 10, 'attributes not set correctly'
 
     # check conversion to xarray dataset. The masked integer array should be converted to float
     # and masked pixels be set to NaN
