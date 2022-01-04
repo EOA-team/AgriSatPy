@@ -27,6 +27,7 @@ from rasterio.drivers import driver_from_extension
 from rasterio.crs import CRS
 from rasterio.enums import Resampling
 from rasterio.warp import transform_bounds
+from rasterio import features
 from shapely.geometry import box
 from shapely.geometry import Polygon
 from pathlib import Path
@@ -48,7 +49,7 @@ from xarray import DataArray
 from shapely.geometry import Point
 
 from agrisatpy.analysis.vegetation_indices import VegetationIndices
-from agrisatpy.utils.exceptions import NotProjectedError
+from agrisatpy.utils.exceptions import NotProjectedError, DataExtractionError
 from agrisatpy.utils.exceptions import InputError
 from agrisatpy.utils.exceptions import ReprojectionError
 from agrisatpy.utils.exceptions import ResamplingFailedError
@@ -62,6 +63,7 @@ from agrisatpy.utils.decorators import check_band_names
 from agrisatpy.utils.decorators import check_metadata
 from agrisatpy.utils.constants import ProcessingLevels
 from agrisatpy.io.utils.raster import get_raster_attributes
+from geojson import feature
 
 
 class SceneProperties(object):
@@ -222,6 +224,82 @@ class SatDataHandler(object):
                             attr: updated_attr
                         }
                     )
+
+
+    def add_bands_from_vector(
+            self,
+            in_file_vector: Path,
+            snap_band: str,
+            feature_selection: Optional[List[str]] = None
+        ) -> None:
+        """
+        Adds data from a vector (e.g., ESRI shapefile) file by rasterizing it and
+        adding it attributes (or a selection thereof) as band entries into the
+        current ``SatDataHandler`` object.
+        """
+
+        # get snap raster transformation first
+        snap_affine = self.get_meta(snap_band)['transform']
+        snap_shape = self.get_band_shape(snap_band)
+        snap_shape = (snap_shape.nrows, snap_shape.ncols)
+
+        # check input vector file
+        if not in_file_vector.exists():
+            raise FileNotFoundError(f'Could not find {in_file_vector}')
+
+        # read vector data into a GeoDataFrame
+        try:
+            in_gdf = gpd.read_file(in_file_vector)
+        except Exception as e:
+            raise Exception from e
+
+        # check feature selection (if provided), otherwise use all attributes (columns)
+        # of the dataframe
+        if feature_selection is not None:
+            if not all(elem in in_gdf.columns for elem in feature_selection):
+                raise AttributeError(
+                    f'Some/ all of the passed attributes not found in {in_file_vector}'
+                )
+        else:
+            feature_selection = list(in_gdf.columns)
+            # remove the geometry attribute from the feature selection list
+            feature_selection.remove('geometry')
+
+        # check spatial coordinate system (CRS) of the GeoDataFrame and transform
+        # it, if necessary, to the CRS of the current SatDataHandler
+        in_epsg = in_gdf.crs
+        if in_epsg != self.get_epsg(snap_band):
+            try:
+                in_gdf.to_crs(self.get_epsg(snap_band), inplace=True)
+            except Exception as e:
+                raise Exception(
+                    f'Reprojection of input vector features failed: {e}'
+                )
+
+        # clip the input to the bounds of the snap band
+        snap_bounds = self.get_bounds(snap_band, return_as_polygon=True)
+        try:
+            in_gdf_clipped = gpd.clip(
+                gdf=in_gdf,
+                mask=snap_bounds
+            )
+        except Exception as e:
+            raise DataExtractionError(
+                f'Could not clip input vector features to snap raster bounds: {e}'
+            )
+
+        # TODO: rasterization
+        # https://gis.stackexchange.com/questions/151339/rasterize-a-shapefile-with-geopandas-or-fiona-python
+        try:
+            shapes = in_gdf_clipped.to_json()
+            burned = features.rasterize(
+                shapes=shapes,
+                out_shape=snap_shape,
+                transform=snap_affine,
+                all_touched=True
+            )
+        except Exception as e:
+            pass
 
 
     @check_band_names
