@@ -34,7 +34,6 @@ from pathlib import Path
 from typing import Optional
 from typing import List
 from typing import Union
-from typing import Tuple
 from typing import NamedTuple
 from typing import Dict
 from typing import Any
@@ -151,7 +150,7 @@ class SatDataHandler(object):
             band_name: str,
             band_data: np.array,
             band_alias: Optional[str] = None
-        ):
+        ) -> None:
         """
         Adds a band to an existing band dict instance. Band name and band
         alias (if provided) must be unique!
@@ -233,21 +232,37 @@ class SatDataHandler(object):
             self,
             in_file_vector: Path,
             snap_band: str,
-            feature_selection: Optional[List[str]] = None,
+            attribute_selection: Optional[List[str]] = None,
             blackfill_value: Optional[Union[int, float]] = None,
             default_float_type: Optional[str] = 'float32'
         ) -> None:
         """
         Adds data from a vector (e.g., ESRI shapefile) file by rasterizing it and
-        adding it attributes (or a selection thereof) as band entries into the
+        adding its attributes (or a selection thereof) as band entries into the
         current ``SatDataHandler`` object.
     
         NOTE:
-            Vector attributes must be of type (u)int8 to (u)int32 or float32/ float64.
-            Since `geopandas` unfortunately handles all vector attributes as object
-            datypes, it is necessary to infer the datatype. To avoid data losses, the
-            method tries to cast all numeric attributes to float32 (default). If higher
-            precision is required 'float64' can be used instead.
+            Vector attributes **must** support type casting to float, i.e., they must
+            be numeric. Since `geopandas` unfortunately handles all vector attributes 
+            as object data types, the method tries to cast all numeric attributes
+            to `float32` (default) or `float64` to avoid loss of precision.
+
+        :param in_file_vector:
+            any vector file format supported by `fiona` containing one to many
+            features with one to many (numerical) attributes
+        :param snap_band:
+            band in the current `SatDataHandler` instance to use for aligning the
+            rasterized vector features into the band stack.
+        :param attribute_selection:
+            selection of vector features' attributes to rasterize and add as new
+            bands (each attribute is added as new band). If None (default) uses
+            all available attributes. Attributes that cannot be casted to float
+            are skipped and a warning is logged.
+        :param blackfill_value:
+            if None infers the blackfill value (no data value) from the image
+            metadata of the `snap_band`.
+        :param default_float_type:
+            must be either `float32` (default) or `float64`
         """
 
         # get snap raster transformation first
@@ -280,15 +295,15 @@ class SatDataHandler(object):
 
         # check feature selection (if provided), otherwise use all attributes (columns)
         # of the dataframe
-        if feature_selection is not None:
-            if not all(elem in in_gdf.columns for elem in feature_selection):
+        if attribute_selection is not None:
+            if not all(elem in in_gdf.columns for elem in attribute_selection):
                 raise AttributeError(
                     f'Some/ all of the passed attributes not found in {in_file_vector}'
                 )
         else:
-            feature_selection = list(in_gdf.columns)
+            attribute_selection = list(in_gdf.columns)
             # remove the geometry attribute from the feature selection list
-            feature_selection.remove('geometry')
+            attribute_selection.remove('geometry')
 
         # check spatial coordinate system (CRS) of the GeoDataFrame and transform
         # it, if necessary, to the CRS of the current SatDataHandler
@@ -313,22 +328,28 @@ class SatDataHandler(object):
                 f'Could not clip input vector features to snap raster bounds: {e}'
             )
 
-        # rasterization using rasterio. We have to conduct it for each feature separately
+        # make sure there are still features left
+        if in_gdf_clipped.empty:
+            raise DataExtractionError(
+                f'Seems there are no features to rasterize from {in_file_vector}'
+            )
+
+        # rasterization using rasterio. We have to conduct it for each attribute separately
         # https://gis.stackexchange.com/questions/151339/rasterize-a-shapefile-with-geopandas-or-fiona-python
-        for feature in feature_selection:
+        for attribute in attribute_selection:
             try:
                 # infer the datatype (i.e., try if it is possible to cast the
                 # attribute to float32, otherwise do not process the feature)
                 try:
-                    in_gdf_clipped[feature].astype(default_float_type)
+                    in_gdf_clipped[attribute].astype(default_float_type)
                 except ValueError as e:
-                    logger.warn(f'Skipped feature "{feature}": {e}')
+                    logger.warn(f'Skipped feature "{attribute}": {e}')
                     continue
 
                 shapes = (
                     (geom,value) for geom, value in zip(
                         in_gdf_clipped.geometry,
-                        in_gdf_clipped[feature].astype(default_float_type)
+                        in_gdf_clipped[attribute].astype(default_float_type)
                     )
                 )
                 rasterized = features.rasterize(
@@ -336,15 +357,16 @@ class SatDataHandler(object):
                     out_shape=snap_shape,
                     transform=snap_affine,
                     all_touched=True,
-                    fill=blackfill_value
+                    fill=blackfill_value,
+                    dtype=default_float_type
                 )
             except Exception as e:
                 raise Exception(
-                    f'Could not rasterize feature "{feature}" from {in_file_vector}: {e}'
+                    f'Could not rasterize attribute "{attribute}" from {in_file_vector}: {e}'
                 )
             # add band to handler
             self.add_band(
-                band_name=feature,
+                band_name=attribute,
                 band_data=rasterized
             )
 
@@ -589,7 +611,7 @@ class SatDataHandler(object):
     def get_meta(
             self,
             band_name: Optional[str] = None
-        ) -> dict:
+        ) -> Dict[str, Any]:
         """
         Returns the image metadata for all bands or a selected band
 
@@ -617,7 +639,7 @@ class SatDataHandler(object):
     def get_attrs(
             self,
             band_name: Optional[str] = None
-        ) -> dict:
+        ) -> Dict[str, Any]:
         """
         Returns the image attributes retrieved from GDAL datasets
 
@@ -805,7 +827,7 @@ class SatDataHandler(object):
             metadata_key: str,
             metadata_values: dict,
             band_name: Optional[str],
-        ):
+        ) -> None:
         """
         Backend method called by set_meta, set_bounds and set_attr
         """
