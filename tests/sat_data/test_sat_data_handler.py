@@ -1,25 +1,25 @@
 import pytest
 import numpy as np
-
+import geopandas as gpd
 
 from agrisatpy.io import SatDataHandler
-from agrisatpy.utils.exceptions import InputError, BandNotFoundError
+from agrisatpy.utils.exceptions import InputError
+from agrisatpy.utils.exceptions import BandNotFoundError
+from agrisatpy.utils.exceptions import DataExtractionError
 
 
-def test_add_band_from_shp(datadir, get_bandstack, get_polygons):
+def test_add_band_from_shp(datadir, get_bandstack, get_polygons, get_polygons_2):
     """tests adding a band from a shapefile (rasterization)"""
 
     fname_bandstack = get_bandstack()
     fname_polygons = get_polygons()
 
     handler = SatDataHandler()
-
     # read data for field parcels, only (masked array)
     handler.read_from_bandstack(
         fname_bandstack=fname_bandstack,
         in_file_aoi=fname_polygons
     )
-
     handler.add_bands_from_vector(
         in_file_vector=fname_polygons,
         snap_band='B02'
@@ -28,6 +28,127 @@ def test_add_band_from_shp(datadir, get_bandstack, get_polygons):
     assert len(handler.get_bandnames()) == 12, 'wrong number of bands'
     assert 'GIS_ID' in handler.get_bandnames(), 'band GIS_ID not rasterized from vector file'
     assert 'NUTZUNGSCO' in handler.get_bandnames(), 'band NUTZUNGSCO not rasterized from vector file'
+    assert 'NUTZUNG' not in handler.get_bandnames(), 'character attribute NUTZUNG rasterized'
+
+    # make sure rasterized matches snap band exactly
+    gis_id1 = handler.get_band('GIS_ID')
+    assert np.count_nonzero(~np.isnan(gis_id1)) > 0, 'band contains Nodata, only'
+    snap_band = handler.get_band('B02')
+    # the number of nodata pixels must be the same
+    snap_band_compressed_shape = snap_band.compressed().shape[0]
+    assert np.count_nonzero(~np.isnan(gis_id1)) == snap_band_compressed_shape, 'band contains wrong number of pixels'
+
+    # read data using entire AOI extent
+    handler = SatDataHandler()
+    # read data for field parcels, only (masked array)
+    handler.read_from_bandstack(
+        fname_bandstack=fname_bandstack,
+        in_file_aoi=fname_polygons,
+        full_bounding_box_only=True
+    )
+    handler.add_bands_from_vector(
+        in_file_vector=fname_polygons,
+        snap_band='B02'
+    )
+
+    assert len(handler.get_bandnames()) == 12, 'wrong number of bands'
+    assert 'GIS_ID' in handler.get_bandnames(), 'band GIS_ID not rasterized from vector file'
+    assert 'NUTZUNGSCO' in handler.get_bandnames(), 'band NUTZUNGSCO not rasterized from vector file'
+    assert 'NUTZUNG' not in handler.get_bandnames(), 'character attribute NUTZUNG rasterized'
+
+    # make sure the rasterized band is still the same as before (minor difference occure because
+    # of the masking algorithm)
+    gis_id2 = handler.get_band('GIS_ID')
+    assert np.count_nonzero(~np.isnan(gis_id2)) > 0, 'band contains Nodata, only'
+    assert np.count_nonzero(gis_id1 == gis_id2) == snap_band_compressed_shape, 'rasterized band differs although it should not'
+    snap_band = handler.get_band('B02')
+    # now the number of npdata pixels must differ
+    assert np.count_nonzero(~np.isnan(gis_id2)) < snap_band.compressed().shape[0]
+
+    # test conversion to dataframe
+    gdf = handler.to_dataframe()
+    assert gdf.GIS_ID.dtype == 'float32', 'wrong float data type'
+
+    # test conversion to xarray
+    xds = handler.to_xarray()
+    assert xds.GIS_ID.data.dtype == 'float32', 'wrong float data type'
+
+    # try non-existing snap band -> must fail
+    handler = SatDataHandler()
+    # read data for field parcels, only (masked array)
+    handler.read_from_bandstack(
+        fname_bandstack=fname_bandstack,
+        in_file_aoi=fname_polygons,
+        full_bounding_box_only=True
+    )
+    with pytest.raises(BandNotFoundError):
+        handler.add_bands_from_vector(
+            in_file_vector=fname_polygons,
+            snap_band='blue'
+        )
+
+    # try unsupported data type -> must fail
+    with pytest.raises(ValueError):
+        handler.add_bands_from_vector(
+            in_file_vector=fname_polygons,
+            snap_band='B02',
+            default_float_type='uint16'
+        )
+
+    # set another blackfill (i.e., no data) value
+    handler.add_bands_from_vector(
+            in_file_vector=fname_polygons,
+            snap_band='B02',
+            blackfill_value=-99999.
+    )
+
+    gis_id = handler.get_band('GIS_ID')
+    assert np.count_nonzero(gis_id != -99999.) == snap_band_compressed_shape, 'blackfill value not set to all no data pixels'
+    assert np.count_nonzero(gis_id == np.nan) == 0, 'np.nans encounter although they should be set to user-defined value'
+
+    # try with different attribute selections
+    handler.drop_band('GIS_ID')
+    handler.drop_band('NUTZUNGSCO')
+
+    handler.add_bands_from_vector(
+        in_file_vector=fname_polygons,
+        snap_band='B02',
+        attribute_selection=['GIS_ID']
+    )
+    assert 'GIS_ID' in handler.get_bandnames(), 'attribute not rasterized and added'
+    assert 'NUTZUNGSCO' not in handler.get_bandnames(), 'attribute rasterized although not selected'
+
+    # invalid attribute selection
+    with pytest.raises(AttributeError):
+        handler.add_bands_from_vector(
+            in_file_vector=fname_polygons,
+            snap_band='B02',
+            attribute_selection=['foo']
+        )
+
+    # try with vector features in different CRS
+    gpd_test = gpd.read_file(fname_polygons)
+    gpd_test.to_crs(4326, inplace=True)
+    fname_polygons_wgs84 = datadir.joinpath('polygons_wgs84.shp')
+    gpd_test.to_file(fname_polygons_wgs84)
+
+    handler.add_bands_from_vector(
+        in_file_vector=fname_polygons_wgs84,
+        snap_band='B02',
+        attribute_selection=['NUTZUNGSCO']
+    )
+    assert 'NUTZUNGSCO' in handler.get_bandnames(), 'attribute not rasterized and added'
+    nutzungsco = handler.get_band('NUTZUNGSCO')
+    assert np.count_nonzero(~np.isnan(nutzungsco)) == snap_band_compressed_shape, 'band contains wrong number of pixels'
+    assert handler.get_epsg('NUTZUNGSCO') == 32632, 'wrong EPSG code'
+
+    # try with vector features not overlapping the image data
+    fname_polygons_outside = get_polygons_2()
+    with pytest.raises(DataExtractionError):
+        handler.add_bands_from_vector(
+            in_file_vector=fname_polygons_outside,
+            snap_band='B02'
+        )
 
 
 def test_conversion_to_gpd(datadir, get_bandstack, get_polygons):
