@@ -8,6 +8,55 @@ from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.utils.exceptions import DataExtractionError
 
 
+def test_read_pixels(datadir, get_bandstack, get_points, get_polygons):
+    """tests reading pixel values from bandstack at point locations"""
+
+    fname_bandstack = get_bandstack()
+    fname_points = get_points()
+
+    # pixel reading refers to a classmethod, therefore no constructor call is required
+    gdf = SatDataHandler.read_pixels(
+        point_features=fname_points,
+        raster=fname_bandstack
+    )
+
+    assert len(gdf.columns) == 12, 'wrong number of columns in dataframe'
+    assert not gdf.empty, 'no pixels were read'
+    assert isinstance(gdf, gpd.GeoDataFrame), 'not a geodataframe'
+    assert 'B02' in gdf.columns, 'band not found'
+    assert not (gdf['B02'].isna()).any(), 'nans encountered'
+    assert gdf.crs == 32632, 'wrong EPSG code'
+
+    # read only a subset of bands
+    gdf2 = SatDataHandler.read_pixels(
+        point_features=fname_points,
+        raster=fname_bandstack,
+        band_selection=['B03','B11']
+    )
+
+    assert len(gdf2.columns) == 4, 'wrong number of columns in dataframe'
+    assert not gdf2.empty, 'no pixels were read'
+    assert 'B02' not in gdf2.columns, 'band found although it was not selected for extraction'
+    assert not (gdf2['B03'].isna()).any(), 'nans encountered'
+    assert gdf2.crs == gdf.crs, 'wrong EPSG code'
+    assert (gdf['B03'] == gdf2['B03']).all(), 'band data not the same'
+    assert (gdf['B11'] == gdf2['B11']).all(), 'band data not the same'
+
+    # try to read using wrong geometry type -> must fail
+    fname_polygons = get_polygons()
+    with pytest.raises(ValueError):
+        gdf = SatDataHandler.read_pixels(
+            point_features=fname_polygons,
+            raster=fname_bandstack,
+            band_selection=['B03','B11']
+        )
+
+    # TODO: points partly outside of raster
+
+    # TODO: points complete outside of raster
+
+
+
 def test_add_band_from_shp(datadir, get_bandstack, get_polygons, get_polygons_2):
     """tests adding a band from a shapefile (rasterization)"""
 

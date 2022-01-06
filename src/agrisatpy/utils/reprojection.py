@@ -8,55 +8,70 @@ import rasterio as rio
 import geopandas as gpd
 
 from rasterio import Affine
+from rasterio.crs import CRS
 from shapely.geometry import box
 from pathlib import Path
 from typing import Union
 from typing import Tuple
+from typing import Optional
 from geopandas import GeoDataFrame
+from agrisatpy.io.utils.geometry import read_geometries
 
 
 def check_aoi_geoms(
-        in_file_aoi: Path,
-        fname_sat: Path,
-        full_bounding_box_only: bool
+        in_dataset: Union[Path, gpd.GeoDataFrame],
+        full_bounding_box_only: bool,
+        fname_raster: Optional[Path] = None,
+        raster_crs: Optional[Union[int, CRS]] = None
     ) -> GeoDataFrame:
     """
-    Checks the provided AOI file. If necessary it reprojects
-    the vector data in the reference system of the satellite raster
+    Checks the provided vector file. If necessary it reprojects
+    the vector data in the reference system of the provided raster
     data. If the full bounding box shall be used (e.g., the hull
     encompassing all provided vector geometries) it only returns
-    this geometry.
+    this geometry (of type Polygon).
+
+    NOTE:
+        Does not check for spatial intersects, overlaps, etc.
 
     :param in_file_aoi:
         vector file (e.g., ESRI shapefile or geojson) defining geometry/ies
-        (polygon(s)) for which to extract the Sentinel-2 data. Can contain
-        one to many features.
-    :param fname_sat:
-        raster file with satellite data
+        for which to extract raster data.
+    :param fname_raster:
+        raster file to which to map the vector features. Can be ignored if
+        a ``raster_crs`` is available
     :param full_bounding_box_only:
         if set to False, will only extract the data for those geometry/ies
         defined in in_file_aoi. If set to False, returns the data for the
         full extent (hull) of all features (geometries) in in_file_aoi.
+    :param raster_crs:
+        spatial reference system of the raster as EPSG code or ``CRS`` object.
+        Can be ignored if ``fname_sat`` is available.
     :return:
         GeoDataFrame with one up to many vector geometries
     """
     
-    # check for vector file defining AOI
-    # read AOI into a geodataframe
-    gdf_aoi = gpd.read_file(in_file_aoi)
+    # check for vector features defining AOI
+    gdf = read_geometries(in_dataset)
+
     # check if the spatial reference systems match
-    sat_crs = rio.open(fname_sat).crs
+    sat_crs = None
+    if fname_raster is not None:
+        sat_crs = rio.open(fname_raster).crs
+    if raster_crs is not None and sat_crs is None:
+        sat_crs = raster_crs
+    
     # reproject vector data if necessary
-    if gdf_aoi.crs != sat_crs:
-        gdf_aoi.to_crs(sat_crs, inplace=True)
+    if gdf.crs != sat_crs:
+        gdf.to_crs(sat_crs, inplace=True)
 
     # if the the entire bounding box shall be extracted
-    # we need the hull encompassing all geometries in gdf_aoi
+    # we need the hull encompassing all geometries in gdf
     if full_bounding_box_only:
-        bbox = box(*gdf_aoi.total_bounds)
-        gdf_aoi = gpd.GeoDataFrame(geometry=gpd.GeoSeries(bbox))
+        bbox = box(*gdf.total_bounds)
+        gdf= gpd.GeoDataFrame(geometry=gpd.GeoSeries(bbox))
 
-    return gdf_aoi
+    return gdf
 
 
 def reproject_raster_dataset(
@@ -73,6 +88,9 @@ def reproject_raster_dataset(
     :param kwargs:
         kwargs required by ``rasterio.warp.reproject``. See rasterio's docs
         for more information.
+    :return:
+        tuple containing the reprojected raster dataset (file-path or array)
+        and the ``Affine`` transformation parameters of the reprojected dataset
     """
 
     try:

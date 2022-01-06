@@ -30,8 +30,11 @@ from rasterio.crs import CRS
 from rasterio.enums import Resampling
 from rasterio.warp import transform_bounds
 from rasterio import features
+from shapely import geometry
 from shapely.geometry import box
 from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon
+from shapely.geometry import Point
 from pathlib import Path
 from typing import Optional
 from typing import List
@@ -64,7 +67,9 @@ from agrisatpy.utils.decorators import check_band_names
 from agrisatpy.utils.decorators import check_metadata
 from agrisatpy.utils.constants import ProcessingLevels
 from agrisatpy.io.utils.raster import get_raster_attributes
+from agrisatpy.io.utils.geometry import check_geometry_types
 from agrisatpy.config import get_settings
+from pickle import NONE
 
 
 logger = get_settings().logger
@@ -1724,64 +1729,87 @@ class SatDataHandler(object):
             self.data[band_to_mask][tmp == 0] = nodata_value
 
 
+    # TODO: infer blackfill value from raster attributes
+    # TODO: rename in_file_aoi to vector_features
     def read_from_bandstack(
             self,
             fname_bandstack: Path,
-            in_file_aoi: Optional[Path] = None,
+            in_file_aoi: Optional[Union[Path, gpd.GeoDataFrame]] = None,
             full_bounding_box_only: Optional[bool] = False,
             blackfill_value: Optional[Union[int,float]] = 0,
             band_selection: Optional[List[str]] = [],
             parse_attr: Optional[bool] = True
         ) -> None:
         """
-        Reads spectral bands from a band-stacked geoTiff file
-        using the band description to extract the required spectral band
-        and store them in a dict with the required band names.
+        Reads raster bands from a single or multi-band, geo-referenced file. All
+        raster formats supported by ``GDAL`` can be read, however, we recommend to
+        use `geoTiff` or `JPEG2000`. The data can be read from a local file or
+        from a network resource (e.g., cloud-optimized geoTiff).
 
-        ATTENTION:
-            This method assumes that the band-stack was created in
-            the way `~agrisatpy.operational.resampling` does, i.e., assigning
-            a name to each band in the geoTiff stack.
+        The bands are into a ``numpy.ndarray`` or ``numpy.ma.MaskedArray``.
 
-        ATTENTION:
-            To map band names to color names it might be necessary
-            to implement this method in the inheriting classes. See
-            `~agrisatpy.utils.io.sentinel2` for an example how to override this
-            method
+        There are several options for reading:
 
-        The method populates the self.data attribute that is a
-        dictionary with the following items:
-            <name-of-the-band>: <np.array> denoting the spectral band data
-            <meta>:<rasterio meta> denoting the georeferencation
-            <bounds>: <BoundingBox> denoting the bounding box of the band data
+            - By passing a list of band names (`band_selection`) it is possible
+              to read a subset of bands, only
+            - By passing a file with vector geometries (e.g., ESRI shapefile or
+              any other file format understood by ``fiona``) it is possible to
+              read a spatial subset, only
+            - When reading a spatial subset there are two further options:
+                  a) shrinking the subset to the bounding box of the vector features
+                  b) shrinking the subset to the vector features, only. In this case,
+                     the band data is read ``np.ma.MaskedArray``
+
+        NOTE:
+            When reading a spatial subset (`in_file_aoi` provided) the vector features
+            must be a single geometry or a series of geometries of type ``Polygon`` or
+            ``MultiPolygon``! For reading single pixel values from a raster resource
+            refer to ``SatDataHandler.read_pixels()``.
 
         :param fname_bandstack:
-            file-path to the bandstacked geoTiff file to read.
+            file-path or URI to the single or multi-band raster file to read.
         :param in_file_aoi:
-            vector file (e.g., ESRI shapefile or geojson) defining geometry/ies
-            (polygon(s)) for which to extract the Sentinel-2 data. Can contain
-            one to many features.
+            vector file (e.g., ESRI shapefile or geojson) or ``GeoDataFrame``.
+            Can contain one to many features, which must of type ``Polygon`` or
+            ``MultiPolygon``. The spatial reference system of the features can differ
+            from those of the raster data as long as a transformation is defined for
+            re-projecting the vector features into the spatial reference system of
+            the raster data.
         :param full_bounding_box_only:
             if set to False, will only extract the data for those geometry/ies
             defined in in_file_aoi. If set to False, returns the data for the
             full extent (hull) of all features (geometries) in in_file_aoi.
         :param blackfill_value:
-            value indicating black fill. Set to zero by default.
+            value indicating black fill (=no data). Set to zero by default.
         :param band_selection:
-            list of bands to read. Per default all bands available are read.
+            list of bands to read. Per default all raster bands available are read.
         :param parse_attr:
             if True (default) parses additional image attributes that are immutable
             (i.e., not subject to reprojection, resampling) from the raster metadata.
+
+        Examples
+        --------
+        >>> from agrisatpy.io import SatDataHandler
+        >>> handler = SatDataHandler()
+        >>> handler.read_from_bandstack('example.tif', in_file_aoi='parcels_boundaries.shp', band_selection=['B1'])
         """
 
-        # check bounding box
+        # check vector features if provided
         masking = False
         if in_file_aoi is not None:
+
             masking = True
             gdf_aoi = check_aoi_geoms(
-                in_file_aoi=in_file_aoi,
-                fname_sat=fname_bandstack,
+                in_dataset=in_file_aoi,
+                fname_raster=fname_bandstack,
                 full_bounding_box_only=full_bounding_box_only
+            )
+
+            # check geometry types of the input features
+            allowed_geometry_types = ['Polygon', 'MultiPolygon']
+            check_geometry_types(
+                in_dataset=gdf_aoi,
+                allowed_geometry_types=allowed_geometry_types
             )
 
         # check band selection
@@ -1872,6 +1900,88 @@ class SatDataHandler(object):
             else:
                 self.set_attrs(attrs)
 
+
+    @classmethod
+    def read_pixels(
+            cls,
+            point_features: Union[Path, gpd.GeoDataFrame],
+            raster: Path,
+            band_selection: Optional[List[str]] = None
+        ) -> gpd.GeoDataFrame:
+        """
+        Extracts raster values at locations defined by one or many point-like
+        geometry features read from a vector file (e.g., ESRI shapefile). A point
+        is dimension-less, therefore, the raster grid cell (pixel) closest to the
+        point is returned if the point lies within the raster.
+
+        :param point_features:
+            vector file (e.g., ESRI shapefile or geojson) or ``GeoDataFrame``
+            defining point locations for which to extract pixel values
+        :param raster:
+            custom raster dataset understood by ``GDAL`` from which to extract
+            pixel values at the provided point locations
+        :param band_selection:
+            list of bands to read. Per default all raster bands available are read.
+        :return:
+            ``GeoDataFrame`` containing the extracted raster values. The band values
+            are appened as columns to the dataframe. Existing columns of the input
+            `in_file_pixels` are preserved.
+        """
+
+        # check input point features
+        gdf = check_aoi_geoms(
+            in_dataset=point_features,
+            fname_raster=raster,
+            full_bounding_box_only=False
+        )
+        allowed_geometry_types = ['Point']
+        check_geometry_types(
+            in_dataset=gdf,
+            allowed_geometry_types=allowed_geometry_types
+        )
+
+        # check band selection. If not provided, uses all available bands
+        band_selection_idx = None
+        band_names = list(rio.open(raster, 'r').descriptions)
+
+        if band_selection is not None:
+            band_selection_idx = [idx+1 for idx, val in enumerate(band_names) \
+                                  if val in band_selection]
+            if len(band_selection_idx) == 0:
+                raise BandNotFoundError(
+                    f'The band selection provided did not match any of ' \
+                    f'the band names in {raster}: {band_names}'
+                )
+        else:
+            band_selection = band_names
+                
+        # use rasterio.sample to extract the pixel values from the raster
+        # to do so, we need a list of coordinate tuples
+        coord_list = [(x,y) for x,y in zip(gdf['geometry'].x , gdf['geometry'].y)]
+        with rio.open(raster, 'r') as src:
+            try:
+                # yield all values from the generator
+                def _sample(src, coord_list, band_selection_idx):
+                    yield from src.sample(coord_list, band_selection_idx)
+                pixel_samples =list(_sample(src, coord_list, band_selection_idx))
+            except Exception as e:
+                raise Exception(f'Extraction of pixels from raster failed: {e}')
+
+        # append the extracted pixels to the exisiting geodataframe. We can do so, because
+        # we have passed the pixels in the same order as they occur in the dataframe
+        for idx, band in enumerate(band_selection):
+            # we need the idx-element of each pixel in the list of pixel samples
+            band_list = [x[idx] for x in pixel_samples]
+            gdf[band] = band_list
+
+        return gdf
+
+
+    # TODO: implement this method
+    def get_pixels(self):
+        """
+        """
+        pass
 
     def write_bands(
             self,

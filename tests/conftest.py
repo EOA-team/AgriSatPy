@@ -129,6 +129,22 @@ def get_bandstack():
 
 
 @pytest.fixture()
+def get_points():
+    """
+    Returns path to test points to be used for pixel extraction
+    """
+    
+    def _get_points():
+        
+        testdata_dir = Path('../../data')
+        testdata_points = testdata_dir.joinpath(
+            Path('sample_points').joinpath('ZH_Points_2019_EPSG32632_random.shp')
+        )
+        return testdata_points
+    return _get_points
+
+
+@pytest.fixture()
 def get_polygons():
     """
     Returns path to agricultural field polygons to use for masking

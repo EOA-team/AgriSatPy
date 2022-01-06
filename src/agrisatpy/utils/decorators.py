@@ -1,7 +1,5 @@
 '''
-Created on Jul 19, 2021
-
-@author: Lukas Graf (D-USYS, ETHZ)
+Function and method decorators used to validate passed arguments.
 '''
 
 from functools import wraps
@@ -44,7 +42,7 @@ def check_band_names(f):
         if len(args) > 0:
             # band name(s) are always provided as first argument
             band_names = args[0]
-        if kwargs != {}:
+        if kwargs != {} and band_names is None:
             # check for band_name and band_names key word argument
             band_names = kwargs.get('band_name', band_names)
             if band_names is None:
@@ -109,8 +107,10 @@ def check_metadata(f):
             meta_key = args[0]
             meta_values = args[1]
         if kwargs != {}:
-            meta_key = kwargs.get('metadata_key', meta_key)
-            meta_values = kwargs.get('metadata_values', meta_values)
+            if meta_key is None:
+                meta_key = kwargs.get('metadata_key', meta_key)
+            if meta_values is None:
+                meta_values = kwargs.get('metadata_values', meta_values)
 
         # check different entries
         # image metadata

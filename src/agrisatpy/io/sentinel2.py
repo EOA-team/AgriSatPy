@@ -507,6 +507,12 @@ class Sentinel2Handler(SatDataHandler):
         self.scene_properties.set(prop='processing_level', value=processing_level)
 
 
+    @classmethod
+    def read_pixels_from_safe(cls):
+        # TODO: implement this method
+        pass
+
+
 if __name__ == '__main__':
 
     handler = SatDataHandler()
