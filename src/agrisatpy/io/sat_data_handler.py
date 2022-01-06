@@ -203,7 +203,8 @@ class SatDataHandler(object):
 
         # if snap_band is not passed, band meta, bounds and attribs must be provided
         if snap_band is None:
-            if set([band_meta, band_bounds, band_attribs]) == set(None):
+            not_passed = band_meta == None and band_bounds == None and band_attribs == None
+            if not_passed:
                 raise ValueError(
                     'Either a snap band or band_meta, band_bounds, band_attribs must be provided'
                 )
@@ -229,6 +230,15 @@ class SatDataHandler(object):
             band_bounds = self.get_bounds(snap_band, return_as_polygon=False)
 
         # insert of band data as new entry in the data dictionary
+        # if the snap raster (if provided) is a masked array, apply the mask to the
+        # band to add as well
+        if snap_band is not None:
+            if isinstance(self.get_band(snap_band), np.ma.MaskedArray):
+                mask = self.get_band(snap_band).mask
+                band_data = np.ma.MaskedArray(
+                    data=band_data,
+                    mask=mask
+                )
         band_dict = {band_name: band_data}
         self.data.update(band_dict)
 
@@ -689,6 +699,7 @@ class SatDataHandler(object):
         ) -> Dict[str, Any]:
         """
         Returns the image attributes retrieved from GDAL datasets
+        for a single or all bands.
 
         :param band_name:
             optional band name for retrieving image atrributes

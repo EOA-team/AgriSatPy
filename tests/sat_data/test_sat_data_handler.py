@@ -3,12 +3,12 @@ import numpy as np
 import geopandas as gpd
 
 from agrisatpy.io import SatDataHandler
-from agrisatpy.utils.exceptions import InputError
+from agrisatpy.utils.exceptions import InputError, BandNotFoundError
 from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.utils.exceptions import DataExtractionError
 
 
-def test_add_bands(datadir, get_bandstack):
+def test_add_bands(datadir, get_bandstack, get_polygons):
     """tests adding and removing bands from a handler"""
 
     fname_bandstack = get_bandstack()
@@ -38,11 +38,49 @@ def test_add_bands(datadir, get_bandstack):
     assert len(handler.get_attrs()['scales']) == old_scales + 1, 'attributes not updated'
 
     # update with raster not matching snap band
+    band_to_add = np.zeros((10,10))
+    with pytest.raises(InputError):
+        handler.add_band(
+            band_name='too small',
+            band_data=band_to_add,
+            snap_band='B02'
+        )
 
     # update with non-existing snap raster
+    with pytest.raises(BandNotFoundError):
+        handler.add_band(
+            band_name='non-existing snap band',
+            band_data=band_to_add,
+            snap_band='B13'
+        )
+
+    # too few arguments
+    with pytest.raises(ValueError):
+        handler.add_band(
+            band_name='too small',
+            band_data=band_to_add,
+        )
+
+    # add band to handler with masked bands
+    fname_polygons = get_polygons()
+    band_to_add = np.zeros_like(handler.get_band('B02'))
+    handler = SatDataHandler()
+    # read data for field parcels, only (masked array)
+    handler.read_from_bandstack(
+        fname_bandstack=fname_bandstack,
+        in_file_aoi=fname_polygons
+    )
+    handler.add_band(
+        band_name='test',
+        band_data=band_to_add,
+        snap_band='B02'
+    )
+
+    assert isinstance(handler.get_band('test'), np.ma.MaskedArray), 'not a masked array'
 
     # add band without snap band
-    
+    # TODO: implement further test without a snap band; make sure the bandstack property
+    # is changed or preserved depending on the input raster
 
 
 def test_read_pixels(datadir, get_bandstack, get_points, get_polygons):
