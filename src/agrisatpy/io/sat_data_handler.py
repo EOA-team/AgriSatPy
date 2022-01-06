@@ -1,13 +1,15 @@
 '''
-This module defines the ``SatDataHandler`` class which is the basic class for reading, handling
-and writing raster data. It relies on ``rasterio`` for all in- and output operations. For
-data handling it implements a dict-like data structure that allows for storing image data,
-geo-information and related metadata on a per-band basis.
+This module defines the ``SatDataHandler`` class which is the basic class for reading, plotting,
+transforming, manipulating and writing (geo-referenced) raster data in an intuitive, object-oriented
+way (in terms of software philosophy).
 
-The ``SatDataHandler`` is a super class from which sensor-specific classes for reading
-(satellite) raster image data might inherit. The ``SatDataHandler`` class provides
-methods to read arbitrary raster data from files (or URIs) using ``rasterio``'s ``GDAL`` drivers,
-and stores the band data in a dict-like data structure preserving the geo-spatial metadata.
+It relies on ``rasterio`` for all in- and output operations to read data from files (or URIs)
+``GDAL`` drivers. ``SatDataHandler``  stores the band data in a dict-like data structure
+preserving the geo-spatial and related image metadata. Additionally, the class implements methods
+for converting image data to ``xarray`` datasets and ``geopandas`` dataframes.
+
+Besides that, ``SatDataHandler`` is a super class from which sensor-specific classes for reading
+(satellite) raster image data inherit.
 '''
 
 import cv2
