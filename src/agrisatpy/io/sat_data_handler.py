@@ -1203,6 +1203,8 @@ class SatDataHandler(object):
             ``colormap`` argument is ignored.
         :param user_defined_ticks:
             list of ticks to overwrite matplotlib derived defaults (optional).
+        :param colorbar_label:
+            optional text label to set to the colorbar.
         :return:
             matplotlib figure object with the band data
             plotted as map
@@ -1321,6 +1323,7 @@ class SatDataHandler(object):
                 lower_bound = np.nanquantile(band_data, 0.05)
                 upper_bound = np.nanquantile(band_data, 0.95)
 
+            # actual displaying of the band data
             img = ax.imshow(
                 band_data,
                 vmin=lower_bound,
@@ -1334,14 +1337,24 @@ class SatDataHandler(object):
             divider = make_axes_locatable(ax)
             cax = divider.append_axes('right', size='5%', pad=0.05)
             if discrete_values:
-                cb = fig.colorbar(img, cax=cax, orientation='vertical', ticks=unique_values)
+                cb = fig.colorbar(
+                    img,
+                    cax=cax,
+                    orientation='vertical',
+                    ticks=unique_values
+                )
             else:
-                cb = fig.colorbar(img, cax=cax, orientation='vertical')
+                cb = fig.colorbar(
+                    img,
+                    cax=cax,
+                    orientation='vertical'
+                )
             # overwrite ticker if user defined ticks provided
             if user_defined_ticks is not None:
+                # TODO: there seems to be one tick missing (?)
                 cb.ax.locator_params(nbins=len(user_defined_ticks))
                 cb.set_ticklabels(user_defined_ticks)
-            # add colormap label text if provided
+            # add colorbar label text if provided
             if colorbar_label is not None:
                 cb.set_label(
                     colorbar_label,
@@ -1351,6 +1364,7 @@ class SatDataHandler(object):
                     y=0.5
                 )
 
+        # set plot title (name of the band if not RGB or NIR plot)
         if colormap is None:
             if rgb_plot:
                 ax.title.set_text('True Color Image')
@@ -1359,7 +1373,7 @@ class SatDataHandler(object):
         else:
             ax.title.set_text(f'Band: {band_name.upper()}')
 
-        # add axes labels
+        # add axes labels and format ticker
         ax.set_xlabel(f'X [m] (EPSG:{epsg})', fontsize=12)
         ax.xaxis.set_ticks(np.arange(bounds.left, bounds.right, x_interval))
         ax.set_ylabel(f'Y [m] (EPSG:{epsg})', fontsize=12)
