@@ -2137,7 +2137,7 @@ class SatDataHandler(object):
 
         # otherwise we can use numpy ndarray's functions
         else:
-            flattened = np.reshape(flattened, new_shape, order='F')
+            flattened = np.reshape(stack_array, new_shape, order='F')
 
         # convert the coordinates to shapely geometries
         coordinate_geoms = [Point(c[0], c[1]) for c in list(zip(coords['x'], coords['y']))]
