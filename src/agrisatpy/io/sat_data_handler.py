@@ -69,7 +69,7 @@ from agrisatpy.utils.constants import ProcessingLevels
 from agrisatpy.io.utils.raster import get_raster_attributes
 from agrisatpy.io.utils.geometry import check_geometry_types
 from agrisatpy.config import get_settings
-from pickle import NONE
+from pickle import NONE, FALSE
 
 
 logger = get_settings().logger
@@ -156,11 +156,20 @@ class SatDataHandler(object):
             self,
             band_name: str,
             band_data: np.array,
-            band_alias: Optional[str] = None
+            band_alias: Optional[str] = None,
+            snap_band: Optional[str] = None,
+            band_meta: Optional[Dict[str, Any]] = None,
+            band_bounds: Optional[BoundingBox] = None,
+            band_attribs: Dict[str, Any] = None
         ) -> None:
         """
-        Adds a band to an existing band dict instance. Band name and band
-        alias (if provided) must be unique!
+        Adds a band to an existing band dict instance. To keep data
+        integrity, it is either required to provide a snap band (that
+        provides the band metadata and attributes required), or to pass
+        these explicitly.
+
+        NOTE:
+            Band name and band alias (if provided) must be unique!
 
         :param band_name:
             name of the band to add (must not exist already)
@@ -168,6 +177,14 @@ class SatDataHandler(object):
             band data to add; corresponds to the dict value
         :param band_alias:
             optional band name alias (must not exist already)
+        :param snap_band:
+            name of the band used to provide the raster metadata, geo-info
+            and attributes. If the current instance fulfills the bandstack
+            criteria can be ignored since all existing bands share the same
+            metadata, etc.
+        :param band_meta:
+            ``rasterio``-like raster metadata. Is ignored if `snap_band` is
+            provided 
         """
 
         # check band name and alias if applicable
@@ -179,6 +196,39 @@ class SatDataHandler(object):
                     f'Duplicated alias for band {band_name}: {band_alias}'
                 )
 
+        # check if the instance currently is a bandstack
+        was_bandstack = False
+        if self.check_is_bandstack():
+            was_bandstack = True
+
+        # if snap_band is not passed, band meta, bounds and attribs must be provided
+        if snap_band is None:
+            if set([band_meta, band_bounds, band_attribs]) == set(None):
+                raise ValueError(
+                    'Either a snap band or band_meta, band_bounds, band_attribs must be provided'
+                )
+
+            # validate the entries
+            @check_metadata
+            def _validate(meta_key, meta_values):
+                pass
+
+            _validate('meta', band_meta)
+            _validate('bounds', band_bounds)
+
+        # check if the snap band has the same shape as the data to add
+        if snap_band is not None:
+            if self.get_band(snap_band).shape != band_data.shape:
+                raise InputError(
+                    f'The shape of the band to add ({band_data.shape}) does not '\
+                    f'match the reference specified ({self.get_band(snap_band).shape})'
+                )
+            # if yes, then we can use the meta, bounds and attribs from the snap band
+            band_attribs = self.get_attrs(snap_band)
+            band_meta = self.get_meta(snap_band)
+            band_bounds = self.get_bounds(snap_band, return_as_polygon=False)
+
+        # insert of band data as new entry in the data dictionary
         band_dict = {band_name: band_data}
         self.data.update(band_dict)
 
@@ -193,46 +243,36 @@ class SatDataHandler(object):
         if band_alias is not None:
             self._band_aliases[band_name] = band_alias
 
-        # check if the data comes from a bandstack 
-        # or from single band files where the metadata needs to be added
-        # for each band
-        if not self.from_bandstack():
-            # find out, which band has the same shape (x, y dim) and copy
-            # the 'meta' and 'bounds' from that band for the band to add
-            band_data_shape = band_data.shape
-            for other_band in self.get_bandnames():
-                if self.data[other_band].shape == band_data_shape:
-                    self.data['meta'][band_name] = self.data['meta'][other_band]
-                    self.data['bounds'][band_name] = self.data['bounds'][other_band]
-                    self.data['attrs'][band_name] = self.data['attrs'][other_band]
-                    # leave loop and return
-                    break
-        # in case of a band stack, the attributes need to be extended by copying them
-        # from a reference band
-        else:
-            # since all bands have the same shape we can simply use the first band as reference
-            other_band = self.get_bandnames()[0]
-            # to be sure, check array shapes
-            if not self.get_band(other_band).shape == band_data.shape:
-                self.drop_band(band_name)
-                raise InputError(
-                    f'The shape of the band to add ({band_data.shape}) does not '\
-                    f'match the reference ({self.get_band(other_band).shape})')
-            for attr in self.data['attrs']:
-                if isinstance(self.data['attrs'][attr], tuple):
-                    update_list = list(self.data['attrs'][attr])
-                    
-                    if attr == 'descriptions':
-                        update_list.append(band_name.upper())
-                    else:
-                        update_list.append(self.data['attrs'][attr][0])
+        # now, we need to update the band-specific attribs entries as well
+        for attr in self.data['attrs']:
+            if isinstance(self.data['attrs'][attr], tuple):
+                # cast to list to make attribute entries mutable
+                update_list = list(self.data['attrs'][attr])
+                
+                if attr == 'descriptions':
+                    update_list.append(band_name.upper())
+                else:
+                    try:
+                        update_list.append(band_attribs[attr][0])
+                    except Exception as e:
+                        del self.data[band_name]
+                        del self._band_aliases[band_name]
+                        raise KeyError(f'Could not add attribute {attr}. {e}')
 
-                    updated_attr = tuple(update_list)
-                    self.data['attrs'].update(
-                        {
-                            attr: updated_attr
-                        }
-                    )
+                updated_attr = tuple(update_list)
+                self.data['attrs'].update(
+                    {attr: updated_attr}
+                )
+        
+        # we have to check if the current instance still fulfills
+        # the bandstack criteria. If not, we have to unset the bandstack (if not done yet)
+        # and then add the meta and bounds entries.
+        if not self.check_is_bandstack():
+            # unset the band stack organization it it was one before
+            if was_bandstack:
+                self._unset_bandstack()
+            self.data['meta'][band_name] = band_meta
+            self.data['bounds'][band_name] = band_bounds  
 
 
     def add_bands_from_vector(
@@ -656,17 +696,31 @@ class SatDataHandler(object):
             meta dict with image attributes
         """
 
-        # if data is band-stacked, attr is always the same
-        # otherwise it must be available for each band as entry
-        if not self.from_bandstack() and band_name is not None:
-            try:
-                return self.data['attrs'][band_name]
-            except Exception:
-                raise BandNotFoundError(
-                    f'Could not find "{band_name}" in data dict'
-                )
+        # if a single band is selected, return the corresponding subset;
+        # otherwise, return everything in 'attrs'
+        if not self._from_bandstack:
+            if  band_name is not None:
+                try:
+                    return self.data['attrs'][band_name]
+                except Exception:
+                    raise BandNotFoundError(
+                        f'Could not find "{band_name}" in data dict'
+                    )
+            else:
+                return self.data['attrs']
         else:
-            return self.data['attrs']
+            if band_name is not None:
+                band_idx = [idx for idx, name in enumerate(self.get_bandnames()) \
+                            if name == band_name][0]
+                band_attrs = dict.fromkeys(self.data['attrs'].keys())
+                for attr in band_attrs:
+                    if isinstance(self.data['attrs'][attr], tuple):
+                        band_attrs[attr] = tuple([self.data['attrs'][attr][band_idx]])
+                    else:
+                        band_attrs[attr] = self.data['attrs'][attr]
+                return band_attrs
+            else:
+                return self.data['attrs']
 
 
     @check_band_names
@@ -774,7 +828,7 @@ class SatDataHandler(object):
 
         meta = self.get_meta(band_name=band_name)
 
-        if self.from_bandstack():
+        if self._from_bandstack:
             return meta['crs']
         else:
             if band_name is not None:
@@ -836,7 +890,16 @@ class SatDataHandler(object):
             band_name: Optional[str],
         ) -> None:
         """
-        Backend method called by set_meta, set_bounds and set_attr
+        Back-end method called by set_meta, set_bounds and set_attr.
+
+        :param metadata_key:
+            must be one of 'meta', 'attrs', 'bounds'
+        :param metadata_values:
+            entries to set. Gets validated by the method's decorator
+        :param band_name:
+            name of the band for which to set the entries. Must be
+            provided if the current instance does not fulfill the bandstack
+            criteria.
         """
 
         # check if metadata key entry is already populated
@@ -884,7 +947,7 @@ class SatDataHandler(object):
 
     def set_attrs(
             self,
-            attr: dict,
+            attr: Dict[str, Any],
             band_name: Optional[str] = None
         ) -> None:
         """
@@ -933,6 +996,7 @@ class SatDataHandler(object):
             band_name=band_name
         )
 
+
     def reset_bandnames(
             self,
             new_bandnames: List[str]
@@ -943,7 +1007,8 @@ class SatDataHandler(object):
         the order the new names are passed.
 
         :param new_bandnames:
-            list of new band names
+            list of new band names. Must have the same length as the
+            currently available bands.
         """
 
         # get old band names
@@ -962,6 +1027,8 @@ class SatDataHandler(object):
             except Exception as e:
                 raise Exception from e
 
+        # TODO: update band names in image meta!!
+
 
     @check_band_names
     def drop_band(
@@ -977,18 +1044,26 @@ class SatDataHandler(object):
         """
 
         try:
+            band_idx = [x for x, name in enumerate(self.get_bandnames()) if name == band_name][0]
             del self.data[band_name]
         except Exception as e:
             raise Exception from e
 
         # handle band metadata
-        if not self.from_bandstack():
+        if not self.check_is_bandstack():
             try:
                 del self.data['meta'][band_name]
                 del self.data['bounds'][band_name]
                 del self.data['attrs'][band_name]
             except Exception as e:
                 raise Exception from e
+        else:
+            # if the data is band-stacked, delete the band entries from the attributes
+            for attr in self.data['attrs']:
+                if isinstance(self.data['attrs'][attr], tuple):
+                    update_list = list(self.data['attrs'][attr])
+                    del update_list[band_idx]
+                    self.data['attrs'][attr] = update_list
 
 
     def reproject_bands(
@@ -1737,8 +1812,7 @@ class SatDataHandler(object):
             in_file_aoi: Optional[Union[Path, gpd.GeoDataFrame]] = None,
             full_bounding_box_only: Optional[bool] = False,
             blackfill_value: Optional[Union[int,float]] = 0,
-            band_selection: Optional[List[str]] = [],
-            parse_attr: Optional[bool] = True
+            band_selection: Optional[List[str]] = []
         ) -> None:
         """
         Reads raster bands from a single or multi-band, geo-referenced file. All
@@ -1783,9 +1857,6 @@ class SatDataHandler(object):
             value indicating black fill (=no data). Set to zero by default.
         :param band_selection:
             list of bands to read. Per default all raster bands available are read.
-        :param parse_attr:
-            if True (default) parses additional image attributes that are immutable
-            (i.e., not subject to reprojection, resampling) from the raster metadata.
 
         Examples
         --------
@@ -1822,9 +1893,8 @@ class SatDataHandler(object):
             meta = src.meta
             # and bounds which are helpful for plotting
             bounds = src.bounds
-            # optionally add further image metadata that is immutable
-            if parse_attr:
-                attrs = get_raster_attributes(riods=src)
+            # parse image attributes
+            attrs = get_raster_attributes(riods=src)
 
             # read relevant bands and store them in dict
             band_names = src.descriptions
@@ -1880,25 +1950,24 @@ class SatDataHandler(object):
 
         self._from_bandstack = True
 
+        # meta and bounds are the same single entry for all bands
         self.set_meta(meta)
         self.set_bounds(bounds)
 
-        if parse_attr:
-            # filter out bands not selected
-            if len(band_selection) > 0:
-                attrs_filtered = {}
-                for key in attrs.keys():
-                    if isinstance(attrs[key], tuple):
-                        # use band_selection_idx to filter selected bands
-                        attrs_filtered[key] = tuple(
-                            [x for ii, x in enumerate(attrs[key]) if ii in band_selection_idx]
-                        )
-                    else:
-                        attrs_filtered[key] = attrs[key]
-                self.set_attrs(attrs_filtered)
-            # no band selection, use all available bands
-            else:
-                self.set_attrs(attrs)
+        if len(band_selection) > 0:
+            attrs_filtered = {}
+            for key in attrs.keys():
+                if isinstance(attrs[key], tuple):
+                    # use band_selection_idx to filter selected bands
+                    attrs_filtered[key] = tuple(
+                        [x for ii, x in enumerate(attrs[key]) if ii in band_selection_idx]
+                    )
+                else:
+                    attrs_filtered[key] = attrs[key]
+            self.set_attrs(attrs_filtered)
+        # no band selection, use all available bands
+        else:
+            self.set_attrs(attrs)
 
 
     @classmethod
@@ -2126,6 +2195,43 @@ class SatDataHandler(object):
             ydim_list.append(self.get_band_shape(band_name).nrows)
 
         return len(set(crs_list)) == 1 and len(set(xdim_list)) == 1 and len(set(ydim_list)) == 1
+
+
+    def _unset_bandstack(self):
+        """
+        Reorganizes the ``meta`` and ``bounds`` entries from instance-wide coverage to
+        band-wise organization in a dict-like structure with an entry of ``meta`` and
+        ``bounds`` for each band.
+        
+        This allows to handle raster bands with different spatial resolution, extents
+        and coordinate systems in one object.
+
+        NOTE:
+            The method has no effect if the current raster bands fulfill the bandstack
+            criteria
+        """
+
+        if self.check_is_bandstack():
+            return
+
+        # re-populate the meta, bounds and attrib entries in self.data
+        entries = ['meta', 'bounds', 'attribs']
+        band_names = self.get_bandnames()
+        
+        for entry in entries:
+            src = deepcopy(self.data[entry])
+            # check if the entries are already organized by band names
+            if any(x for x in band_names in src.keys()):
+                logger.warn(
+                    'Band metadata seems to be already organized by bands'
+                )
+                return
+            dst = {}
+            for band_name in band_names:
+                dst[band_name] = src
+            self.data.update({entry: dst})
+
+        self._from_bandstack = False
 
 
     def to_xarray(

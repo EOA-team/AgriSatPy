@@ -8,6 +8,43 @@ from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.utils.exceptions import DataExtractionError
 
 
+def test_add_bands(datadir, get_bandstack):
+    """tests adding and removing bands from a handler"""
+
+    fname_bandstack = get_bandstack()
+    handler = SatDataHandler()
+    handler.read_from_bandstack(
+        fname_bandstack=fname_bandstack
+    )
+    old_scales = len(handler.get_attrs()['scales'])
+    assert old_scales == 10, 'too few entries in scales attribute'
+
+    # add a band of same shape as those bands already available
+    band_to_add = np.zeros_like(handler.get_band('B02'))
+    handler.add_band(
+        band_name='test',
+        band_data=band_to_add,
+        snap_band='B02'
+    )
+
+    assert 'test' in handler.get_bandnames(), 'band name not added'
+    assert handler.check_is_bandstack(), 'handler should still fulfill the bandstack criteria'
+    # check meta, bounds and attribs
+    assert handler.get_meta() == handler.get_meta('test'), 'meta not correct'
+    assert handler.get_bounds() == handler.get_bounds('test'), 'bounds not correct'
+    assert handler.get_attrs('test')['descriptions'] == tuple(['TEST']), 'description not set'
+    assert handler.get_attrs('test')['scales'] == tuple([1]), 'scale not set'
+    assert handler.get_attrs('B02')['scales'] == handler.get_attrs('test')['scales'], 'scales not taken from reference'
+    assert len(handler.get_attrs()['scales']) == old_scales + 1, 'attributes not updated'
+
+    # update with raster not matching snap band
+
+    # update with non-existing snap raster
+
+    # add band without snap band
+    
+
+
 def test_read_pixels(datadir, get_bandstack, get_points, get_polygons):
     """tests reading pixel values from bandstack at point locations"""
 
@@ -359,8 +396,13 @@ def test_read_from_bandstack_with_mask(datadir, get_bandstack, get_polygons):
 
     # add a band with correct shape, should work
     band_to_add = np.zeros_like(handler.get_band('B02'))
-    handler.add_band(band_name='test', band_data=band_to_add)
+    handler.add_band(
+        band_name='test',
+        band_data=band_to_add,
+        snap_band='B02'
+    )
     assert (handler.get_band('test') == band_to_add).all(), 'array not the same after adding it'
+    assert handler.check_is_bandstack(), 'handler does not fulfill bandstack criteria any more'
 
 
 @pytest.mark.parametrize(
