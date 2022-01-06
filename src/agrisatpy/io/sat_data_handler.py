@@ -1174,7 +1174,8 @@ class SatDataHandler(object):
             colormap: Optional[str] = 'gray',
             discrete_values: Optional[bool] = False,
             user_defined_colors: Optional[ListedColormap] = None,
-            user_defined_ticks: Optional[List[Union[str,int,float]]] = None
+            user_defined_ticks: Optional[List[Union[str,int,float]]] = None,
+            colorbar_label: Optional[str] = None
         ) -> Figure:
         """
         plots a custom band using matplotlib.pyplot.imshow and the
@@ -1339,7 +1340,16 @@ class SatDataHandler(object):
             # overwrite ticker if user defined ticks provided
             if user_defined_ticks is not None:
                 cb.ax.locator_params(nbins=len(user_defined_ticks))
-                cb.set_ticklabels(user_defined_ticks)     
+                cb.set_ticklabels(user_defined_ticks)
+            # add colormap label text if provided
+            if colorbar_label is not None:
+                cb.set_label(
+                    colorbar_label,
+                    rotation=270,
+                    fontsize=14,
+                    labelpad=20,
+                    y=0.5
+                )
 
         if colormap is None:
             if rgb_plot:
