@@ -342,7 +342,8 @@ class Sentinel2Handler(SatDataHandler):
             self.add_band(
                 band_name='scl',
                 band_data=scl_reader.get_band(band_name_scl),
-                band_alias='SCL'
+                band_alias='SCL',
+                snap_band=self.get_bandnames()[0]
             )
 
             # increase band count in meta

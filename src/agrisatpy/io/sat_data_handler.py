@@ -665,6 +665,28 @@ class SatDataHandler(object):
 
 
     @check_band_names
+    def get_band_nodata(
+            self,
+            band_name: str
+        ) -> Number:
+        """
+        Returns the nodata value of a band extracted from the band's
+        attributes
+
+        :param band_name:
+            name of the band
+        :return:
+            no data value of the band
+        """
+        try:
+            return self.get_attrs(band_name)['nodatavals'][0]
+        except Exception as e:
+            raise Exception(
+                f'Could not infer no data value for band {band_name}: {e}'
+            )
+
+
+    @check_band_names
     def get_meta(
             self,
             band_name: Optional[str] = None
@@ -1759,8 +1781,6 @@ class SatDataHandler(object):
         be an entry in the data dict (using `add_band`) if it is not yet part
         of it.
 
-        Masking currently only support floating data types.
-
         :param name_mask_band:
             name of the band (key in data dict) that contains the mask
         :param mask_values:
@@ -1775,8 +1795,8 @@ class SatDataHandler(object):
             INVALID classes, if True the opposite is the case
         :param nodata_values:
             no data values to set masked pixels. Can be set for each band by specifying
-            a list of nodata values or for all bands. If None (default), the no-data
-            value is inferred from the image attributes.
+            a list of nodata values or a single value for all bands. If None (default),
+            the no-data value is inferred from the band attributes.
         """
 
         # get band to use for masking
@@ -1794,7 +1814,9 @@ class SatDataHandler(object):
         for idx, band_to_mask in enumerate(bands_to_mask):
             if band_to_mask not in self.get_bandnames() and \
             band_to_mask not in self.get_bandaliases().values():
-                raise BandNotFoundError(f'{band_to_mask} is not in data dict')
+                raise BandNotFoundError(
+                    f'{band_to_mask} not found in available bands'
+                )
             # check alias
             if band_to_mask not in self.get_bandnames():
                 band_to_mask = [k for (k,v) in self.get_bandaliases().items() \
@@ -1802,8 +1824,7 @@ class SatDataHandler(object):
 
             # check nodata value; take from image attributes if not provided
             if nodata_values is None:
-                band_idx = self.get_bandnames().index(band_to_mask)
-                nodata_value = self.get_attrs(band_to_mask)['nodatavals'][band_idx]
+                nodata_value = self.get_band_nodata(band_to_mask)
             else:
                 if isinstance(nodata_values, list):
                     try:
