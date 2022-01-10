@@ -424,7 +424,8 @@ class SatDataHandler(object):
             # add band to handler
             self.add_band(
                 band_name=attribute,
-                band_data=rasterized
+                band_data=rasterized,
+                snap_band=snap_band
             )
 
 
@@ -1910,7 +1911,7 @@ class SatDataHandler(object):
 
             # check geometry types of the input features
             allowed_geometry_types = ['Polygon', 'MultiPolygon']
-            check_geometry_types(
+            gdf_aoi = check_geometry_types(
                 in_dataset=gdf_aoi,
                 allowed_geometry_types=allowed_geometry_types
             )
@@ -2036,7 +2037,7 @@ class SatDataHandler(object):
             full_bounding_box_only=False
         )
         allowed_geometry_types = ['Point']
-        check_geometry_types(
+        gdf = check_geometry_types(
             in_dataset=gdf,
             allowed_geometry_types=allowed_geometry_types
         )
