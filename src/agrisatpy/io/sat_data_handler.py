@@ -329,9 +329,7 @@ class SatDataHandler(object):
 
         # take blackfill value from image attributes (nodatavalue) if not provided
         if blackfill_value is None:
-            blackfill_value = self.get_attrs(snap_band)['nodatavals']
-            if isinstance(blackfill_value, tuple):
-                blackfill_value = blackfill_value[0]
+            blackfill_value = self.get_band_nodata(snap_band)
 
         # check default float type
         supported_floats = ['float32', 'float64']
