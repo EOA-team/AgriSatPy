@@ -1,5 +1,5 @@
 '''
-This module contains a set of commonly used Vegetation Indices (VIs).
+This module contains a set of commonly used Spectral Indices (VIs).
 The formula are generic by using color names. Thus, they can be applied
 to different remote sensing platforms and are not bound to a predefined band
 selection.
@@ -9,8 +9,8 @@ import numpy as np
 from typing import List
 
 
-class VegetationIndices(object):
-    """generic vegetation indices"""
+class SpectralIndices(object):
+    """generic spectral indices"""
 
     # define color names
     blue = 'blue'
@@ -36,25 +36,26 @@ class VegetationIndices(object):
         self._band_data = reader.data
 
 
-    def get_vi_list(self) -> List[str]:
+    @classmethod
+    def get_si_list(cls) -> List[str]:
         """
-        Returns a list of implemented Vegetation Indices (VIs)
+        Returns a list of implemented Spectral Indices (SIs)
 
         :return:
-            list of VIs
+            list of SIs currently implemented
         """
 
-        return [x for x in dir(self) if not x.startswith('__') and not x.endswith('__') \
+        return [x for x in dir(cls) if not x.startswith('__') and not x.endswith('__') \
                 and not x.islower()]
 
 
-    def calc_vi(self, vi: str) -> np.array:
+    def calc_si(self, si: str) -> np.array:
         """
-        Calculates the selected vegetation index (VI) for
-        spectral band data derived from `~agrisatpy.io.sat_data_handler.SatDataHandler`.
-        The resulting vi is returned as numpy array.
+        Calculates the selected spectral index (SI) for
+        spectral band data derived from `~agrisatpy.io.SatDataHandler`.
+        The resulting vi is returned as ``numpy.ndarray``.
 
-        :param vi:
+        :param si:
             name of the selected vegetation index (e.g., NDVI). Raises
             an error if the vegetation index is not implemented/ found.
         :return:
@@ -62,10 +63,10 @@ class VegetationIndices(object):
         """
 
         try:
-            vi = eval(f'self.{vi.upper()}(**self._band_data)')
+            si_data = eval(f'self.{si.upper()}(**self._band_data)')
         except Exception as e:
             raise NotImplementedError(e)
-        return vi
+        return si_data
 
 
     @classmethod

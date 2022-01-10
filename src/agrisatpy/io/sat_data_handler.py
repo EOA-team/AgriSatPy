@@ -52,7 +52,7 @@ from numbers import Number
 from xarray import DataArray
 from shapely.geometry import Point
 
-from agrisatpy.analysis.vegetation_indices import VegetationIndices
+from agrisatpy.analysis.spectral_indices import SpectralIndices
 from agrisatpy.utils.exceptions import NotProjectedError, DataExtractionError
 from agrisatpy.utils.exceptions import InputError
 from agrisatpy.utils.exceptions import ReprojectionError
@@ -69,7 +69,6 @@ from agrisatpy.utils.constants import ProcessingLevels
 from agrisatpy.io.utils.raster import get_raster_attributes
 from agrisatpy.io.utils.geometry import check_geometry_types
 from agrisatpy.config import get_settings
-from pickle import NONE, FALSE
 
 
 logger = get_settings().logger
@@ -1498,28 +1497,46 @@ class SatDataHandler(object):
         return fig
 
 
-    def calc_vi(
+    def calc_si(
             self,
-            vi: str
+            si: str
         ) -> None:
         """
-        Calculates a vegetation index implemented in `agrisatpy.analysis.vegetation_indices`
-        and adds the vegetation index as a new band to the data dict.
+        Calculates a spectral index (SI) implemented in `agrisatpy.analysis.spectral_indices`
+        and adds it as new band.
 
-        Raises an error if the index calculation fails.
+        To get a full list of SIs currently available, type
 
-        :param vi:
-            name of the vegetation index to calculate (e.g., NDVI)
+        >>> from agrisatpy.analysis.spectral_indices import SpectralIndices
+        >>> SpectralIndices.get_si_list()
+
+        :param si:
+            name of the spectral index to calculate (e.g., NDVI). See ``
         """
         try:
-            vi_obj = VegetationIndices(reader=self)
-            vi_data = vi_obj.calc_vi(vi)
+            si_obj = SpectralIndices(reader=self)
+            si_data = si_obj.calc_si(si)
+
+            # we need a snap_band to comply with AgriSatPy's snap raster policy. Since
+            # the spectral index is calculated from the current handler instance, we can
+            # simply look for a band with the same shape as the returned SI raster
+            for band_name in self.get_bandnames():
+                band_dim = self.get_band_shape(band_name)
+                if (
+                    band_dim.nrows == si_data.shape[0] and
+                    band_dim.ncols == si_data.shape[0]
+                ):
+                    snap_band = band_name
+                    break
+
+            # add the SI as new band (will fail if the band already exists)
             self.add_band(
-                band_name=vi,
-                band_data=vi_data
+                band_name=si,
+                band_data=si_data,
+                snap_band=snap_band
             )
         except Exception as e:
-            raise Exception(f'Could not calculate vegetation index "{vi}": {e}')
+            raise Exception(f'Could not calculate spectral index "{si}": {e}')
 
 
     def resample(
@@ -1832,7 +1849,13 @@ class SatDataHandler(object):
                         raise Exception from e
 
             # set values nodata where tmp is zero
-            self.data[band_to_mask][tmp == 0] = nodata_value
+            if isinstance(self.data[band_to_mask], np.ma.MaskedArray):
+                self.data[band_to_mask] = np.ma.MaskedArray(
+                    data=self.data[band_to_mask].data,
+                    mask=tmp
+                )
+            else:
+                self.data[band_to_mask][tmp == 0] = nodata_value
 
 
     # TODO: infer blackfill value from raster attributes
@@ -1842,8 +1865,9 @@ class SatDataHandler(object):
             fname_bandstack: Path,
             in_file_aoi: Optional[Union[Path, gpd.GeoDataFrame]] = None,
             full_bounding_box_only: Optional[bool] = False,
-            blackfill_value: Optional[Union[int,float]] = 0,
-            band_selection: Optional[List[str]] = []
+            check_for_blackfill: Optional[bool] = True,
+            blackfill_value: Optional[Union[int,float]] = None,
+            band_selection: Optional[List[str]] = None
         ) -> None:
         """
         Reads raster bands from a single or multi-band, geo-referenced file. All
@@ -1885,7 +1909,14 @@ class SatDataHandler(object):
             defined in in_file_aoi. If set to False, returns the data for the
             full extent (hull) of all features (geometries) in in_file_aoi.
         :param blackfill_value:
-            value indicating black fill (=no data). Set to zero by default.
+            value indicating black fill (=no data). If None it is inferred from the image
+            metadata.
+        :param check_for_blackfill:
+            optional (and default) check if the image data read contains any data besides
+            blackfill (nodata) values. Satellite data can contain reasonable amounts of
+            blackfill due to data processing and orbit design. Checking for blackfill
+            (and potentially discarding these scenes) can therefore save memory and
+            processing requirements.
         :param band_selection:
             list of bands to read. Per default all raster bands available are read.
 
@@ -1916,7 +1947,7 @@ class SatDataHandler(object):
 
         # check band selection
         check_band_selection = False
-        if len(band_selection) > 0:
+        if band_selection is not None:
             check_band_selection = True
     
         with rio.open(fname_bandstack, 'r') as src:
@@ -1969,18 +2000,6 @@ class SatDataHandler(object):
                     bottom = top + meta['height'] * out_transform[4]
                     bounds = BoundingBox(left=left, bottom=bottom, right=right, top=top)
 
-        # check for black-fill
-        is_blackfilled = self.is_blackfilled(blackfill_value=blackfill_value)
-        if is_blackfilled:
-            raise BlackFillOnlyError('AOI contains blackfill, only')
-
-        # meta and bounds are saved as additional items of the dict
-        meta.update(
-            {'count': len(self.get_bandnames())}
-        )
-
-        self._from_bandstack = True
-
         # meta and bounds are the same single entry for all bands
         self.set_meta(meta)
         self.set_bounds(bounds)
@@ -1999,6 +2018,22 @@ class SatDataHandler(object):
         # no band selection, use all available bands
         else:
             self.set_attrs(attrs)
+
+        # check for black-fill (i.e., if the data only contains nodata an error will be raised)
+        if blackfill_value is None:
+            blackfill_value = self.get_band_nodata(self.get_bandnames()[0])
+        is_blackfilled = self.is_blackfilled(blackfill_value=blackfill_value)
+        if is_blackfilled:
+            raise BlackFillOnlyError(
+                f'Region read from {in_file_aoi} contains blackfill (nodata), only'
+            )
+
+        # meta and bounds are saved as additional items of the dict
+        meta.update(
+            {'count': len(self.get_bandnames())}
+        )
+
+        self._from_bandstack = True
 
 
     @classmethod
