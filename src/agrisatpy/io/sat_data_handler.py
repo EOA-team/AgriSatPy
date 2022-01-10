@@ -297,7 +297,7 @@ class SatDataHandler(object):
         Adds data from a vector (e.g., ESRI shapefile) file by rasterizing it and
         adding its attributes (or a selection thereof) as band entries into the
         current ``SatDataHandler`` object.
-    
+
         NOTE:
             Vector attributes **must** support type casting to float, i.e., they must
             be numeric. Since `geopandas` unfortunately handles all vector attributes 
@@ -330,7 +330,7 @@ class SatDataHandler(object):
         # take blackfill value from image attributes (nodatavalue) if not provided
         if blackfill_value is None:
             blackfill_value = self.get_attrs(snap_band)['nodatavals']
-            if isinstance(blackfill_value, tuple):
+            if isinstance(blackfill_value, list):
                 blackfill_value = blackfill_value[0]
 
         # check default float type
