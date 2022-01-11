@@ -1817,14 +1817,18 @@ class SatDataHandler(object):
 
         # get band to use for masking
         mask_band = self.get_band(band_name=name_mask_band)
+        if isinstance(mask_band, np.ma.MaskedArray):
+            mask_band = mask_band.data
 
         # convert the mask to a temporary binary mask
         tmp = np.zeros_like(mask_band)
         # set valid classes to 1, the other ones are zero
         if keep_mask_values:
-            tmp[np.isin(self.data[name_mask_band], mask_values)] = 1
+            # drop all other values not in mask_values
+            tmp[~np.isin(mask_band, mask_values)] = 1
         else:
-            tmp[~np.isin(self.data[name_mask_band], mask_values)] = 1
+            # drop all values in mask_values
+            tmp[np.isin(mask_band, mask_values)] = 1
 
         # loop over bands specified and mask the invalid pixels
         for idx, band_to_mask in enumerate(bands_to_mask):
@@ -1855,7 +1859,7 @@ class SatDataHandler(object):
                     mask=tmp
                 )
             else:
-                self.data[band_to_mask][tmp == 0] = nodata_value
+                self.data[band_to_mask][tmp == 1] = nodata_value
 
 
     # TODO: infer blackfill value from raster attributes
@@ -2001,10 +2005,15 @@ class SatDataHandler(object):
                     bounds = BoundingBox(left=left, bottom=bottom, right=right, top=top)
 
         # meta and bounds are the same single entry for all bands
+        # meta and bounds are saved as additional items of the dict
+        meta.update(
+            {'count': len(self.get_bandnames())}
+        )
+        self._from_bandstack = True
         self.set_meta(meta)
         self.set_bounds(bounds)
 
-        if len(band_selection) > 0:
+        if band_selection is not None:
             attrs_filtered = {}
             for key in attrs.keys():
                 if isinstance(attrs[key], tuple):
@@ -2020,20 +2029,14 @@ class SatDataHandler(object):
             self.set_attrs(attrs)
 
         # check for black-fill (i.e., if the data only contains nodata an error will be raised)
-        if blackfill_value is None:
-            blackfill_value = self.get_band_nodata(self.get_bandnames()[0])
-        is_blackfilled = self.is_blackfilled(blackfill_value=blackfill_value)
-        if is_blackfilled:
-            raise BlackFillOnlyError(
-                f'Region read from {in_file_aoi} contains blackfill (nodata), only'
-            )
-
-        # meta and bounds are saved as additional items of the dict
-        meta.update(
-            {'count': len(self.get_bandnames())}
-        )
-
-        self._from_bandstack = True
+        if check_for_blackfill:
+            if blackfill_value is None:
+                blackfill_value = self.get_band_nodata(self.get_bandnames()[0])
+            is_blackfilled = self.is_blackfilled(blackfill_value=blackfill_value)
+            if is_blackfilled:
+                raise BlackFillOnlyError(
+                    f'Region read from {in_file_aoi} contains blackfill (nodata), only'
+                )
 
 
     @classmethod
