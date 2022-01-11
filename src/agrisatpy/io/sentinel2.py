@@ -151,20 +151,21 @@ class Sentinel2Handler(SatDataHandler):
     def mask_clouds_and_shadows(
             self,
             bands_to_mask: List[str],
-            cloud_classes: Optional[List[int]]=[3, 8, 9, 10]
+            cloud_classes: Optional[List[int]]=[3, 8, 9, 10, 11]
         ) -> None:
         """
         A Wrapper around the inherited ``mask`` method to mask clouds and
         shadows based on the SCL band. Works therefore on L2A data only where
-        SCL data is available. Masks the SCL classes 3, 8, 9, 10.
+        SCL data is available. Masks the SCL classes 3, 8, 9, 10, 11.
         If another class selection is desired consider using the mask function
         from `agrisatpy.utils.io` directly.
 
         :param bands_to_mask:
             list of bands on which to apply the SCL mask
         :param cloud_classes:
-            list of SCL values to be considered as clouds. By default,
-            all three cloud classes and cloud shadows are considered.
+            list of SCL values to be considered as clouds/shadows and snow.
+            By default, all three cloud classes and cloud shadows are considered
+            plus snow.
         """
 
         mask_band = 'scl'

@@ -1288,7 +1288,9 @@ class SatDataHandler(object):
             discrete_values: Optional[bool] = False,
             user_defined_colors: Optional[ListedColormap] = None,
             user_defined_ticks: Optional[List[Union[str,int,float]]] = None,
-            colorbar_label: Optional[str] = None
+            colorbar_label: Optional[str] = None,
+            vmin: Optional[Union[int, float]] = None,
+            vmax: Optional[Union[int, float]] = None
         ) -> Figure:
         """
         plots a custom band using matplotlib.pyplot.imshow and the
@@ -1318,6 +1320,12 @@ class SatDataHandler(object):
             list of ticks to overwrite matplotlib derived defaults (optional).
         :param colorbar_label:
             optional text label to set to the colorbar.
+        :param vmin:
+            lower value to use for ``plt.imshow()``. If None it is set to the
+            lower 5% percentile of the data to plot.
+        :param vmin:
+            upper value to use for ``plt.imshow()``. If None it is set to the
+            upper 95% percentile of the data to plot.
         :return:
             matplotlib figure object with the band data
             plotted as map
@@ -1430,17 +1438,19 @@ class SatDataHandler(object):
             # clip data for displaying to central 90%, i.e., discard upper and
             # RGB and NIR plot work different because they contain multiple bands
             if (rgb_plot or nir_plot) and len(band_data.shape) == 3:
-                lower_bound = np.nanquantile(band_data[:,:,0:3], 0.05)
-                upper_bound = np.nanquantile(band_data[:,:,0:3], 0.95)
+                vmin = np.nanquantile(band_data[:,:,0:3], 0.05)
+                vmax = np.nanquantile(band_data[:,:,0:3], 0.95)
             else:
-                lower_bound = np.nanquantile(band_data, 0.05)
-                upper_bound = np.nanquantile(band_data, 0.95)
+                if vmin is None:
+                    vmin = np.nanquantile(band_data, 0.05)
+                if vmax is None:
+                    vmax = np.nanquantile(band_data, 0.95)
 
             # actual displaying of the band data
             img = ax.imshow(
                 band_data,
-                vmin=lower_bound,
-                vmax=upper_bound,
+                vmin=vmin,
+                vmax=vmax,
                 extent=[bounds.left, bounds.right, bounds.bottom, bounds.top],
                 cmap=cmap
             )
