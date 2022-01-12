@@ -10,6 +10,7 @@ The class handles data in L1C and L2A processing level.
 '''
 
 import numpy as np
+import geopandas as gpd
 
 from matplotlib.pyplot import Figure
 from matplotlib import colors
@@ -17,19 +18,20 @@ from pathlib import Path
 from typing import Optional
 from typing import List
 from typing import Tuple
+from typing import Union
 
+from agrisatpy.io import SatDataHandler
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
 from agrisatpy.utils.constants.sentinel2 import s2_gain_factor
 from agrisatpy.utils.constants.sentinel2 import SCL_Classes
-from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res,\
-    get_S2_platform_from_safe
+from agrisatpy.utils.constants.sentinel2 import band_resolution
+from agrisatpy.utils.exceptions import BandNotFoundError
+from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res
+from agrisatpy.utils.sentinel2 import get_S2_platform_from_safe
 from agrisatpy.utils.sentinel2 import get_S2_sclfile
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
-from agrisatpy.utils.constants.sentinel2 import band_resolution
 from agrisatpy.utils.sentinel2 import get_S2_acquistion_time_from_safe
-from agrisatpy.io import SatDataHandler
-from agrisatpy.utils.exceptions import BandNotFoundError
 
 
 class Sentinel2Handler(SatDataHandler):
@@ -231,10 +233,11 @@ class Sentinel2Handler(SatDataHandler):
             fname_bandstack: Path,
             processing_level: Optional[ProcessingLevels] = None,
             in_file_scl: Optional[Path] = None,
-            in_file_aoi: Optional[Path] = None,
+            polygon_features: Optional[Union[Path, gpd.GeoDataFrame]] = None,
             full_bounding_box_only: Optional[bool] = False,
             int16_to_float: Optional[bool] = True,
-            band_selection: Optional[List[str]] = list(s2_band_mapping.keys())
+            band_selection: Optional[List[str]] = list(s2_band_mapping.keys()),
+            read_scl: Optional[bool] = True
         ) -> None:
         """
         Reads Sentinel-2 spectral bands from a band-stacked geoTiff by calling
@@ -254,10 +257,11 @@ class Sentinel2Handler(SatDataHandler):
             if the file follows the AgriSatPy's naming conventions!)
         :param in_file_scl:
             if the SCL file location is already known (e.g., from AgriSatPy
-            database query) pass it directly to the method, otherwise the method
+            database query) or it is located not at its usual location
+            pass it directly to the method, otherwise the method
             tries to find the corresponding SCL file from the filesystem assuming
             that AgriSatPy's default file system logic was used.
-        :param in_file_aoi:
+        :param polygon_features:
             vector file (e.g., ESRI shapefile or geojson) defining geometry/ies
             (polygon(s)) for which to extract the Sentinel-2 data. Can contain
             one to many features.
@@ -274,27 +278,32 @@ class Sentinel2Handler(SatDataHandler):
             20m bands are processed. If you wish to read less, specify the
             band names accordingly, e.g., ['B02','B03','B04'] to read only the
             VIS bands.
+        :param read_scl:
+            read SCL file if available (default, L2A processing level).
         """
+
+        # ignore SCL if provided in band selection. The SCL band is always
+        # read when the processing level is L2A
+        if 'scl' in band_selection:
+            band_selection.remove('scl')
+        if 'SCL' in band_selection:
+            band_selection.remove('SCL')
 
         # call method from super class
         try:
             super().read_from_bandstack(
                 fname_bandstack=fname_bandstack,
-                in_file_aoi=in_file_aoi,
+                in_file_aoi=polygon_features,
                 full_bounding_box_only=full_bounding_box_only,
-                blackfill_value=0,
                 band_selection=band_selection
             )
         except Exception as e:
             raise Exception from e
 
-        # post-treatment: loop over bands, set band and color names and 
-        # convert and rescale to float if selected
+        # loop over bands, set band and color names and 
         sel_bands = self._check_band_selection(band_selection=band_selection)
         new_bandnames = [x[1] for x in sel_bands]
         old_bandnames = self.get_bandnames()
-        if 'scl' in new_bandnames:
-            new_bandnames.remove('scl')
         self.reset_bandnames(new_bandnames)
         self.set_bandaliases(new_bandnames, old_bandnames)
 
@@ -310,52 +319,53 @@ class Sentinel2Handler(SatDataHandler):
                 dot_safe_name=fname_bandstack
             )
 
-        # read SCL if processing level is L2A
+        # read SCL if processing level is L2A and read_scl is True
         if processing_level == ProcessingLevels.L2A:
 
-            if in_file_scl is None:
+            if read_scl:
+
+                if in_file_scl is None:
+                    try:
+                        parent_dir = fname_bandstack.parent
+                        in_file_scl = get_S2_sclfile(
+                            in_dir=parent_dir,
+                            from_bandstack=True,
+                            in_file_bandstack=fname_bandstack
+                        )
+                    except Exception as e:
+                        raise Exception(f'Could not find SCL file: {e}')
+                        # return if it's not possible to find the SCL
+                        return
+    
+                # read SCL file into new reader and add it as new band
+                scl_reader = SatDataHandler()
                 try:
-                    parent_dir = fname_bandstack.parent
-                    in_file_scl = get_S2_sclfile(
-                        in_dir=parent_dir,
-                        from_bandstack=True,
-                        in_file_bandstack=fname_bandstack
+                    scl_reader.read_from_bandstack(
+                        fname_bandstack=in_file_scl,
+                        in_file_aoi=polygon_features,
+                        full_bounding_box_only=full_bounding_box_only,
+                        blackfill_value=0
                     )
                 except Exception as e:
-                    raise Exception(f'Could not find SCL file: {e}')
-                    # return if it's not possible to find the SCL
-                    return
-
-            # read SCL file into new reader and add it as new band
-            scl_reader = SatDataHandler()
-            try:
-                scl_reader.read_from_bandstack(
-                    fname_bandstack=in_file_scl,
-                    in_file_aoi=in_file_aoi,
-                    full_bounding_box_only=full_bounding_box_only,
-                    blackfill_value=0
+                    raise Exception(f'Could not read SCL file: {e}')
+    
+                # add SCL as new band
+                band_name_scl = scl_reader.get_bandnames()[0]
+                self.add_band(
+                    band_name='scl',
+                    band_data=scl_reader.get_band(band_name_scl),
+                    band_alias='SCL',
+                    snap_band=self.get_bandnames()[0]
                 )
-            except Exception as e:
-                raise Exception(f'Could not read SCL file: {e}')
-
-            # add SCL as new band
-            band_name_scl = scl_reader.get_bandnames()[0]
-            self.add_band(
-                band_name='scl',
-                band_data=scl_reader.get_band(band_name_scl),
-                band_alias='SCL',
-                snap_band=self.get_bandnames()[0]
-            )
-
-            # increase band count in meta
-            self.data['meta']['count'] += 1
+    
+                # increase band count in meta
+                self.data['meta']['count'] += 1
 
 
     def read_from_safe(
             self,
             in_dir: Path,
-            processing_level: Optional[ProcessingLevels] = None,
-            in_file_aoi: Optional[Path] = None,
+            polygon_features: Optional[Path] = None,
             full_bounding_box_only: Optional[bool] = False,
             int16_to_float: Optional[bool] = True,
             band_selection: Optional[List[str]] = list(s2_band_mapping.keys()),
@@ -373,16 +383,10 @@ class Sentinel2Handler(SatDataHandler):
         :param in_dir:
             file-path to the .SAFE directory containing Sentinel-2 data in
             L1C or L2A processing level
-        :param processing_level:
-            specification of the processing level of the Sentinel-2 data. If not
-            provided will be determined from the name of the .SAFE dataset.
-        :param spatial resolution:
-            target spatial resolution. Sentinel-2 bands not having the
-            target spatial resolution are resampled on the fly...
-        :param in_file_aoi:
-            vector file (e.g., ESRI shapefile or geojson) defining geometry/ies
-            (polygon(s)) for which to extract the Sentinel-2 data. Can contain
-            one to many features.
+        :param polygon_features:
+            vector file (e.g., ESRI shapefile or geojson) or ``GeoDataFrame`` defining
+            geometry/ies for which to extract the Sentinel-2 data. Can contain
+            one to many features of type Polygon or MultiPolygon
         :param full_bounding_box_only:
             if set to False, will only extract the data for those geometry/ies
             defined in in_file_aoi. If set to False, returns the data for the
@@ -406,12 +410,11 @@ class Sentinel2Handler(SatDataHandler):
         resolution_selection = list(np.unique(band_selection_spatial_res))
     
         # check processing level
-        if processing_level is None:
-            processing_level = get_S2_processing_level(dot_safe_name=in_dir)
+        processing_level = get_S2_processing_level(dot_safe_name=in_dir)
         is_L2A = True
         if processing_level == ProcessingLevels.L1C:
             is_L2A = False
-    
+
         # search band files depending on processing level and spatial resolution(s)
         band_df_safe = get_S2_bandfiles_with_res(
             in_dir=in_dir,
@@ -441,7 +444,8 @@ class Sentinel2Handler(SatDataHandler):
 
         # loop over bands and add them to the reader object
         self._from_bandstack = False
-        for band_name in band_selection:
+
+        for idx, band_name in enumerate(band_selection):
 
             # get entry from dataframe with file-path of band
             band_safe = band_df_safe[band_df_safe.band_name == band_name]
@@ -452,11 +456,11 @@ class Sentinel2Handler(SatDataHandler):
                 band_reader = SatDataHandler()
                 band_reader.read_from_bandstack(
                     fname_bandstack=band_fpath,
-                    in_file_aoi=in_file_aoi,
+                    in_file_aoi=polygon_features,
                     full_bounding_box_only=full_bounding_box_only
                 )
 
-                # add band meta and bounds BEFORE assigning band data
+                # add band meta and bounds (required for adding band data)
                 band_reader_band = band_reader.get_bandnames()[0]
                 meta = band_reader.get_meta(band_reader_band)
                 attrs = band_reader.get_attrs(band_reader_band)
@@ -467,37 +471,29 @@ class Sentinel2Handler(SatDataHandler):
 
                 # get color name for saving meta and bounds
                 color_name = s2_band_mapping[band_name]
-                self.set_meta(
-                    meta=meta,
-                    band_name=color_name
-                )
-                self.set_bounds(
-                    bounds=bounds,
-                    band_name=color_name
-                )
-                self.set_attrs(
-                    attr=attrs,
-                    band_name=color_name
-                )
+
+                # set first_band_to_add to true in the first iteration
+                first_band_to_add = idx == 0
 
                 # add band data
                 self.add_band(
                     band_name=color_name,
+                    band_alias=band_name,
                     band_data=band_reader.get_band(band_reader_band),
+                    band_meta=meta,
+                    band_bounds=bounds,
+                    band_attribs=attrs,
+                    first_band_to_add=first_band_to_add
                 )
 
             except Exception as e:
-                raise Exception from e
+                raise Exception(
+                    f'Could not add band {band_name} from .SAFE to handler: {e}'
+                )
 
         # convert datatype if required
         if int16_to_float:
             self._int16_to_float()
-
-        # set band aliases
-        sel_bands = self._check_band_selection(band_selection=band_selection)
-        band_names = self.get_bandnames()
-        band_aliases = [x[0] for x in sel_bands]
-        self.set_bandaliases(band_names, band_aliases)
 
         # set scene properties (platform, sensor, acquisition date)
         acqui_time = get_S2_acquistion_time_from_safe(dot_safe_name=in_dir)
@@ -517,13 +513,33 @@ class Sentinel2Handler(SatDataHandler):
 
 if __name__ == '__main__':
 
-    handler = SatDataHandler()
-    band_selection = ['B02', 'B03', 'B04', 'B08']
+    handler = Sentinel2Handler()
     in_file_aoi = Path('/mnt/ides/Lukas/software/AgriSatPy/data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
     
     # bandstack testcase
     fname_bandstack = Path('/mnt/ides/Lukas/software/AgriSatPy/data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
-    
+
+    safe_archive = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/S2A/ESCH/S2A_MSIL2A_20210615T102021_N0300_R065_T32TMT_20210615T131659.SAFE')
+
+    handler.read_from_safe(
+        in_dir=safe_archive,
+        polygon_features=in_file_aoi,
+        full_bounding_box_only=True
+    )
+
+    handler.calc_si('NDVI')
+
+    import cv2
+    handler.resample(
+        target_resolution=10.,
+        resampling_method=cv2.INTER_NEAREST_EXACT
+    )
+
+    assert handler.get_meta()['scl']['dtype'] == 'uint8', 'wrong data type for SCL in meta'
+    assert handler.get_meta('scl')['dtype'] == 'uint8', 'wrong data type for SCL returned'
+    assert not handler.check_is_bandstack(), 'handler seems to be a band stack but it should not'
+
+    band_selection = ['B02', 'B11']
     handler.read_from_bandstack(
         fname_bandstack=fname_bandstack,
         in_file_aoi=in_file_aoi,
@@ -539,7 +555,7 @@ if __name__ == '__main__':
 
     # reader.get_band_coordinates('B02')
     # fig_rgb = reader.plot_rgb()
-    # fig_scl = reader.plot_scl()
+    fig_scl = handler.plot_scl()
     # cc = reader.get_cloudy_pixel_percentage()
     # fig_blue = reader.plot_band('blue')
     #
