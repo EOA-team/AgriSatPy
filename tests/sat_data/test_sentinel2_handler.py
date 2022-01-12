@@ -101,7 +101,7 @@ def test_read_from_bandstack_l2a(datadir, get_bandstack, get_polygons):
     handler = Sentinel2Handler()
     handler.read_from_bandstack(
         fname_bandstack=fname_bandstack,
-        in_file_aoi=fname_polygons,
+        polygon_features=fname_polygons,
         full_bounding_box_only=True,
         int16_to_float=False,
         band_selection=band_selection
@@ -123,7 +123,7 @@ def test_read_from_safe_with_mask_l2a(datadir, get_s2_safe_l2a, get_polygons, ge
     with pytest.raises(Exception):
         handler.read_from_safe(
             in_dir=in_dir,
-            in_file_aoi=in_file_aoi
+            polygon_features=in_file_aoi
         )
 
     # read using polygons overlapping the tile extent
@@ -146,10 +146,10 @@ def test_read_from_safe_with_mask_l2a(datadir, get_s2_safe_l2a, get_polygons, ge
 
     # as well as the calculation of the TCARI-OSAVI ratio
     with pytest.raises(Exception):
-        handler.calc_vi('TCARI_OSAVI')
+        handler.calc_si('TCARI_OSAVI')
 
     # but calculation of NDVI should work because it requires the 10m bands only
-    handler.calc_vi('NDVI')
+    handler.calc_si('NDVI')
     assert 'NDVI' in handler.get_bandnames(), 'NDVI not added to handler'
     assert 'NDVI' in handler.get_attrs().keys(), 'NDVI not added to dataset attributes'
 
@@ -373,7 +373,7 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     assert reader.get_spatial_resolution('B8A').x == 10, 'meta B8A was not updated to 10m'
 
     # Vegetation Index calculation
-    reader.calc_vi(vi='NDVI')
+    reader.calc_si(si='NDVI')
     assert type(reader.get_band('NDVI')) in (np.array, np.ndarray), 'VI is not an array'
     assert reader.get_band('NDVI').shape == reader.get_band('red').shape == reader.get_band('nir_1').shape, 'shapes do not fit'
     assert 'NDVI' in reader.get_bandnames(), 'NDVI not found as band name'
@@ -446,3 +446,29 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     dims = dict(xds.dims)
     assert list(dims.keys()) == ['y', 'x'], 'wrong coordinate keys'
     assert tuple(dims.values()) == reader.get_band('blue').shape, 'wrong shape of array in xarray dataset'
+
+
+def test_si_calculation(datadir, get_s2_safe_l2a, get_polys):
+    """Some tests with SI (spectral index) calculation"""
+
+    handler.read_from_safe(
+        in_dir=safe_archive,
+        polygon_features=in_file_aoi,
+        full_bounding_box_only=True
+    )
+    handler.calc_si('EVI')
+
+    assert not handler.check_is_bandstack(), 'bands have different spatial resolutions, therefore they cannot be bandstacked'
+    assert handler.get_meta()['EVI'] == handler.get_meta()['blue'], 'wrong meta entry'
+    assert handler.get_meta('EVI') == handler.get_meta()['EVI'], 'wrong meta entry returned'
+    assert len(handler.get_attrs('EVI')['nodatavals']) == 1, 'wrong number of nodata entries in band attributes'
+
+    # resampling of all bands -> transforms the handler into a bandstack
+    handler.resample(
+        target_resolution=10.,
+        resampling_method=cv2.INTER_NEAREST_EXACT
+    )
+
+    handler.calc_si('NDVI')
+    assert handler.from_bandstack(), 'when resampling all bands, handler should be band-stacked'
+    assert handler.check_is_bandstack(), 'when resampling all bands, band-stack criteria must pass'
