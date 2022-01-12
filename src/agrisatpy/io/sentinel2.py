@@ -526,14 +526,25 @@ if __name__ == '__main__':
         polygon_features=in_file_aoi,
         full_bounding_box_only=True
     )
+    handler.calc_si('EVI')
 
-    handler.calc_si('NDVI')
+    assert handler.get_meta()['EVI'] == handler.get_meta()['blue'], 'wrong meta entry'
+    assert handler.get_meta('EVI') == handler.get_meta()['EVI'], 'wrong meta entry returned'
+    assert len(handler.get_attrs('EVI')['nodatavals']) == 1, 'wrong number of nodata entries in band attributes'
 
+    # resampling of all bands -> transforms the handler into a bandstack
+    # TODO: add this a test to the test module
     import cv2
     handler.resample(
         target_resolution=10.,
         resampling_method=cv2.INTER_NEAREST_EXACT
     )
+
+    handler.calc_si('NDVI')
+    assert handler.from_bandstack(), 'when resampling all bands, handler should be band-stacked'
+    assert handler.check_is_bandstack(), 'when resampling all bands, band-stack criteria must pass'
+
+    
 
     assert handler.get_meta()['scl']['dtype'] == 'uint8', 'wrong data type for SCL in meta'
     assert handler.get_meta('scl')['dtype'] == 'uint8', 'wrong data type for SCL returned'
