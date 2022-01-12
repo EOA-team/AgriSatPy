@@ -337,7 +337,11 @@ class SatDataHandler(object):
                     self._unset_bandstack()
                     # and add meta and bounds for the current band
                     self.data['meta'][band_name] = band_meta
-                    self.data['bounds'][band_name] = band_bounds   
+                    self.data['bounds'][band_name] = band_bounds
+                # or we have the case that data seems to be bandstacked but is still
+                # organized as if it was not (e.g., after spatial resamoling)
+                if set(self.data['meta'].keys()) == set(existing_bands):
+                    self._set_bandstack()
 
 
     def add_bands_from_vector(
@@ -2322,6 +2326,32 @@ class SatDataHandler(object):
         return len(set(crs_list)) == 1 and len(set(xdim_list)) == 1 and len(set(ydim_list)) == 1
 
 
+    def _set_bandstack(self):
+        """
+        Reorganizes the ``meta`` and ``bounds`` entries from band-wise organization
+        to instance-wide coverage in a dict-like structure with a single entry of ``meta``
+        and ``bounds`` for all bands.
+        
+        The opposite functionality is implemented in `~SatDataHandler()._unset_bandstack()`
+        """
+
+        entries = ['meta', 'bounds']
+        band_names = self.get_bandnames()
+
+        for entry in entries:
+            src = deepcopy(self.data[entry])
+
+            # replace the band-wise dict structure if the data from the first band
+            try:
+                band_entry = src[band_names[0]]
+            except Exception as e:
+                raise ValueError(f'{entry} is not organized by bands: {e}')
+
+            self.data.update({entry: band_entry})
+
+        self._from_bandstack = True
+
+
     def _unset_bandstack(self):
         """
         Reorganizes the ``meta`` and ``bounds`` entries from instance-wide coverage to
@@ -2330,6 +2360,8 @@ class SatDataHandler(object):
         
         This allows to handle raster bands with different spatial resolution, extents
         and coordinate systems in one object.
+
+        The opposite functionality is implemented in `~SatDataHandler()._set_bandstack()`
         """
 
         # re-populate the meta, bounds in self.data
