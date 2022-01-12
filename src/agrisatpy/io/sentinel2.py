@@ -3,7 +3,7 @@ This module contains the ``Sentinel2Handler`` class that inherits from
 AgriSatPy's ``SatDataHandler`` class.
 
 The ``Sentinel2Handler`` enables reading one or more spectral bands from Sentinel-2
-data. The data can be either band-stacked (i.e., AgriSatPy derived format) in .SAFE
+data. The data can be either band-stacked (i.e., AgriSatPy derived format) or in .SAFE
 format which is ESA's standard format for distributing Sentinel-2 data.
 
 The class handles data in L1C and L2A processing level.
@@ -262,9 +262,9 @@ class Sentinel2Handler(SatDataHandler):
             tries to find the corresponding SCL file from the filesystem assuming
             that AgriSatPy's default file system logic was used.
         :param polygon_features:
-            vector file (e.g., ESRI shapefile or geojson) defining geometry/ies
-            (polygon(s)) for which to extract the Sentinel-2 data. Can contain
-            one to many features.
+            vector file (e.g., ESRI shapefile or geojson) or ``GeoDataFrame`` defining
+            geometry/ies for which to extract the Sentinel-2 data. Can contain
+            one to many features of type Polygon or MultiPolygon
         :param full_bounding_box_only:
             if set to False, will only extract the data for those geometry/ies
             defined in in_file_aoi. If set to False, returns the data for the
@@ -365,7 +365,7 @@ class Sentinel2Handler(SatDataHandler):
     def read_from_safe(
             self,
             in_dir: Path,
-            polygon_features: Optional[Path] = None,
+            polygon_features: Optional[Union[Path, gpd.GeoDataFrame]] = None,
             full_bounding_box_only: Optional[bool] = False,
             int16_to_float: Optional[bool] = True,
             band_selection: Optional[List[str]] = list(s2_band_mapping.keys()),
