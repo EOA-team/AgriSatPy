@@ -32,7 +32,7 @@ def test_read_from_safe_l1c(get_s2_safe_l1c):
     )
 
     # check if the object can be considered a band stack -> should not be the case
-    assert not reader.check_is_bandstack(), 'data is labelled as band-stack but it should not'
+    assert not reader.check_is_bandstack(), 'data is labeled as band-stack but it should not'
 
     # check scene properties
     acquisition_time = reader.scene_properties.get('acquisition_time')
@@ -65,17 +65,17 @@ def test_read_from_bandstack_l2a(datadir, get_bandstack, get_polygons):
     # read data for field parcels, only
     handler.read_from_bandstack(
         fname_bandstack=fname_bandstack,
-        in_file_aoi=fname_polygons
+        polygon_features=fname_polygons
     )
 
     # check data types
     assert handler.get_band('blue').dtype == float, 'wrong  data type for spectral band, expected float'
     assert isinstance(handler.get_band('blue'), np.ma.core.MaskedArray), 'expected masked array'
 
-    assert handler.check_is_bandstack() == True, 'expected band-stacked object'
+    assert handler.check_is_bandstack(), 'expected band-stacked object'
 
     # check bands, SCL must be available
-    assert 'scl' in handhttps://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2019_2585-1130/swissalti3d_2019_2585-1130_2_2056_5728.tifler.get_bandnames(), 'scene classification layer not read'
+    assert 'scl' in handler.get_bandnames(), 'scene classification layer not read'
     assert handler.get_band('scl').dtype == 'uint8', 'wrong datatype for SCL'
     assert len(handler.get_bandnames()) == 11, 'wrong number of bands read'
     assert len(handler.get_bandaliases()) == 11, 'band aliases not provided correctly'
@@ -131,10 +131,14 @@ def test_read_from_safe_with_mask_l2a(datadir, get_s2_safe_l2a, get_polygons, ge
 
     handler.read_from_safe(
         in_dir=in_dir,
-        in_file_aoi=in_file_aoi
+        polygon_features=in_file_aoi
     )
 
     assert not handler.check_is_bandstack(), 'data read from SAFE archive cannot be a bandstack'
+
+    # make sure meta information was saved correctly
+    assert handler.get_meta()['scl']['dtype'] == 'uint8', 'wrong data type for SCL in meta'
+    assert handler.get_meta('scl')['dtype'] == 'uint8', 'wrong data type for SCL returned'
 
     # to_xarray should fail because of different spatial resolutions
     with pytest.raises(ValueError):
@@ -177,7 +181,7 @@ def test_ignore_scl(datadir, get_s2_safe_l2a, get_polygons_2):
     handler = Sentinel2Handler()
     handler.read_from_safe(
         in_dir=in_dir,
-        in_file_aoi=in_file_aoi,
+        polygon_features=in_file_aoi,
         read_scl=False
     )
     assert 'scl' not in handler.get_bandnames(), 'SCL band should not be available'
@@ -187,7 +191,7 @@ def test_ignore_scl(datadir, get_s2_safe_l2a, get_polygons_2):
     handler = Sentinel2Handler()
     handler.read_from_safe(
         in_dir=in_dir,
-        in_file_aoi=in_file_aoi,
+        polygon_features=in_file_aoi,
         band_selection=band_selection,
         read_scl=False
     )
@@ -209,7 +213,7 @@ def test_band_selections(datadir, get_s2_safe_l2a, get_polygons, get_polygons_2,
     with pytest.raises(IndexError):
         handler.read_from_safe(
             in_dir=in_dir,
-            in_file_aoi=in_file_aoi,
+            polygon_features=in_file_aoi,
             band_selection=['B02','B13']
         )
 
@@ -442,6 +446,3 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     dims = dict(xds.dims)
     assert list(dims.keys()) == ['y', 'x'], 'wrong coordinate keys'
     assert tuple(dims.values()) == reader.get_band('blue').shape, 'wrong shape of array in xarray dataset'
-
-
-
