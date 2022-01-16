@@ -1,8 +1,5 @@
 '''
-Reconstruct path to datasets on the file system based on the entries in the
-metadata DB.
-
-IMPORTANT: This function is somewhat experimental and might be changed in the future.
+Helper functions to interact with the satellite meta data base
 '''
 
 # TODO: test this function
@@ -56,10 +53,10 @@ def reconstruct_path(
         single record from the metadata base denoting a single dataset
     :param is_raw_data:
         if True (default) assumes the queried data is Sentinel-2 ESA
-        derived "raw" data and not already processed by AgriSatPy to band
-        stacks etc.
+        derived "raw" data in .SAFE archive format and not already processed
+        by AgriSatPy to multi-band geoTiff files.
     :param path_to_nas:
-        if True (default) tries to find the mount of the NAS file system
+        if True (default) tries to find the mount point of the NAS file system
         on the local machine's file system.
     :return in_dir:
         filepath to the directory for the local machine

@@ -1,45 +1,16 @@
 '''
-Function that could be used in (parallelized) way for preprocessing Sentinel-2 data
-as part of the ``AgriSatPy`` operational processing pipeline.
+Module that could be used in (parallelized) way for pre-processing Sentinel-2 data
+as part of the ``AgriSatPy`` operational processing pipeline:
              
 - resampling from 20 to 10m spatial resolution
 - generation of a RGB preview image per scene
 - merging of split scenes (due to data take issues)
-- resampling of SCL data (L2A processing level, only)
-- generation of metadata file containing file-paths to the processed data
+- resampling of SCL data (L2A processing level, only) and generation of a preview
+- generation of metadata of the processed data (links to the input datasets)
 
-Relies on metadata from AgriSatPy's metadata DB. Currently metadata CSV format is also
-supported but this functionality will most likely be removed in the near future.
-
-Usage example (assuming that the database has entries for the selected tile and time period):
-
-```{python}
-
-from pathlib import Path
-from datetime import date
-from agrisatpy.operational.resampling.sentinel2 import exec_S2_pipeline
-
-# define location where to store outputs
-processed_data_archive = Path('/mnt/data/Sentinel-2/Processed')
-
-# define Sentinel-2 tile
-tile = 'T32TLT'
-
-# define time period to process
-date_start = date(2021,3,1)
-date_end = date(2021,8,31)
-
-# we leave the other options as defaults
-results = exec_pipeline(
-    processed_data_archive
-    date_start,
-    date_end,
-    tile
-)
-```
+The module relies on metadata from AgriSatPy's metadata DB.
 
 Depending on your hardware this might take a while!
-
 '''
 
 import time
@@ -52,10 +23,11 @@ from typing import Tuple
 from typing import Dict
 from datetime import datetime
 
-from agrisatpy.spatial_resampling.sentinel2 import resample_and_stack_s2
-from agrisatpy.spatial_resampling.sentinel2 import merge_split_scenes
+from .resample_and_stack import resample_and_stack_s2
+from .merge_blackfill import merge_split_scenes
+
 from agrisatpy.operational.utils import identify_split_scenes
-from agrisatpy.utils import reconstruct_path
+from agrisatpy.metadata.utils import reconstruct_path
 from agrisatpy.config import get_settings
 from agrisatpy.utils.constants import ProcessingLevels
 from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_tile
@@ -136,11 +108,13 @@ def exec_pipeline(
     -> merging of split scenes (due to data take issues)
     -> resampling of SCL data (L2A processing level, only)
 
-    IMPORTANT: The function works on single tiles and L1C or L2A processing level.
+    NOTE:
+        The function works on single tiles and supports L1C and L2A processing level.
 
-    HINT: The main part of the pipeline except the blackfill merging can be executed
-    using multiple threads if ``n_threads`` is set to a value larger 1. This feature
-    is experimental.
+    NOTE:
+        The main part of the pipeline except the blackfill merging can be executed
+        using multiple threads if ``n_threads`` is set to a value larger 1. This feature
+        is experimental.
 
     :param processed_data_archive:
         target archive where the processed data should be stored.
@@ -151,7 +125,8 @@ def exec_pipeline(
         end_date of the period to process. NOTE: The temporal
         selection is bound by the available (i.e., downloaded) Sentinel-2 data!
     :param tile:
-        Sentinel-2 tile to process (e.g. 'T32TLT')
+        Sentinel-2 tile to process (e.g. 'T32TLT'). NOTE: The spatial (tile)
+        selection is bound by the available (i.e., downloaded) Sentinel-2 data!
     :param processing_level:
         Sentinel-2 processing level (either L1C or L2A, L2A by default).
     :param n_threads:
@@ -161,7 +136,7 @@ def exec_pipeline(
         kwargs to pass to resample_and_stack_S2 and scl_10m_resampling (L2A, only)
     :return:
         tuple containing metadata of the processed datasets [0] and eventually
-        failed datasets in the second tuple item
+        failed datasets in the second tuple item [1]
     """
 
     # make sub-directory for logging successfully processed scenes in out_dir

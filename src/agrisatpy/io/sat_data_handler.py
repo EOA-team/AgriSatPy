@@ -23,6 +23,8 @@ import rasterio as rio
 import xarray as xr
 import geopandas as gpd
 
+from copy import deepcopy
+from collections import namedtuple
 from rasterio import Affine
 from rasterio.coords import BoundingBox
 from rasterio.drivers import driver_from_extension
@@ -30,11 +32,8 @@ from rasterio.crs import CRS
 from rasterio.enums import Resampling
 from rasterio.warp import transform_bounds
 from rasterio import features
-from shapely import geometry
 from shapely.geometry import box
 from shapely.geometry import Polygon
-from shapely.geometry import MultiPolygon
-from shapely.geometry import Point
 from pathlib import Path
 from typing import Optional
 from typing import List
@@ -46,13 +45,14 @@ from matplotlib.colors import ListedColormap
 from matplotlib.pyplot import Figure
 from matplotlib.figure import figaspect
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from copy import deepcopy
-from collections import namedtuple
 from numbers import Number
 from xarray import DataArray
-from shapely.geometry import Point
 
 from agrisatpy.analysis.spectral_indices import SpectralIndices
+from agrisatpy.config import get_settings
+from agrisatpy.io.utils.raster import get_raster_attributes
+from agrisatpy.io.utils.geometry import check_geometry_types
+from agrisatpy.operational.resampling.utils import upsample_array
 from agrisatpy.utils.exceptions import NotProjectedError, DataExtractionError
 from agrisatpy.utils.exceptions import InputError
 from agrisatpy.utils.exceptions import ReprojectionError
@@ -60,16 +60,11 @@ from agrisatpy.utils.exceptions import ResamplingFailedError
 from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.utils.exceptions import BlackFillOnlyError
 from agrisatpy.utils.reprojection import check_aoi_geoms
-from agrisatpy.spatial_resampling import upsample_array
 from agrisatpy.utils.arrays import count_valid
 from agrisatpy.utils.reprojection import reproject_raster_dataset
 from agrisatpy.utils.decorators import check_band_names
 from agrisatpy.utils.decorators import check_metadata
 from agrisatpy.utils.constants import ProcessingLevels
-from agrisatpy.io.utils.raster import get_raster_attributes
-from agrisatpy.io.utils.geometry import check_geometry_types
-from agrisatpy.config import get_settings
-from geopandas.tests.test_dissolve import first
 
 
 logger = get_settings().logger
