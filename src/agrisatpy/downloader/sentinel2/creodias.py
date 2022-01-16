@@ -153,7 +153,8 @@ def get_keycloak() -> str:
 
 def download_datasets(
         datasets: pd.DataFrame,
-        download_dir: Union[Path,str]
+        download_dir: Union[Path,str],
+        overwrite_existing_zips: Optional[bool] = False
     ) -> None:
     """
     Function for actual dataset download from CREODIAS.
@@ -165,6 +166,12 @@ def download_datasets(
         made by `query_creodias` function
     :param download_dir:
         directory where to store the downloaded files
+    :param overwrite_existing_zips:
+        if set to False (default), existing zip files in the
+        ``download_dir`` are not overwritten. This feature can be
+        useful to restart the downloader after a network connection
+        timeout or similar. NOTE: Thhe function does not check if
+        the existing zips are complete!
     """
 
     # get API token from CREODIAS
@@ -189,6 +196,16 @@ def download_datasets(
             continue
 
         # download the data using the iter_content method (writes chunks to disk)
+        # check if the dataset exists already and overwrite it only if defined by the user
+        if Path(dataset.dataset_name).exists():
+            if not overwrite_existing_zips:
+                logger.info(
+                    f'{dataset.dataset_name} already downloaded - continue with next dataset'
+                )
+                continue
+            else:
+                logger.warning(f'Overwriting {dataset.dataset_name}')
+
         fname = dataset.dataset_name.replace('SAFE', 'zip')
         logger.info(f'Starting downloading {fname} ({scene_counter}/{datasets.shape[0]})')
         with open(fname, 'wb') as fd:

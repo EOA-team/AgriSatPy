@@ -1,8 +1,10 @@
 '''
-Scriptable high-level function interfaces to Sentinel-2 processing pipeline and
+Scriptable high-level function interfaces to the Sentinel-2 processing pipeline and
 related operational functionalities.
 
-IMPORTANT: All of the functions make use of AgriSatPy's metadata DB.
+NOTE:
+    All of the functions make use of AgriSatPy's metadata DB. Only those Sentinel-2
+    scenes ingested into the database can be accessed!
 '''
 
 import shutil
@@ -40,10 +42,33 @@ def cli_s2_pipeline_fun(
         path_options: Optional[dict] = None
     ) -> None:
     """
-    Function calling Sentinel-2 processing pipeline (resampling and merging
-    withhin single tiles)
+    Function calling Sentinel-2 pre-processing pipeline for user-defined
+    time period and Sentinel-2 tile. The pre-processing pipeline brings
+    those Sentinel-2 bands with a spatial resolution of 20m into a spatial
+    resolution of 10m and generates scene quicklooks. The function accepts
+    Sentinel-2 input data in .SAFE format in L1C and L2A processing level.
 
-    TODO: add doc string
+    :param processed_data_archive:
+        directory where to store the processed data
+    :param date_start:
+        date defining the begin of the time period to process
+    :param date_end:
+        date defining the end of the time period to process
+    :param tile:
+        Sentinel-2 tile to process (e.g., 'T32TLT')
+    :param processing_level:
+        Processing level of the Sentinel-2 data (accepts L1C and L2A)
+    :param n_threads:
+        number of threads to use for execution of the pipeline
+    :param resampling_options:
+        key-word arguments to pass to `~exex_pipeline`
+    :param path_options:
+        optional key-word arguments for handling filepaths of the resulting
+        datasets
+
+    Example
+    ------
+    # TODO!
     """
     # start the processing
     metadata, failed_datasets = exec_pipeline(
@@ -132,6 +157,10 @@ def cli_s2_creodias_update(
         and should be accessible from different operating systems or file systems
         with different mount points of the NAS share. If not provided, the absolute
         path of the dataset is used in the database.
+
+    Example
+    -------
+    # TODO!
     """
 
     # since the data is stored by year (each year is a single sub-directory) we
