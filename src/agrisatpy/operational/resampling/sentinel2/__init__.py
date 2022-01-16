@@ -26,11 +26,11 @@ from datetime import datetime
 from .resample_and_stack import resample_and_stack_s2
 from .merge_blackfill import merge_split_scenes
 
-from agrisatpy.operational.utils import identify_split_scenes
-from agrisatpy.metadata.utils import reconstruct_path
 from agrisatpy.config import get_settings
-from agrisatpy.utils.constants import ProcessingLevels
 from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_tile
+from agrisatpy.metadata.utils import reconstruct_path
+from agrisatpy.operational.resampling.utils import identify_split_scenes
+from agrisatpy.utils.constants import ProcessingLevels
 
 
 Settings = get_settings()
