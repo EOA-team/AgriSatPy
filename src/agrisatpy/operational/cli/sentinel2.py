@@ -222,7 +222,8 @@ def cli_s2_creodias_update(
                 processing_level=processing_level,
                 path_out=path_out,
                 region=region,
-                cloud_cover_threshold=cloud_cover_threshold
+                cloud_cover_threshold=cloud_cover_threshold,
+                overwrite_existing_zips=overwrite_existing_zips
             )
 
             if downloaded_ds.empty:
