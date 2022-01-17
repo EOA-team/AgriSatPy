@@ -109,7 +109,8 @@ def cli_s2_creodias_update(
         region: str,
         processing_level: ProcessingLevels,
         cloud_cover_threshold: Optional[int] = 100,
-        path_options: Optional[Dict[str, str]] = None
+        path_options: Optional[Dict[str, str]] = None,
+        overwrite_existing_zips: Optional[bool] = False
     ) -> None:
     """
     Loops over an existing Sentinel-2 rawdata (i.e., *.SAFE datasets) archive
@@ -157,10 +158,46 @@ def cli_s2_creodias_update(
         and should be accessible from different operating systems or file systems
         with different mount points of the NAS share. If not provided, the absolute
         path of the dataset is used in the database.
+    :param overwrite_existing_zips:
+        if False (default) overwrites eventually existing zip files. If the download
+        process was interrupted (e.g., due to a connection timeout) setting the flag
+        to True can save time because datasets already downloaded are ignored. NOTE:
+        The function does **not** check if a dataset was downloaded completely!
 
     Example
     -------
-    # TODO!
+
+    .. code-block:: python
+
+    from pathlib import Path
+    from agrisatpy.operational.cli.sentinel2 import cli_s2_creodias_update
+    from agrisatpy.utils.constants import ProcessingLevels
+
+    # define processing level (usually L2A but also L1C works)
+    processing_level = ProcessingLevels.L2A
+
+    # specifiy region, we use Switzerland (the extent of Switzerland is defined in the database)
+    region = 'CH'
+
+    # the archive should be always mounted in the same way for each user
+    user_name = '<your_username>'
+    s2_raw_data_archive = Path(f'/home/{user_name}/public/Evaluation/Satellite_data/Sentinel-2/Rawdata')
+
+    # file-system specific handling: this allows to store the paths in the database
+    # in such way that the dataset paths can be found from Linux and Windows machines
+    file_system_options = {
+        'storage_device_ip': '<your_nas_ip>',
+        'storage_device_ip_alias': '<alternative_nas_ip_if_any',
+        'mount_point': f'/home/{user_name}/public/'
+    }
+
+    cli_s2_creodias_update(
+        s2_raw_data_archive=s2_raw_data_archive,
+        region=region,
+        processing_level=processing_level,
+        path_options=file_system_options
+    )
+
     """
 
     # since the data is stored by year (each year is a single sub-directory) we

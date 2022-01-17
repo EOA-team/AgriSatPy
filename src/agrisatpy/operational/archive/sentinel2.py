@@ -11,7 +11,7 @@ to download data must be defined in the metadata DB.
 
 IMPORTANT: CREODIAS does not allow more than 2000 records (each Sentinel-2 scene is a record)
 to be queried at once. If you might exceed this threshold (e.g., your region is large and/or
-your time period is long, split your query into smaller chunks by using, e.g., shorter time
+your time period is long) split your query into smaller chunks by using, e.g., shorter time
 periods for querying.
 '''
 
@@ -41,11 +41,17 @@ def pull_from_creodias(
         path_out: Path,
         region: str,
         cloud_cover_threshold: Optional[int] = 100,
-        unzip: Optional[bool] = True
+        unzip: Optional[bool] = True,
+        overwrite_existing_zips: Optional[bool] = False
     ) -> pd.DataFrame:
     '''
     Checks if CREODIAS has Sentinel-2 datasets not yet available locally
-    and downloads these datasets.
+    and downloads these datasets from CREODIAS.
+
+    NOTE:
+        CREODIAS limits the maximum amount of datasets to download within a
+        single query to somewhat around 2000. We therefore recommend to split
+        the query into smaller ones if the query is likely to hit this limit.
 
     :param date start:
         Start date of the database & creodias query
@@ -65,6 +71,11 @@ def pull_from_creodias(
         to 100% (i.e., also completely cloudy scenes are downloaded).
     :param unzip:
         if True (default) datasets are unzipped and zip archives are deleted
+    :param overwrite_existing_zips:
+        if False (default) overwrites eventually existing zip files. If the download
+        process was interrupted (e.g., due to a connection timeout) setting the flag
+        to True can save time because datasets already downloaded are ignored. NOTE:
+        The function does **not** check if a dataset was downloaded completely!
     :return:
         dataframe with references to downloaded datasets
     '''
@@ -119,7 +130,11 @@ def pull_from_creodias(
     datasets_filtered = datasets[datasets.product_uri.isin(missing_datasets)]
 
     # download those scenes not available in the local database from Creodias
-    download_datasets(datasets_filtered, path_out)
+    download_datasets(
+        datasets=datasets_filtered,
+        download_dir=path_out,
+        overwrite_existing_zips=overwrite_existing_zips
+    )
 
     # unzip datasets
     if unzip:
