@@ -26,7 +26,7 @@ from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
 from agrisatpy.utils.constants.sentinel2 import s2_gain_factor
 from agrisatpy.utils.constants.sentinel2 import SCL_Classes
 from agrisatpy.utils.constants.sentinel2 import band_resolution
-from agrisatpy.utils.exceptions import BandNotFoundError
+from agrisatpy.utils.exceptions import BandNotFoundError, BlackFillOnlyError
 from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res
 from agrisatpy.utils.sentinel2 import get_S2_platform_from_safe
 from agrisatpy.utils.sentinel2 import get_S2_sclfile
@@ -369,7 +369,8 @@ class Sentinel2Handler(SatDataHandler):
             full_bounding_box_only: Optional[bool] = False,
             int16_to_float: Optional[bool] = True,
             band_selection: Optional[List[str]] = list(s2_band_mapping.keys()),
-            read_scl: Optional[bool] = True
+            read_scl: Optional[bool] = True,
+            skip_blackfilled_scenes: Optional[bool] = True
         ) -> None:
         """
         Reads Sentinel-2 spectral bands from a dataset in .SAFE format by calling
@@ -402,6 +403,10 @@ class Sentinel2Handler(SatDataHandler):
             VIS bands.
         :param read_scl:
             read SCL file if available (default, L2A processing level).
+        :param skip_blackfilled_scenes:
+            if True (default) the dataset is skipped if the extracted band data
+            contains blackfill (nodata), only. Sentinel-2 blackfill is indicated
+            by a reflectance of zero in every pixel.
         """
 
         # determine which spatial resolutions are selected
@@ -490,6 +495,15 @@ class Sentinel2Handler(SatDataHandler):
                 raise Exception(
                     f'Could not add band {band_name} from .SAFE to handler: {e}'
                 )
+
+            # check for blackfill; if the whole band contains blackfill (nodata)
+            # only, raise a warning message (blackfill is indicated by a reflectance
+            # value of zero in each pixel in the current band
+            if skip_blackfilled_scenes:
+                if self.is_blackfilled():
+                    raise BlackFillOnlyError(
+                        f'The read subset of {in_dir} contains blackfill, only'
+                    )
 
         # convert datatype if required
         if int16_to_float:

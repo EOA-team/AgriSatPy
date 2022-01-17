@@ -37,7 +37,7 @@ def read_s2_sclfile(
     reader = Sentinel2Handler()
     reader.read_from_safe(
         in_dir=in_dir,
-        in_file_aoi=in_file_aoi,
+        polygon_features=in_file_aoi,
         band_selection=['B05']
     )
     reader.drop_band(band_name='B05')

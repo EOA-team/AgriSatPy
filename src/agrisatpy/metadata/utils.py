@@ -75,7 +75,7 @@ def reconstruct_path(
             mount_point = _check_linux_cifs(ip=ip)
     
             # if this attempt failed, we can check the alias if available
-            if str(mount_point) == '' and record.storage_device_ip_alias != '':
+            if str(mount_point) == '.' and record.storage_device_ip_alias != '':
                 mount_point = _check_linux_cifs(ip=record.storage_device_ip_alias)
     
             # if no mount point is found raise an error

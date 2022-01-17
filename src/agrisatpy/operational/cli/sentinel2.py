@@ -91,8 +91,25 @@ def cli_s2_pipeline_fun(
         mount_point = path_options.get('mount_point', '')
         mount_point_replacement = path_options.get('mount_point_replacement', '')
         metadata['storage_share'] = metadata["storage_share"].apply(
-            lambda x: str(Path(x).as_posix()).replace(mount_point, mount_point_replacement)
+            lambda x, mount_point=mount_point, mount_point_replacement=mount_point_replacement:
+            str(x).replace(mount_point, mount_point_replacement)
         )
+
+    # rename columns to match DB attributes
+    metadata = metadata.rename(columns={'rgb_preview': 'preview'})
+
+    # remove storage share from file-paths (breaks otherwise the entry in the DB)
+    metadata['bandstack'] = metadata['bandstack'].apply(lambda x: Path(x).name)
+    cols = ['preview']
+    if processing_level.name == 'L2A':
+        cols.append('scl')
+    for col in cols:
+        metadata[col] = metadata[col].apply(
+            lambda x: str(Path(Path(x).parent.name).joinpath(Path(x).name))
+        )
+
+    if 'scl_preview' in metadata.columns:
+        metadata.drop('scl_preview', axis=1, inplace=True)
 
     # write to database (set raw_metadata option to False)
     meta_df_to_database(

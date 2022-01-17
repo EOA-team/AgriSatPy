@@ -1909,15 +1909,23 @@ class SatDataHandler(object):
 
             # set values nodata where tmp is zero
             if isinstance(self.data[band_to_mask], np.ma.MaskedArray):
+                # combine the two masks (previous mask and additionally masked pixels)
+                orig_mask = self.data[band_to_mask].mask
+                for row in range(orig_mask.shape[0]):
+                    for col in range(orig_mask.shape[1]):
+                        # ignore pixels already masked
+                        if orig_mask[row, col]:
+                            continue
+                        else:
+                            orig_mask[row, col] = tmp[row,col] == 1
                 self.data[band_to_mask] = np.ma.MaskedArray(
                     data=self.data[band_to_mask].data,
-                    mask=tmp
+                    mask=orig_mask
                 )
             else:
                 self.data[band_to_mask][tmp == 1] = nodata_value
 
 
-    # TODO: infer blackfill value from raster attributes
     # TODO: rename in_file_aoi to vector_features
     def read_from_bandstack(
             self,

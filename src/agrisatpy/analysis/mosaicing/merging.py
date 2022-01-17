@@ -100,7 +100,8 @@ def merge_datasets(
     try:
         merge(
             datasets=datasets,
-            dst_path=out_file
+            dst_path=out_file,
+            **kwargs
         )
     except Exception as e:
         raise Exception(f'Could not merge datasets: {e}') 

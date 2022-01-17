@@ -72,6 +72,9 @@ def do_parallel(
             out_dir=out_dir,
             **kwargs
         )
+        # preserve scene_id and product_uri
+        in_dir['scene_id'] = in_df.scene_id.iloc[loopcounter]
+        in_dir['product_uri'] = in_df.product_uri.iloc[loopcounter]
 
     except Exception as e:
         logger.error(e)
@@ -79,7 +82,9 @@ def do_parallel(
 
     # write to successful_scenes.txt to indicate that the processing of
     # the scene was accomplished without any errors
-    scenes_log_file = out_dir.joinpath('log').joinpath(Settings.PROCESSING_CHECK_FILE_NO_BF)
+    scenes_log_file = out_dir.joinpath('log').joinpath(
+        Settings.PROCESSING_CHECK_FILE_NO_BF
+    )
     creation_time = datetime.now().strftime('%Y%m%d-%H%M%S')
     with open(scenes_log_file, 'a+') as src:
         line = ''
@@ -259,8 +264,6 @@ def exec_pipeline(
             bandstack_meta, emtpy_bandstacks, how='inner', on=['scene_id']
         )['scene_id']
         bandstack_meta = bandstack_meta[~bandstack_meta['scene_id'].isin(errored_records)]
-
-    # TODO: automatically insert records into DB if selected by the user
 
     # save metadata of all stacked files and return
     return bandstack_meta, emtpy_bandstacks
