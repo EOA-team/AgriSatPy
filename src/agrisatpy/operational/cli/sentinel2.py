@@ -217,8 +217,8 @@ def cli_s2_creodias_update(
 
             # download data from CREODIAS
             downloaded_ds = pull_from_creodias(
-                start_date=date(year, 1, 1),
-                end_date=date(year, 12, 31),
+                start_date=date(year,1,1),
+                end_date=date(year,12,31),
                 processing_level=processing_level,
                 path_out=path_out,
                 region=region,

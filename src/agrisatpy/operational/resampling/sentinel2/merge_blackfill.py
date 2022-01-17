@@ -15,14 +15,14 @@ import rasterio as rio
 from pathlib import Path
 from typing import Dict
 
-from agrisatpy.spatial_resampling.sentinel2 import resample_and_stack_s2
 from agrisatpy.analysis.mosaicing import merge_datasets
 from agrisatpy.config import get_settings
-from agrisatpy.io.sat_data_handler import SatDataHandler
-from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
-from agrisatpy.spatial_resampling.sentinel2.resample_and_stack import create_rgb_preview
-from agrisatpy.spatial_resampling.sentinel2.resample_and_stack import create_scl_preview
 from agrisatpy.io.sentinel2 import Sentinel2Handler
+from agrisatpy.io.sat_data_handler import SatDataHandler
+from agrisatpy.operational.resampling.sentinel2.resample_and_stack import resample_and_stack_s2
+from agrisatpy.operational.resampling.sentinel2.resample_and_stack import create_rgb_preview
+from agrisatpy.operational.resampling.sentinel2.resample_and_stack import create_scl_preview
+from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
 
 Settings = get_settings()
 logger = Settings.logger
