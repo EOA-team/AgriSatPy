@@ -7,10 +7,13 @@ Helper functions to interact with the satellite meta data base
 import os
 import subprocess
 import pandas as pd
+
 from pathlib import Path
 from typing import Optional
 from typing import Union
+
 from agrisatpy.utils.exceptions import DataNotFoundError
+
 
 
 def _check_linux_cifs(

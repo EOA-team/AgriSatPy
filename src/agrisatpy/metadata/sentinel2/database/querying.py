@@ -12,6 +12,8 @@ Query criteria include
 import pandas as pd
 
 from datetime import date
+from geoalchemy2.functions import ST_Intersects
+from geoalchemy2.functions import ST_GeomFromText
 from sqlalchemy import create_engine
 from sqlalchemy import and_
 from sqlalchemy import desc
@@ -19,10 +21,10 @@ from sqlalchemy.orm import sessionmaker
 from typing import Optional
 from typing import Union
 
+from agrisatpy.config import get_settings
+from agrisatpy.metadata.database import S2_Raw_Metadata
 from agrisatpy.utils.constants import ProcessingLevels
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevelsDB
-from agrisatpy.metadata.database import S2_Raw_Metadata
-from agrisatpy.config import get_settings
 from agrisatpy.utils.exceptions import DataNotFoundError
 
 Settings = get_settings()
@@ -42,7 +44,10 @@ def find_raw_data_by_bbox(
     ) -> pd.DataFrame:
     """
     Queries the metadata DB by Sentinel-2 bounding box, time period and processing
-    level (and cloud cover)
+    level (and cloud cover).
+
+    NOTE:
+        For the spatial query ``ST_Intersects`` is called.
 
     :param date_start:
         start date of the time period
@@ -60,9 +65,9 @@ def find_raw_data_by_bbox(
     """
 
     # translate processing level
-    processing_level_db = ProcessingLevelsDB[processing_level.value]
+    processing_level_db = ProcessingLevelsDB[processing_level.name]
 
-    # TODO: test
+    # formulate the query statement using the spatial and time period filter
     query_statement = session.query(
         S2_Raw_Metadata.product_uri,
         S2_Raw_Metadata.scene_id,
@@ -70,9 +75,9 @@ def find_raw_data_by_bbox(
         S2_Raw_Metadata.storage_device_ip_alias,
         S2_Raw_Metadata.storage_device_ip,
         S2_Raw_Metadata.sensing_date,
-        S2_Raw_Metadata.cloudy_pixel_percentage
+        S2_Raw_Metadata.cloudy_pixel_percentage,
     ).filter(
-        S2_Raw_Metadata.geom == bounding_box
+         ST_Intersects(S2_Raw_Metadata.geom, ST_GeomFromText(bounding_box))
     ).filter(
         and_(
             S2_Raw_Metadata.sensing_date <= date_end,
@@ -86,6 +91,7 @@ def find_raw_data_by_bbox(
         S2_Raw_Metadata.sensing_date.desc()
     ).statement
 
+    # read returned records in DataFrame and return
     try:
         return pd.read_sql(query_statement, session.bind)
     except Exception as e:
