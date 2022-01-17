@@ -230,9 +230,6 @@ def cli_s2_creodias_update(
                 logger.info(f'No new datasets found for year {year} on CREODIAS')
                 continue
 
-            # unzip datasets and remove the zips afterwards
-            unzip_datasets(download_dir=path_out)
-
             # move the datasets into the actual SAT archive (on level up)
             error_happened = False
             errored_datasets = []

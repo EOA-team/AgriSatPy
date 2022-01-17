@@ -138,6 +138,6 @@ def pull_from_creodias(
 
     # unzip datasets
     if unzip:
-        unzip_datasets(datasets_filtered)
+        unzip_datasets(download_dir=path_out)
 
     return datasets_filtered
