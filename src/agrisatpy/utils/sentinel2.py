@@ -1,9 +1,5 @@
 '''
-Created on Sep 2, 2021
-
-@author:      Lukas Graf (D-USYS, ETHZ)
-
-@purpose:     Sentinel-2 specific helper functions.
+Sentinel-2 specific helper functions.
 '''
 
 import os
@@ -83,7 +79,7 @@ def get_S2_acquistion_date_from_safe(
         image acquistion date
     """
 
-    return get_S2_acquistion_date_from_safe(dot_safe_name).date()
+    return get_S2_acquistion_time_from_safe(dot_safe_name).date()
 
 
 def get_S2_platform_from_safe(
