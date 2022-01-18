@@ -52,6 +52,7 @@ from agrisatpy.analysis.spectral_indices import SpectralIndices
 from agrisatpy.config import get_settings
 from agrisatpy.io.utils.raster import get_raster_attributes
 from agrisatpy.io.utils.geometry import check_geometry_types
+from agrisatpy.io.utils.geometry import convert_3D_2D
 from agrisatpy.operational.resampling.utils import upsample_array
 from agrisatpy.utils.exceptions import NotProjectedError, DataExtractionError
 from agrisatpy.utils.exceptions import InputError
@@ -2004,6 +2005,8 @@ class SatDataHandler(object):
                 fname_raster=fname_bandstack,
                 full_bounding_box_only=full_bounding_box_only
             )
+            # check for third dimension (has_z) and flatten it to 2d
+            gdf_aoi.geometry = convert_3D_2D(gdf_aoi.geometry)
 
             # check geometry types of the input features
             allowed_geometry_types = ['Polygon', 'MultiPolygon']
