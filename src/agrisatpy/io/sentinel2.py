@@ -10,6 +10,7 @@ The class handles data in L1C and L2A processing level.
 '''
 
 import numpy as np
+import pandas as pd
 import geopandas as gpd
 
 from matplotlib.pyplot import Figure
@@ -43,6 +44,8 @@ class Sentinel2Handler(SatDataHandler):
 
     def __init__(self, *args, **kwargs):
         SatDataHandler.__init__(self, *args, **kwargs)
+        self._is_l2a = True
+
 
     @staticmethod
     def _check_band_selection(
@@ -102,6 +105,71 @@ class Sentinel2Handler(SatDataHandler):
             else:
                 self.data[band_name] = self.data[band_name].astype(float) * \
                     s2_gain_factor
+
+
+    def _get_band_files(
+            self,
+            in_dir: Path,
+            band_selection: List[str],
+            read_scl: bool
+        ) -> pd.DataFrame:
+        """
+        Returns the file-paths to the selected Sentinel-2 bands in a .SAFE archive
+        folder and checks the processing level of the data (L1C or L2A).
+
+        :param in_dir:
+            Sentinel-2 .SAFE archive folder from which to read data
+        :param band_selection:
+            selection of spectral Sentinel-2 bands to read
+        :param read_scl:
+            if True and the processing level is L2A the scene classification layer
+            is read in addition to the spectral bands
+        :return:
+            ``DataFrame`` with paths to the jp2 files with the spectral band data
+        """
+        # determine which spatial resolutions are selected
+        # (based on the native spatial resolution of Sentinel-2 bands)
+        band_selection_spatial_res = [x[1] for x in band_resolution.items() if x[0] in band_selection]
+        resolution_selection = list(np.unique(band_selection_spatial_res))
+
+        # check processing level
+        processing_level = get_S2_processing_level(dot_safe_name=in_dir)
+
+        # define also a local flag of the processing level so this method also works
+        # when called from a classmethod
+        is_l2a = True
+        if processing_level == ProcessingLevels.L1C:
+            self._is_l2a = False
+            is_l2a = False
+
+        # search band files depending on processing level and spatial resolution(s)
+        band_df_safe = get_S2_bandfiles_with_res(
+            in_dir=in_dir,
+            resolution_selection=resolution_selection,
+            is_L2A=is_l2a
+        )
+
+        # search SCL file if processing level is L2A
+        if is_l2a:
+            if read_scl:
+                if 'SCL' not in band_selection:
+                    band_selection.append('SCL')
+                try:
+                    scl_file = get_S2_sclfile(in_dir)
+                    # append to dataframe
+                    record = {
+                        'band_name': 'SCL',
+                        'band_path': str(scl_file),
+                        'band_resolution': 20
+                    }
+                    band_df_safe = band_df_safe.append(record, ignore_index=True)
+                except Exception as e:
+                    raise Exception(f'Could not read SCL file: {e}')
+            else:
+                if 'SCL' in band_selection:
+                    band_selection.remove('SCL')
+
+        return band_df_safe
 
 
     def plot_scl(
@@ -409,43 +477,12 @@ class Sentinel2Handler(SatDataHandler):
             by a reflectance of zero in every pixel.
         """
 
-        # determine which spatial resolutions are selected
-        # (based on the native spatial resolution of Sentinel-2 bands)
-        band_selection_spatial_res = [x[1] for x in band_resolution.items() if x[0] in band_selection]
-        resolution_selection = list(np.unique(band_selection_spatial_res))
-    
-        # check processing level
-        processing_level = get_S2_processing_level(dot_safe_name=in_dir)
-        is_L2A = True
-        if processing_level == ProcessingLevels.L1C:
-            is_L2A = False
-
-        # search band files depending on processing level and spatial resolution(s)
-        band_df_safe = get_S2_bandfiles_with_res(
+        # determine which spatial resolutions are selected and check processing level
+        band_df_safe = self._get_band_files(
             in_dir=in_dir,
-            resolution_selection=resolution_selection,
-            is_L2A=is_L2A
+            band_selection=band_selection,
+            read_scl=read_scl
         )
-
-        # search SCL file if processing level is L2A
-        if is_L2A:
-            if read_scl:
-                if 'SCL' not in band_selection:
-                    band_selection.append('SCL')
-                try:
-                    scl_file = get_S2_sclfile(in_dir)
-                    # append to dataframe
-                    record = {
-                        'band_name': 'SCL',
-                        'band_path': str(scl_file),
-                        'band_resolution': 20
-                    }
-                    band_df_safe = band_df_safe.append(record, ignore_index=True)
-                except Exception as e:
-                    raise Exception(f'Could not read SCL file: {e}')
-            else:
-                if 'SCL' in band_selection:
-                    band_selection.remove('SCL')
 
         # loop over bands and add them to the reader object
         self._from_bandstack = False
@@ -512,6 +549,7 @@ class Sentinel2Handler(SatDataHandler):
         # set scene properties (platform, sensor, acquisition date)
         acqui_time = get_S2_acquistion_time_from_safe(dot_safe_name=in_dir)
         platform = get_S2_platform_from_safe(dot_safe_name=in_dir)
+        processing_level = get_S2_processing_level(dot_safe_name=in_dir)
 
         self.scene_properties.set(prop='acquisition_time', value=acqui_time)
         self.scene_properties.set(prop='platform', value=platform)
@@ -520,9 +558,97 @@ class Sentinel2Handler(SatDataHandler):
 
 
     @classmethod
-    def read_pixels_from_safe(cls):
-        # TODO: implement this method
-        pass
+    def read_pixels_from_safe(
+            cls,
+            point_features: Union[Path, gpd.GeoDataFrame],
+            in_dir: Path,
+            band_selection: Optional[List[str]] = list(s2_band_mapping.keys()),
+            read_scl: Optional[bool] = True,
+            skip_blackfilled_pixels: Optional[bool] = True
+        ) -> gpd.GeoDataFrame:
+        """
+        Extracts Sentinel-2 raster values at locations defined by one or many
+        point-like geometry features read from a vector file (e.g., ESRI shapefile).
+        The Sentinel-2 data must be organized in .SAFE archive structure in either
+        L1C or L2A processing level. Each selected Sentinel-2 band is returned as
+        a column in the resulting ``GeoDataFrame``.
+
+        NOTE:
+            A point is dimension-less, therefore, the raster grid cell (pixel) closest
+            to the point is returned if the point lies within the raster.
+            Therefore, this method works on all Sentinel-2 bands **without** the need
+            to do spatial resampling! The underlying ``rasterio.sample`` function always
+            snaps to the closest pixel in the current spectral band.
+
+        :param point_features:
+            vector file (e.g., ESRI shapefile or geojson) or ``GeoDataFrame``
+            defining point locations for which to extract pixel values
+        :param raster:
+            custom raster dataset understood by ``GDAL`` from which to extract
+            pixel values at the provided point locations
+        :param band_selection:
+            list of bands to read. Per default all raster bands available are read.
+        :param read_scl:
+            read SCL file if available (default, L2A processing level).
+        :param skip_blackfilled_pixels:
+            if True (default) skips all pixels that are blackfilled (or lay outside of
+            the scene extent). A blackfill pixel has zero reflectance in all spectral
+            bands.
+        :return:
+            ``GeoDataFrame`` containing the extracted raster values. The band values
+            are appened as columns to the dataframe. Existing columns of the input
+            `in_file_pixels` are preserved.
+        """
+
+        # check band selection and get file-paths to the single jp2 files
+        band_df_safe = cls._get_band_files(
+            cls,
+            in_dir=in_dir,
+            band_selection=band_selection,
+            read_scl=read_scl
+        )
+
+        # loop over spectral bands and extract the pixel values
+        band_gdfs = []
+        for idx, band_name in enumerate(band_selection):
+
+            # get entry from dataframe with file-path of band
+            band_safe = band_df_safe[band_df_safe.band_name == band_name]
+            band_fpath = Path(band_safe.band_path.values[0])
+
+            # read band pixels
+            try:
+                gdf_band = cls.read_pixels(
+                    point_features=point_features,
+                    raster=band_fpath,
+                )
+                # rename the spectral band (rasterio returns None as band name from
+                # the jp2 files that is translated to NaN in geopandas)
+                gdf_band = gdf_band.rename(columns={None: band_name})
+                # remove the geometry column from all GeoDataFrames but the first
+                # since geopandas does not support multiple geometry columns
+                # (they are the same for each band, anyways)
+                if idx > 0:
+                    gdf_band.drop('geometry', axis=1, inplace=True)
+                band_gdfs.append(gdf_band)
+            except Exception as e:
+                raise Exception(
+                    f'Could not extract pixels values from {band_name}: {e}'
+                )
+
+        # concat the single GeoDataFrames with the band data
+        gdf = pd.concat(band_gdfs, axis=1)
+
+        # clean the dataframe and remove duplicate column names after merging
+        # to avoid (large) redundancies
+        gdf = gdf.loc[:,~gdf.columns.duplicated()]
+
+        # skip blackfilled (nodata) pixels if selected by the user
+        # a blackfilled pixels has a reflectance of zero in all spectral bands
+        if skip_blackfilled_pixels:
+            gdf = gdf.loc[~(gdf[band_selection]==0).all(axis=1)]
+
+        return gdf
 
 
 if __name__ == '__main__':
@@ -534,6 +660,14 @@ if __name__ == '__main__':
     fname_bandstack = Path('/mnt/ides/Lukas/software/AgriSatPy/data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
 
     safe_archive = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/S2A/ESCH/S2A_MSIL2A_20210615T102021_N0300_R065_T32TMT_20210615T131659.SAFE')
+
+    # test pixels
+    test_point_features = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/sampling_test_points.shp')
+    Sentinel2Handler.read_pixels_from_safe(
+        point_features=test_point_features,
+        in_dir=safe_archive
+    )
+
 
     handler.read_from_safe(
         in_dir=safe_archive,
