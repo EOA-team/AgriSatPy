@@ -14,39 +14,41 @@ Besides that, ``SatDataHandler`` is a super class from which sensor-specific cla
 
 import cv2
 import datetime
-import rasterio.mask
-import numpy as np
+import geopandas as gpd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import numpy as np
+import pandas as pd
 import rasterio as rio
+import rasterio.mask
 import xarray as xr
-import geopandas as gpd
 
 from copy import deepcopy
 from collections import namedtuple
-from rasterio import Affine
-from rasterio.coords import BoundingBox
-from rasterio.drivers import driver_from_extension
-from rasterio.crs import CRS
-from rasterio.enums import Resampling
-from rasterio.warp import transform_bounds
-from rasterio import features
-from shapely.geometry import box
-from shapely.geometry import Polygon
-from pathlib import Path
-from typing import Optional
-from typing import List
-from typing import Union
-from typing import NamedTuple
-from typing import Dict
-from typing import Any
 from matplotlib.colors import ListedColormap
-from matplotlib.pyplot import Figure
 from matplotlib.figure import figaspect
+from matplotlib.pyplot import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from numbers import Number
+from pathlib import Path
+from rasterio import Affine
+from rasterio import features
+from rasterio.crs import CRS
+from rasterio.coords import BoundingBox
+from rasterio.drivers import driver_from_extension
+from rasterio.enums import Resampling
+from rasterio.warp import transform_bounds
+from shapely.geometry import box
+from shapely.geometry import Polygon
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import NamedTuple
+from typing import Optional
+from typing import Union
 from xarray import DataArray
+
 
 from agrisatpy.analysis.spectral_indices import SpectralIndices
 from agrisatpy.config import get_settings
@@ -329,7 +331,7 @@ class SatDataHandler(object):
                     band_bounds
                 # meta and/or bands do not match with the existing bands
                 # we have to unset the bandstack
-                if not (meta_check or bounds_check):
+                if not meta_check or not bounds_check:
                     self._unset_bandstack()
                     # and add meta and bounds for the current band
                     self.data['meta'][band_name] = band_meta
@@ -2113,14 +2115,26 @@ class SatDataHandler(object):
             band_selection: Optional[List[str]] = None
         ) -> gpd.GeoDataFrame:
         """
-        Extracts raster values at locations defined by one or many point-like
-        geometry features read from a vector file (e.g., ESRI shapefile). A point
-        is dimension-less, therefore, the raster grid cell (pixel) closest to the
-        point is returned if the point lies within the raster.
+        Extracts raster values from an **external** raster dataset at
+        locations defined by one or many point-like geometry features
+        read from a vector file (e.g., ESRI shapefile) or ``GeoDataFrame``.
+
+        IMPORTANT:
+            This methods does **not** return pixel values from the current
+            ``SatDataHandler`` instance but from the provided raster dataset
+            (``raster``). If you want to get pixel values from bands currently
+            read in the current ``SatDataHandler`` instance use
+            `~SatDataHandler().get_pixels()` instead!
+        
+        NOTE:
+            A point is dimension-less, therefore, the raster grid cell (pixel)
+            closest to the point is returned if the point lies within the raster.
+            For points outside of the raster extent pixel values are returned as
+            nodata values in all raster bands.
 
         :param point_features:
             vector file (e.g., ESRI shapefile or geojson) or ``GeoDataFrame``
-            defining point locations for which to extract pixel values
+            defining point locations for which to extract pixel values.
         :param raster:
             custom raster dataset understood by ``GDAL`` from which to extract
             pixel values at the provided point locations
@@ -2181,11 +2195,129 @@ class SatDataHandler(object):
         return gdf
 
 
-    # TODO: implement this method
-    def get_pixels(self):
+    def get_pixels(
+            self,
+            point_features: Union[Path, gpd.GeoDataFrame],
+            band_selection: Optional[List[str]] = None,
+            shift_to_center: Optional[bool] = True
+        ):
         """
+        Get pixel values from all or a subset of bands in the current
+        ``SatDataHandler`` instance. Pixels are specified by point-like features
+        provided in a vector file (e.g., ESRI shapefile) or by passing a
+        ``GeoDataFrame``.
+
+        The method supports extracting pixel data also from ``SatDataHandler``
+        instances with bands differing in spatial resolution, spatial extent
+        and coordinate system. Pixels outside of the current band bounds are
+        ignored and not returned!
+
+        NOTE:
+            In contrast to `~SatDataHandler.read_pixels` (which is a class method)
+            this is a(n instance) method to get pixel values from bands already
+            **read** into a ``SatDataHandler`` instance.
+
+        :param point_features:
+            vector file (e.g., ESRI shapefile or geojson) or ``GeoDataFrame``
+            defining point locations for which to extract pixel values
+        :param band_selection:
+            list of bands to read. Per default all raster bands available are read.
+        :param shift_to_center:
+            when True (default) return pixel center coordinates, if False uses
+            the GDAL default and returns the upper left pixel coordinates.
+        :return:
+            ``GeoDataFrame`` containing the extracted raster values. The band values
+            are appened as columns to the dataframe. Existing columns of the input
+            `in_file_pixels` are preserved.
         """
-        pass
+
+        if band_selection is None:
+            band_selection = self.get_bandnames()
+
+        # define helper function for getting the closest array index for a coordinate
+        # map the coordinates to array indices
+        def _find_nearest_array_index(array, value):
+            return np.abs(array - value).argmin()
+
+        # To support extracting pixel values also from raster bands with different
+        # resolution, projection and extent values are extracted for each band
+        # separately
+        band_gdfs = []
+        for idx, band_name in enumerate(band_selection):
+
+            # check input point features (and reproject them if necessary)
+            gdf = check_aoi_geoms(
+                in_dataset=point_features,
+                raster_crs=self.get_epsg(band_name),
+                full_bounding_box_only=False
+            )
+
+            # drop points outside of the band's bounding box
+            band_bbox = self.get_bounds(
+                band_name=band_name,
+                return_as_polygon=False
+            )
+            gdf = gdf.cx[band_bbox.left:band_bbox.right, band_bbox.bottom:band_bbox.top]
+            # the check for the correct geometry type is only required once
+            # because the features do not change between the loop iterations
+            if idx == 0:
+                allowed_geometry_types = ['Point']
+                gdf = check_geometry_types(
+                    in_dataset=gdf,
+                    allowed_geometry_types=allowed_geometry_types
+                )
+
+            # calculate the x and y array indices required to extract the pixel values
+            gdf['x'] = gdf.geometry.x
+            gdf['y'] = gdf.geometry.y
+
+            # get band coordinates
+            coords = self.get_band_coordinates(
+                band_name=band_name,
+                shift_to_center=shift_to_center
+            )
+
+            # get column (x) indices
+            gdf['col'] = gdf['x'].apply(
+                lambda x, coords=coords, find_nearest_array_index=_find_nearest_array_index:
+                find_nearest_array_index(coords['x'], x)
+            )
+            # get row (y) indices
+            gdf['row'] = gdf['y'].apply(
+                lambda y, coords=coords, find_nearest_array_index=_find_nearest_array_index:
+                find_nearest_array_index(coords['y'], y)
+            )
+
+            # add column to store band values
+            gdf[band_name] = np.empty(gdf.shape[0])
+
+            # loop over sample points and add them as new entries to the dataframe
+            for _, record in gdf.iterrows():
+                # get array value for the current column and row, continue on out-of-bounds error
+                try:
+                    array_value = self.get_band(band_name)[record.row, record.col]
+                except IndexError:
+                    continue
+                gdf.loc[
+                    (gdf.row == record.row) & (gdf.col == record.col),
+                    band_name
+                ] = array_value
+
+            # append GeoDataFrame to List, if the iteration is larger zero drop the
+            # geometry column to avoid an error later on
+            if idx > 0:
+                gdf.drop('geometry', axis=1, inplace=True)
+            band_gdfs.append(gdf)
+
+        # concat the single GeoDataFrames with the band data
+        gdf = pd.concat(band_gdfs, axis=1)
+
+        # clean the dataframe and remove duplicate column names after merging
+        # to avoid (large) redundancies
+        gdf = gdf.loc[:,~gdf.columns.duplicated()]
+
+        return gdf
+
 
     def write_bands(
             self,

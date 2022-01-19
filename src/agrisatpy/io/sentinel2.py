@@ -563,15 +563,21 @@ class Sentinel2Handler(SatDataHandler):
             point_features: Union[Path, gpd.GeoDataFrame],
             in_dir: Path,
             band_selection: Optional[List[str]] = list(s2_band_mapping.keys()),
-            read_scl: Optional[bool] = True,
-            skip_blackfilled_pixels: Optional[bool] = True
+            read_scl: Optional[bool] = True
         ) -> gpd.GeoDataFrame:
         """
         Extracts Sentinel-2 raster values at locations defined by one or many
         point-like geometry features read from a vector file (e.g., ESRI shapefile).
         The Sentinel-2 data must be organized in .SAFE archive structure in either
         L1C or L2A processing level. Each selected Sentinel-2 band is returned as
-        a column in the resulting ``GeoDataFrame``.
+        a column in the resulting ``GeoDataFrame``. Pixels outside of the band
+        bounds are ignored and not returned as well as pixels set to blackfill
+        (zero reflectance in all spectral bands).
+
+        IMPORTANT:
+            This function works for Sentinel-2 data organized in .SAFE format!
+            If the Sentinel-2 data has been converted to multi-band tiffs, use
+            `~Sentinel2Handler.read_pixels()` instead!
 
         NOTE:
             A point is dimension-less, therefore, the raster grid cell (pixel) closest
@@ -590,10 +596,6 @@ class Sentinel2Handler(SatDataHandler):
             list of bands to read. Per default all raster bands available are read.
         :param read_scl:
             read SCL file if available (default, L2A processing level).
-        :param skip_blackfilled_pixels:
-            if True (default) skips all pixels that are blackfilled (or lay outside of
-            the scene extent). A blackfill pixel has zero reflectance in all spectral
-            bands.
         :return:
             ``GeoDataFrame`` containing the extracted raster values. The band values
             are appened as columns to the dataframe. Existing columns of the input
@@ -622,9 +624,11 @@ class Sentinel2Handler(SatDataHandler):
                     point_features=point_features,
                     raster=band_fpath,
                 )
+
                 # rename the spectral band (rasterio returns None as band name from
                 # the jp2 files that is translated to NaN in geopandas)
                 gdf_band = gdf_band.rename(columns={None: band_name})
+
                 # remove the geometry column from all GeoDataFrames but the first
                 # since geopandas does not support multiple geometry columns
                 # (they are the same for each band, anyways)
@@ -643,10 +647,9 @@ class Sentinel2Handler(SatDataHandler):
         # to avoid (large) redundancies
         gdf = gdf.loc[:,~gdf.columns.duplicated()]
 
-        # skip blackfilled (nodata) pixels if selected by the user
-        # a blackfilled pixels has a reflectance of zero in all spectral bands
-        if skip_blackfilled_pixels:
-            gdf = gdf.loc[~(gdf[band_selection]==0).all(axis=1)]
+        # skip all pixels with zero reflectance (either blackfilled or outside of the
+        # scene extent)
+        gdf = gdf.loc[~(gdf[band_selection]==0).all(axis=1)]
 
         return gdf
 
@@ -663,11 +666,27 @@ if __name__ == '__main__':
 
     # test pixels
     test_point_features = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/sampling_test_points.shp')
-    Sentinel2Handler.read_pixels_from_safe(
+    gdf_classmethod = Sentinel2Handler.read_pixels_from_safe(
         point_features=test_point_features,
         in_dir=safe_archive
     )
 
+    assert set(gdf_classmethod.SCL) == set([11, 4, 6]), 'wrong pixel values extracted'
+    assert set(gdf_classmethod.B02) == set([282, 220, 7724, 655]), 'wrong pixel values extracted'
+    assert gdf_classmethod.shape[0] == 4, 'wrong number of pixels extracted'
+
+    handler.read_from_safe(
+        in_dir=safe_archive,
+        band_selection=['B02']
+    )
+
+    gdf_instancemethod = handler.get_pixels(point_features=test_point_features)
+
+    assert set(gdf_instancemethod.scl) == set(gdf_classmethod.SCL), 'class and instance method returned different results'
+    assert gdf_instancemethod.shape[0] == 4, 'wrong number of pixels extracted'
+    blue_scaled = gdf_instancemethod.blue * 10000
+    assert set(blue_scaled.astype(int)) == set(gdf_classmethod.B02), 'spectral band values not extracted correctly'
+    
 
     handler.read_from_safe(
         in_dir=safe_archive,
