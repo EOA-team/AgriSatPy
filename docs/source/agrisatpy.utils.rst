@@ -1,13 +1,21 @@
 agrisatpy.utils package
 =======================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   agrisatpy.utils.constants
+
 Submodules
 ----------
 
-agrisatpy.utils.archive\_search module
---------------------------------------
+agrisatpy.utils.arrays module
+-----------------------------
 
-.. automodule:: agrisatpy.utils.archive_search
+.. automodule:: agrisatpy.utils.arrays
    :members:
    :undoc-members:
    :show-inheritance:
@@ -20,18 +28,26 @@ agrisatpy.utils.decorators module
    :undoc-members:
    :show-inheritance:
 
-agrisatpy.utils.pandas2raster module
-------------------------------------
+agrisatpy.utils.exceptions module
+---------------------------------
 
-.. automodule:: agrisatpy.utils.pandas2raster
+.. automodule:: agrisatpy.utils.exceptions
    :members:
    :undoc-members:
    :show-inheritance:
 
-agrisatpy.utils.sentinel2\_processed\_metadata\_creation module
----------------------------------------------------------------
+agrisatpy.utils.reprojection module
+-----------------------------------
 
-.. automodule:: agrisatpy.utils.sentinel2_processed_metadata_creation
+.. automodule:: agrisatpy.utils.reprojection
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+agrisatpy.utils.sentinel2 module
+--------------------------------
+
+.. automodule:: agrisatpy.utils.sentinel2
    :members:
    :undoc-members:
    :show-inheritance:
@@ -40,6 +56,14 @@ agrisatpy.utils.stacking module
 -------------------------------
 
 .. automodule:: agrisatpy.utils.stacking
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+agrisatpy.utils.warnings module
+-------------------------------
+
+.. automodule:: agrisatpy.utils.warnings
    :members:
    :undoc-members:
    :show-inheritance:

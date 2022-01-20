@@ -1,19 +1,33 @@
 '''
-Created on Sep 20, 2021
+REST-API based downloading of Copernicus datasets from CREODIAS.
 
-@author: Lukas Graf (D-USYS, ETHZ)
+Make sure to have a valid CREODIAS account and provide your username and password
+as environmental variables:
+
+On a Linux system you can specify your credentials in the current Python environment
+by:
+
+.. code-block:: shell
+
+    export CREODIAS_USER = "<your-user-name>"
+    export CREODIAS_PASSWORD= "<your-password>"
+
 '''
 
 import os
-import json
 import requests
-from datetime import date
-from enum import Enum
-from shapely.geometry import Polygon
-from typing import Optional
 import pandas as pd
 
+from pathlib import Path
+from datetime import date
+from shapely.geometry import Polygon
+from typing import Optional
+from typing import Union
+
 from agrisatpy.config import get_settings
+from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
+from agrisatpy.utils.exceptions import DataNotFoundError
+
 
 Settings = get_settings()
 logger = Settings.logger
@@ -21,10 +35,6 @@ logger = Settings.logger
 CREODIAS_FINDER_URL = 'https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?'
 CHUNK_SIZE = 2096
 
-
-class ProcessingLevels(Enum):
-    L1C = 'LEVEL1C'
-    L2A = 'LEVEL2A'
 
 def query_creodias(
         start_date: date,
@@ -94,6 +104,16 @@ def query_creodias(
     # extract features (=available datasets)
     features = res_json['features']
     datasets = pd.DataFrame(features)
+
+    # make sure datasets is not empty otherwise return
+    if datasets.empty:
+        raise DataNotFoundError(f'CREODIAS query returned empty set')
+
+    # get *.SAFE dataset names
+    datasets['dataset_name'] = datasets.properties.apply(
+        lambda x: x['productIdentifier'].split('/')[-1]
+    )
+
     return datasets
 
 
@@ -124,7 +144,7 @@ def get_keycloak() -> str:
             data=data,
         )
         r.raise_for_status()
-    except Exception as e:
+    except Exception:
         raise Exception(
             f"Keycloak token creation failed. Reponse from the server was: {r.json()}"
         )
@@ -133,7 +153,8 @@ def get_keycloak() -> str:
 
 def download_datasets(
         datasets: pd.DataFrame,
-        download_dir: str
+        download_dir: Union[Path,str],
+        overwrite_existing_zips: Optional[bool] = False
     ) -> None:
     """
     Function for actual dataset download from CREODIAS.
@@ -145,29 +166,50 @@ def download_datasets(
         made by `query_creodias` function
     :param download_dir:
         directory where to store the downloaded files
+    :param overwrite_existing_zips:
+        if set to False (default), existing zip files in the
+        ``download_dir`` are not overwritten. This feature can be
+        useful to restart the downloader after a network connection
+        timeout or similar. NOTE: Thhe function does not check if
+        the existing zips are complete!
     """
 
     # get API token from CREODIAS
     keycloak_token = get_keycloak()
 
     # change into download directory
-    os.chdir(download_dir)
+    os.chdir(str(download_dir))
 
     # loop over datasets to download them sequentially
-    for idx, dataset in datasets.iterrows():
-        dataset_url = dataset.properties['services']['download']['url']
-        response = requests.get(
-            dataset_url,
-            headers={'Authorization': f'Bearer {keycloak_token}'},
-            stream=True
-        )
-        response.raise_for_status()
+    scene_counter = 1
+    for _, dataset in datasets.iterrows():
+        try:
+            dataset_url = dataset.properties['services']['download']['url']
+            response = requests.get(
+                dataset_url,
+                headers={'Authorization': f'Bearer {keycloak_token}'},
+                stream=True
+            )
+            response.raise_for_status()
+        except Exception as e:
+            logger.error(f'Could not download {dataset.product_uri}: {e}')
+            continue
+
         # download the data using the iter_content method (writes chunks to disk)
-        fname = dataset.properties['productIdentifier'].split('/')[-1].replace(
-            'SAFE', 'zip'
-        )
-        logger.info(f'Starting downloading {fname} ({idx+1}/{datasets.shape[0]})')
+        # check if the dataset exists already and overwrite it only if defined by the user
+        fname = dataset.dataset_name.replace('SAFE', 'zip')
+        if Path(fname).exists():
+            if not overwrite_existing_zips:
+                logger.info(
+                    f'{dataset.dataset_name} already downloaded - continue with next dataset'
+                )
+                continue
+            else:
+                logger.warning(f'Overwriting {dataset.dataset_name}')
+
+        logger.info(f'Starting downloading {fname} ({scene_counter}/{datasets.shape[0]})')
         with open(fname, 'wb') as fd:
             for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 fd.write(chunk)
-        logger.info(f'Finished downloading {fname} ({idx+1}/{datasets.shape[0]})')
+        logger.info(f'Finished downloading {fname} ({scene_counter}/{datasets.shape[0]})')
+        scene_counter += 1

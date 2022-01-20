@@ -1,21 +1,18 @@
 '''
-Created on Aug 30, 2021
-
-@author: Lukas Graf (D-USYS; ETHZ)
+Functions to insert Sentinel-2 specific metadata into the metadata DB
 '''
 
 import pandas as pd
+
 from typing import Optional
 from typing import List
 from sqlalchemy import create_engine
 from sqlalchemy import and_
 from sqlalchemy.orm import sessionmaker
 
-from agrisatpy.metadata.sentinel2.database.db_model import S2_Raw_Metadata
-from agrisatpy.metadata.sentinel2.database.db_model import S2_Processed_Metadata
-from agrisatpy.metadata.sentinel2.database.db_model import S2_Raw_Metadata_QL
+from agrisatpy.metadata.database.db_model import S2_Raw_Metadata
+from agrisatpy.metadata.database.db_model import S2_Processed_Metadata
 from agrisatpy.config import get_settings
-from copy import deepcopy
 
 
 Settings = get_settings()
@@ -24,48 +21,6 @@ logger = Settings.logger
 DB_URL = f'postgresql://{Settings.DB_USER}:{Settings.DB_PW}@{Settings.DB_HOST}:{Settings.DB_PORT}/{Settings.DB_NAME}'
 engine = create_engine(DB_URL, echo=Settings.ECHO_DB)
 session = sessionmaker(bind=engine)()
-
-
-def ql_info_to_database(
-        ql_df: pd.DataFrame
-    ) -> None:
-    """
-    Inserts the optional Sentinel-2 datastrip related
-    metadata (used for uncertainty assessment) into the database
-
-    :param ql_df:
-        dataframe with information about noise model parameters
-        alpa and beta, and the physical gain per band and
-        datatakeIdentifier
-    """
-
-    ql_df.columns = ql_df.columns.str.lower()
-
-    # remove possible duplicates (mutliple scenes might belong to the
-    # same datatake identifier)
-    ql_df_clean = deepcopy(ql_df)
-    ql_df_cleaned = ql_df_clean.drop_duplicates(
-        subset='datatakeidentifier', keep="last"
-    )
-    
-    ql_df_cleaned.to_sql(
-        'sentinel2_raw_metadata_ql',
-        con=engine,
-        schema='cs_sat_s1',
-        index=False,
-        if_exists='append'
-    )
-
-    # TODO: there seems to be a bug here
-    # try:
-    #     for _, record in ql_df.iterrows():
-    #         metadata = record.to_dict()
-    #         session.add(S2_Raw_Metadata_QL(**metadata))
-    #         session.flush()
-    #     session.commit()
-    # except Exception as e:
-    #     logger.error(f'Database INSERT failed: {e}')
-    #     session.rollback()
 
 
 def meta_df_to_database(
@@ -102,7 +57,6 @@ def meta_df_to_database(
             logger.error(f'Database INSERT failed: {e}')
             session.rollback()
     session.commit()
-    
 
 
 def metadata_dict_to_database(
@@ -117,7 +71,12 @@ def metadata_dict_to_database(
 
     # convert keys to lower case
     metadata =  {k.lower(): v for k, v in metadata.items()}
-    session.add(S2_Raw_Metadata(**metadata))
+    try:
+        session.add(S2_Raw_Metadata(**metadata))
+        session.flush()
+    except Exception as e:
+        logger.error(f'Database INSERT failed: {e}')
+        session.rollback()
     session.commit()
 
 

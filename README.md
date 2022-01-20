@@ -1,47 +1,158 @@
-# AgriSatPy - Agricultural Satellite Data in Python
+# *AgriSatPy*
 
-AgriSatPy is a lightweight package to explore, organize and process satellite remote sensing data. The development was motivated by the frustration that there are no end-to-end workflows that manage **satellite data** and convert it into formats with which the image data can be used for further **data-driven analysis** with (geo)pandas in Python. 
+**Reading, Analyzing, Modifying, Converting, Writing Geo-Spatial Raster Data**
 
-Our focus lies on Sentinel-2 (S2) MSI data (https://sentinel.esa.int/web/sentinel/missions/sentinel-2) for which we offer special support. Other satellite platforms could be added in the future as well.
+<p align="center">
+    <img src="./img/AgriSatPy_Banner.jpg" alt="AgriSatPy-Banner" width="400"/>
+</p>
 
-Because of our background in agronomy and geography, we developed the tools to efficiently answer our research questions. However, we are convinced that the present package can also be useful to other researchers who need to work with satellite data or want to get familiar with the world of remote sensing.
+*AgriSatPy* is a lightweight `Python` package to **explore**, **organize** and **process** geo-spatial **raster** and epecially (satellite) **remote sensing data** in an easy and intuitive manner.
 
-## Capabilities
+Developed for **agricultural remote sensing applications** with
+**Sentinel-2**, this is still the main thematic focus. However, due to its **modular and object-oriented programming structure**, it allows in principle the **processing of any type of raster data** and can
+be **adapted** to **other remote sensing platforms** or **raster data sources** (e.g., Digital Elevation Models, Land Cover Maps, etc.).
 
-Currently, the following list of tasks are implemented:
+We believe that researchers and analysts should **deal as little as possible with file handling and backend engineering**. In addition, the underlying source code should be **open source** and non-proprietary.
+Therefore, we have developed *AgriSatPy* in such a way that a large part of these tasks is taken away from the user and provided in the form of self-explanatory attributes and methods on a high semantic level.
 
-- **downloading** of Sentinel-2 scenes from [Copernicus](https://scihub.copernicus.eu/) (using [sentinelsat](https://sentinelsat.readthedocs.io/en/stable/)) or [CREODIAS](https://creodias.eu/). CREODIAS is recommended especially when downloading data has been moved to the long-term archive on Copernicus.
+Check out our minimum-effort <a href="#examples">Examples</a>
+ to get first insights.
 
-- extraction of **scene metadata** from S2 data in L1C and L2A (Sen2Cor) processing level and compilation of the extracted metadata into **a relational PostgreSQL database**. This database is used to make file handling and data filtering much easier.
+## Main Features
 
-- **spatial resampling of S2 data at L1C and L2A processing level** to 10, 20 or 60 meters and creation of a **stacked geoTiff file** containing all selected spectral bands (with band-names). The user can chose from a **list of resampling options provided by rasterio** (rasterio.readthedocs.io/) or **use our own resampling approach**. This also includes **resampling of the scene-classification layer (SCL)** that comes with the L2A product (either manually created by using Sen2Cor or direct L2A download).
+* **reading and writing raster data** from **all raster file formats** understood by [GDAL](https://gdal.org/)
+* `object-oriented-programming` handling of raster data objects
+* rasterization of vector features from all vector file formats understood by [fiona](https://pypi.org/project/Fiona/) or from [geopandas](https://geopandas.org/en/stable/) `GeoDataFrame` instances
+* storage of raster bands with different spatial resolutions (and even extents) in a single raster handler instance allowing to do raster analytics **without the need to resample the data first** (e.g., extraction of pixel values across spectral bands with different spatial resolutions)
+* dedicated and convenient **support for Sentinel-2 data** stored in [.SAFE format](https://earth.esa.int/SAFE/) (processing levels: [L1C](https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-2-msi/processing-levels/level-1) and [L2A](https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-2-msi/processing-levels/level-2))
+* implements a **backend** for **operational (Sentinel-2) satellite data storage, querying and processing** using a [PostGIS](https://postgis.net/) `spatial database`.
+* AgriSatPy provides **interfaces** to widely used Python libraries such as [xarray](https://xarray.pydata.org/en/stable/#) and [geopandas](https://geopandas.org/en/stable/) and uses [rasterio](https://rasterio.readthedocs.io/en/latest/) and [numpy](https://numpy.org/) as backend.
 
-- creation of **an archive structure** on the file system for storing the resampled and stacked geoTiff files including **file-system search capabilities (in addition to the database)**.
+## Structure
+*AgriSatPy* consists of **two main branches**: **ANALYTICS** and **OPERATIONAL**
 
-- **extraction of pixel values** from multiple S2 scenes for **selected areas of interest (AOIs)** by supplying Shapefiles of the AOIs: Either directly using the orignal .SAFE files (L1C and/or L2A) obtained from from ESA/Copernicus (where each spectral band is stored separately), or the spatially resampled and stacked geoTiffs generated before (see above). Returns extracted pixel values in a **pandas dataframe** that could be inserted into a relational database or stored on the file system. This is particularly helpful for **carrying out data science and machine learning tasks without having to read entire images and handle very large image data arrays**.
+![AgriSatPy Branches](./img/AgriSatPy_Branches.jpg)
 
-- **merging of split S2 scenes due to ending of S2 datastrip** using data from one scene to fill the blackfill (e.g. no-data values) of the second one.
+## Examples
 
+The following examples show you how to **get started** with as little effort as possible:
 
-- **conversion of extracted pixel data (as pandas dataframes) back to geoTiff image files** using rasterio. Thus, the results of a machine learning model can easily be visualized as georeferenced raster images.
+### Sentinel-2 Image
 
+The following code snippet reads spectral bands from a Sentinel-2 scene organized in .SAFE folder structure acquired over Southern Germany in Level2A (bottom-of-atmosphere reflectance). The Sentinel-2 scene can be downloaded [here](https://data.mendeley.com/datasets/ckcxh6jskz/1) ( S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.zip):
 
-- the **main processing steps for S2 data (L1C or L2A) have been compiled into a processing pipeline** that can be executed in **parallel** including the following steps:
+```python
+from pathlib import Path
+from shapely.geometry import Polygon
+import geopandas as gpd
+from agrisatpy.io.sentinel2 import Sentinel2Handler
 
-		1. filtering of available ESA/Copernicus derived L1C/L2A data using date range, S2 tile and cloud cover thresholds (metadata database must have been created and populated beforehand)
-		2. spatial resampling of the selected S2 scenes to a user-defined target resolution (e.g., 10 meters) and storage of the data in an easily-accessible archive structure
-		3. merging of split scenes (i.e., filling of blackfill in regions where a S2 datastrip ended)
-		4. extraction of pixel values into pandas dataframes (understood by most if not all machine-learning libraries)
-		5. conversion of these dataframes into geo-referenced images again (including, e.g., the output of a machine learning model)
+# file-path to the .SAFE dataset
+dot_safe_dir = Path('../data/S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.SAFE')
 
-To come in the **future**:
+# construct a bounding box for reading a spatial subset of the scene (geographic coordinates)
+ymin, ymax = 47.949, 48.027
+xmin, xmax = 11.295, 11.385
+bbox = Polygon([(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)])
 
-- improvement of the archive maintainability (updates, usage of other sensors)
-- more tests (yes, they are important :) )
+# AgriSatPy expects a vector file or a GeoDataFrame for spatial sub-setting
+bbox_gdf = gpd.GeoDataFrame(geometry=[bbox], crs=4326)
+
+# read data from .SAFE using Sentinel2Handler (reads all 10 and 20m bands + scene classification layer)
+handler = Sentinel2Handler()
+handler.read_from_safe(
+    in_dir=dot_safe_dir,
+    polygon_features=bbox_gdf
+)
+
+# check the bands read. AgriSatPy converts band names (B02, etc.) to color names
+# however, original Sentinel-2 bands also work for selecting bands!
+handler.get_bandnames()
+```
+Output
+```shell
+>>> ['blue', 'green', 'red', 'red_edge_1', 'red_edge_2', 'red_edge_3', 'nir_1', 'nir_2', 'swir_1', 'swir_2', 'scl']
+```
+```python
+# plot false-color infrared preview
+fig_nir = handler.plot_false_color_infrared()
+```
+<p align="left">
+  <img src="./img/AgriSatPy_Sentinel-2_NIR.png" alt="AgriSatPy-Sentinel-NIR" width="400"/>
+</p>
+
+```python
+# plot scene classification layer
+fig_scl = handler.plot_scl()
+```
+<p align="left">
+  <img src="./img/AgriSatPy_Sentinel-2_SCL.png" alt="AgriSatPy-Sentinel-SCL" width="500"/>
+</p>
+
+```python
+# calculate the NDVI using 10m bands (no spatial resampling required)
+handler.calc_si('NDVI')
+fig_ndvi = handler.plot_band('NDVI', colormap='BrBG')
+```
+<p align="left">
+  <img src="./img/AgriSatPy_Sentinel-2_NDVI.png" alt="AgriSatPy-Sentinel-NDVI" width="400"/>
+</p>
+
+```python
+# mask the water (SCL class 6); requires resampling to 10m spatial resolution
+handler.resample(target_resolution=10)
+handler.mask(
+    name_mask_band='SCL',
+    mask_values=[6],  # SCL class 6 := water
+    bands_to_mask=['NDVI']
+)
+fig_ndvi = handler.plot_band('NDVI', colormap='summer')
+```
+<p align="left">
+  <img src="./img/AgriSatPy_Sentinel-2_NDVI_masked.png" alt="AgriSatPy-Sentinel-NDVI_masked" width="400"/>
+</p>
+
+### Digital Terrain Model Data
+
+We will read a cloud-optimized geoTiff from [SwissTopo](https://www.swisstopo.admin.ch/), load and visualize it. The data is a tile from the high-resolution Digital Elevation Model of Switerland [SwissALTI3D](https://www.swisstopo.admin.ch/en/geodata/height/alti3d.html) and shows a mountain ridge close to Zermatt:
+
+```python
+from agrisatpy.io import SatDataHandler
+
+# link to cloud-optimized geoTiff resource at Swisstopp
+dem_file = 'https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2019_2618-1092/swissalti3d_2019_2618-1092_2_2056_5728.tif'
+
+# get SatDataHandler instance
+handler = SatDataHandler()
+# read the data into the current SatDataHandler instance
+handler.read_from_bandstack(
+    fname_bandstack=dem_file
+)
+
+# we can overwrite the default band names (usually B1, B2, ..) to, e.g., "Elevation"
+handler.reset_bandnames(['Elevation'])
+
+# we can check the physical unit of the "Elevation" band data
+band_unit = handler.get_attrs('Elevation')['units'][0]
+
+# visualize the "Elevation" band
+fig = handler.plot_band(
+    band_name='Elevation',
+    colormap='terrain',
+    colorbar_label=f'Elevation above Mean Sea Level [{band_unit}]'
+)
+```
+The output:
+
+<p align="left">
+  <img src="./img/AgriSatPy_SwissALTI3D_sample.png" alt="AgriSatPy-Sentinel-NDVI" width="500"/>
+</p>
 
 ## Code Documentation
 
 We use [sphinx](https://www.sphinx-doc.org/en/master/) and the [autodoc-extension](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html) to generate a Read-The-Docs like documentation of our modules, classes and functions.
+
+With ```sphinx-apidoc -o ./source ../src``` run in the ```./docs``` directory you can generate the required .rst files if not yet available.
 
 ## Contributing
 Yes please :)

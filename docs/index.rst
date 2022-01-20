@@ -14,7 +14,7 @@ When working with Sentinel(-2) data we assume the datasets to follow the [Standa
 Because of our background in agronomy and geography, we developed the tools to efficiently answer our research questions. However, we are convinced that the present package can also be useful to other researchers who need to work with satellite data or want to get familiar with the world of remote sensing.
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 6
    :caption: Contents:
    
    source/agrisatpy.rst

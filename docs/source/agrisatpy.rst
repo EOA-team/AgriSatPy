@@ -7,10 +7,13 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
+   agrisatpy.analysis
    agrisatpy.archive
    agrisatpy.config
+   agrisatpy.downloader
+   agrisatpy.io
    agrisatpy.metadata
-   agrisatpy.processing
+   agrisatpy.operational
    agrisatpy.spatial_resampling
    agrisatpy.utils
 
@@ -21,11 +24,3 @@ Module contents
    :members:
    :undoc-members:
    :show-inheritance:
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`

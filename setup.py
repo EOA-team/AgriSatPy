@@ -40,9 +40,13 @@ setuptools.setup(
                       'pyproj',
                       'rasterio',
                       'joblib',
-                      'psycopg2', 
+                      'psycopg2-binary', 
                       'sqlalchemy', 
                       'matplotlib', 
-                      'geoalchemy2'
+                      'geoalchemy2',
+                      'opencv-python',
+                      'requests',
+                      'xarray',
+                      'rtree'
                       ]
 )

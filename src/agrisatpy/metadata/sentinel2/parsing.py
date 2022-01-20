@@ -1,15 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon May  6 13:09:42 2019
-
-Updated on Fri Jun 25 2021
-
-@author: Lukas Graf
-
-This module contains functions to extract relevant
-scene-specific Sentinel-2 metadata supporting
-L1C and L2A (sen2core-derived) processing level
+This module contains functions to extract relevant scene-specific
+Sentinel-2 metadata supporting L1C and L2A (sen2core-derived) processing levels
 """
 
 import os
@@ -27,18 +20,12 @@ from datetime import date
 
 from agrisatpy.config import get_settings
 from agrisatpy.config.sentinel2 import Sentinel2
+from agrisatpy.utils.exceptions import UnknownProcessingLevel
+from agrisatpy.utils.exceptions import InputError
+from agrisatpy.utils.warnings import NothingToDo
 
 logger = get_settings().logger
 S2 = Sentinel2()
-
-class UnknownProcessingLevel(Exception):
-    pass
-
-class InputError(Exception):
-    pass
-
-class NothingToDo(Warning):
-    pass
 
 
 def parse_MTD_DS(
@@ -236,14 +223,6 @@ def parse_MTD_TL(
         thcirrus_xml = xmldoc.getElementsByTagName('THIN_CIRRUS_PERCENTAGE')
         thcirrus = thcirrus_xml[0].firstChild.nodeValue
         metadata['THIN_CIRRUS_PERCENTAGE'] = float(thcirrus)
-        
-        # try catch because of version differences in xml file
-        try:
-            ccover_xml = xmldoc.getElementsByTagName('CLOUD_COVERAGE_PERCENTAGE')
-            ccover = ccover_xml[0].firstChild.nodeValue
-            metadata['CLOUD_COVERAGE_PERCENTAGE'] = ccover
-        except IndexError:
-            pass
 
         snowice_xml = xmldoc.getElementsByTagName('SNOW_ICE_PERCENTAGE')
         snowice = snowice_xml[0].firstChild.nodeValue
@@ -296,6 +275,7 @@ def parse_MTD_MSI(
         xml_elem = xmldoc.getElementsByTagName(tag)
         if tag == 'PRODUCT_URI_2A':
             metadata['PRODUCT_URI'] = xml_elem[0].firstChild.data
+            metadata.pop('PRODUCT_URI_2A')
         else:
             metadata[tag] = xml_elem[0].firstChild.data
 
