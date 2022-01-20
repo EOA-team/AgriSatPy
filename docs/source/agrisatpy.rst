@@ -14,7 +14,6 @@ Subpackages
    agrisatpy.io
    agrisatpy.metadata
    agrisatpy.operational
-   agrisatpy.spatial_resampling
    agrisatpy.utils
 
 Module contents
