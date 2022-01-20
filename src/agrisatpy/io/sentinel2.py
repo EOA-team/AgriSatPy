@@ -127,10 +127,6 @@ class Sentinel2Handler(SatDataHandler):
         :return:
             ``DataFrame`` with paths to the jp2 files with the spectral band data
         """
-        # determine which spatial resolutions are selected
-        # (based on the native spatial resolution of Sentinel-2 bands)
-        band_selection_spatial_res = [x[1] for x in band_resolution.items() if x[0] in band_selection]
-        resolution_selection = list(np.unique(band_selection_spatial_res))
 
         # check processing level
         processing_level = get_S2_processing_level(dot_safe_name=in_dir)
@@ -141,6 +137,16 @@ class Sentinel2Handler(SatDataHandler):
         if processing_level == ProcessingLevels.L1C:
             self._is_l2a = False
             is_l2a = False
+            # remove SCL from band selection if it is there
+            if 'scl' in band_selection:
+                band_selection.remove('scl')
+            if 'SCL' in band_selection:
+                band_selection.remove('SCL')
+
+        # determine which spatial resolutions are selected
+        # (based on the native spatial resolution of Sentinel-2 bands)
+        band_selection_spatial_res = [x[1] for x in band_resolution.items() if x[0] in band_selection]
+        resolution_selection = list(np.unique(band_selection_spatial_res))
 
         # search band files depending on processing level and spatial resolution(s)
         band_df_safe = get_S2_bandfiles_with_res(
@@ -654,91 +660,19 @@ class Sentinel2Handler(SatDataHandler):
         return gdf
 
 
-if __name__ == '__main__':
-
-    handler = Sentinel2Handler()
-    in_file_aoi = Path('/mnt/ides/Lukas/software/AgriSatPy/data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
-    
-    # bandstack testcase
-    fname_bandstack = Path('/mnt/ides/Lukas/software/AgriSatPy/data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
-
-    safe_archive = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/S2A/ESCH/S2A_MSIL2A_20210615T102021_N0300_R065_T32TMT_20210615T131659.SAFE')
-
-    # test pixels
-    test_point_features = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/sampling_test_points.shp')
-    gdf_classmethod = Sentinel2Handler.read_pixels_from_safe(
-        point_features=test_point_features,
-        in_dir=safe_archive
-    )
-
-    assert set(gdf_classmethod.SCL) == set([11, 4, 6]), 'wrong pixel values extracted'
-    assert set(gdf_classmethod.B02) == set([282, 220, 7724, 655]), 'wrong pixel values extracted'
-    assert gdf_classmethod.shape[0] == 4, 'wrong number of pixels extracted'
-
-    handler.read_from_safe(
-        in_dir=safe_archive,
-        band_selection=['B02']
-    )
-
-    gdf_instancemethod = handler.get_pixels(point_features=test_point_features)
-
-    assert set(gdf_instancemethod.scl) == set(gdf_classmethod.SCL), 'class and instance method returned different results'
-    assert gdf_instancemethod.shape[0] == 4, 'wrong number of pixels extracted'
-    blue_scaled = gdf_instancemethod.blue * 10000
-    assert set(blue_scaled.astype(int)) == set(gdf_classmethod.B02), 'spectral band values not extracted correctly'
-    
-
-    handler.read_from_safe(
-        in_dir=safe_archive,
-        polygon_features=in_file_aoi,
-        full_bounding_box_only=True
-    )
-    handler.calc_si('EVI')
-
-    assert handler.get_meta()['EVI'] == handler.get_meta()['blue'], 'wrong meta entry'
-    assert handler.get_meta('EVI') == handler.get_meta()['EVI'], 'wrong meta entry returned'
-    assert len(handler.get_attrs('EVI')['nodatavals']) == 1, 'wrong number of nodata entries in band attributes'
-
-    # resampling of all bands -> transforms the handler into a bandstack
-    # TODO: add this a test to the test module
-    import cv2
-    handler.resample(
-        target_resolution=10.,
-        resampling_method=cv2.INTER_NEAREST_EXACT
-    )
-
-    handler.calc_si('NDVI')
-    assert handler.from_bandstack(), 'when resampling all bands, handler should be band-stacked'
-    assert handler.check_is_bandstack(), 'when resampling all bands, band-stack criteria must pass'
-
-    
-
-    assert handler.get_meta()['scl']['dtype'] == 'uint8', 'wrong data type for SCL in meta'
-    assert handler.get_meta('scl')['dtype'] == 'uint8', 'wrong data type for SCL returned'
-    assert not handler.check_is_bandstack(), 'handler seems to be a band stack but it should not'
-
-    band_selection = ['B02', 'B11']
-    handler.read_from_bandstack(
-        fname_bandstack=fname_bandstack,
-        in_file_aoi=in_file_aoi,
-        band_selection=band_selection
-    )
-
-    assert handler.check_is_bandstack() == True, 'not recognized as bandstack although data should'
-    assert isinstance(handler.get_band('B02'), np.ma.core.MaskedArray), 'band data was not masked'
-
-    xarr = handler.to_xarray()
-
-    
-
-    # reader.get_band_coordinates('B02')
-    # fig_rgb = reader.plot_rgb()
-    fig_scl = handler.plot_scl()
-    # cc = reader.get_cloudy_pixel_percentage()
-    # fig_blue = reader.plot_band('blue')
-    #
-    # band_names = reader.get_bandnames()
-    #
-    # # L2A testcase
-    # url = 'https://data.mendeley.com/public-files/datasets/ckcxh6jskz/files/e97b9543-b8d8-436e-b967-7e64fe7be62c/file_downloaded'
-    #
+# if __name__ == '__main__':
+#
+#     handler = Sentinel2Handler()
+#     in_file_aoi = Path('/mnt/ides/Lukas/software/AgriSatPy/data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
+#
+#     # bandstack testcase
+#     fname_bandstack = Path('/mnt/ides/Lukas/software/AgriSatPy/data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
+#
+#     safe_archive = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/S2A/ESCH/S2A_MSIL2A_20210615T102021_N0300_R065_T32TMT_20210615T131659.SAFE')
+#
+#     # test pixels
+#     test_point_features = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/sampling_test_points.shp')
+#     gdf_classmethod = Sentinel2Handler.read_pixels_from_safe(
+#         point_features=test_point_features,
+#         in_dir=safe_archive
+#     )
