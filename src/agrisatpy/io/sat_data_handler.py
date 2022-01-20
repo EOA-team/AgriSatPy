@@ -40,6 +40,7 @@ from rasterio.drivers import driver_from_extension
 from rasterio.enums import Resampling
 from rasterio.warp import transform_bounds
 from shapely.geometry import box
+from shapely.geometry import Point
 from shapely.geometry import Polygon
 from typing import Any
 from typing import Dict

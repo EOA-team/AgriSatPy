@@ -1,10 +1,77 @@
-# AgriSatPy - Agricultural Satellite Data Handling in Python
+# *AgriSatPy*
 
-AgriSatPy is a lightweight package to **explore**, **organize** and **process** (satellite) remote sensing data in an easy and intuitive manner.
+**Reading, Analyzing, Modifying, Converting, Writing Geo-Spatial Raster Data**
+
+![AgriSatPy Banner](./img/AgriSatPy_Banner.jpg)
+
+*AgriSatPy* is a lightweight `Python` package to **explore**, **organize** and **process** geo-spatial **raster** and epecially (satellite) **remote sensing data** in an easy and intuitive manner.
 
 Developed for **agricultural remote sensing applications** with
 **Sentinel-2**, this is still the main thematic focus. However, due to its **modular and object-oriented programming structure**, it allows in principle the **processing of any type of raster data** and can
 be **adapted** to **other remote sensing platforms** or **raster data sources** (e.g., Digital Elevation Models, Land Cover Maps, etc.).
+
+Check out our minimum-effort [examples](#examples) and read about our [philosophy](#philosophy).
+
+## Main Features
+
+* **reading and writing raster data** from **all raster file formats** understood by [GDAL](https://gdal.org/)
+* `object-oriented-programming` handling of raster data objects
+* rasterization of vector features from all vector file formats understood by [fiona](https://pypi.org/project/Fiona/) or from [geopandas](https://geopandas.org/en/stable/) `GeoDataFrame` instances
+* storage of raster bands with different spatial resolutions (and even extents) in a single raster handler instance allowing to do raster analytics **without the need to resample the data first** (e.g., extraction of pixel values across spectral bands with different spatial resolutions)
+* dedicated and convenient **support for Sentinel-2 data** stored in [.SAFE format](https://earth.esa.int/SAFE/) (processing levels: [L1C](https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-2-msi/processing-levels/level-1) and [L2A](https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-2-msi/processing-levels/level-2))
+* implements a **backend** for **operational (Sentinel-2) satellite data storage, querying and processing** using a [PostGIS](https://postgis.net/) `spatial database`.
+
+## Structure
+*AgriSatPy* consists of **two main branches**: **ANALYTICS** and **OPERATIONAL**
+
+![AgriSatPy Branches](./img/AgriSatPy_Branches.jpg)
+
+## Examples
+
+The following examples show you how to **get started** with as little effort as possible:
+
+### Sentinel-2 Image
+
+
+### Digital Terrain Model Data
+
+We will read a cloud-optimized geoTiff from [SwissTopo](https://www.swisstopo.admin.ch/), load and visualize it. The data is a tile from the high-resolution Digital Elevation Model of Switerland [SwissALTI3D](https://www.swisstopo.admin.ch/en/geodata/height/alti3d.html) and shows a mountain ridge close to Zermatt:
+
+```python
+from agrisatpy.io import SatDataHandler
+
+# link to cloud-optimized geoTiff resource at Swisstopp
+dem_file = 'https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2019_2618-1092/swissalti3d_2019_2618-1092_2_2056_5728.tif'
+
+# get SatDataHandler instance
+handler = SatDataHandler()
+# read the data into the current SatDataHandler instance
+handler.read_from_bandstack(
+    fname_bandstack=dem_file
+)
+
+# we can overwrite the default band names (usually B1, B2, ..) to, e.g., "Elevation"
+handler.reset_bandnames(['Elevation'])
+
+# we can check the physical unit of the "Elevation" band data
+band_unit = handler.get_attrs('Elevation')['units'][0]
+
+# visualize the "Elevation" band
+fig = handler.plot_band(
+    band_name='Elevation',
+    colormap='terrain',
+    colorbar_label=f'Elevation above Mean Sea Level [{band_unit}]'
+)
+# optionally save the figure to disk
+fig.savefig('../img/AgriSatPy_SwissALTI3D_sample.png', dpi=150, bbox_inches='tight')
+
+```
+
+The output:
+
+![AgriSatPy SwissAlti3D Sample](./img/AgriSatPy_SwissALTI3D_sample.png)
+
+
 
 ## The philosophy:
 
