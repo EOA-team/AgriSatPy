@@ -1478,7 +1478,8 @@ class SatDataHandler(object):
                 band_data,
                 cmap=cmap,
                 norm=norm,
-                extent=[bounds.left, bounds.right, bounds.bottom, bounds.top]
+                extent=[bounds.left, bounds.right, bounds.bottom, bounds.top],
+                interpolation='none'  # important, otherwise img will have speckle!
             )
 
         else:
@@ -1512,7 +1513,8 @@ class SatDataHandler(object):
                     img,
                     cax=cax,
                     orientation='vertical',
-                    ticks=unique_values
+                    ticks=unique_values,
+                    extend='max'
                 )
             else:
                 cb = fig.colorbar(

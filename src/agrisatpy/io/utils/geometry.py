@@ -108,5 +108,7 @@ def convert_3D_2D(geometry: gpd.GeoSeries) -> gpd.GeoSeries:
                     new_p = Polygon(lines)
                     new_multi_p.append(new_p)
                 new_geo.append(MultiPolygon(new_multi_p))
+        else:
+            new_geo = geometry
 
     return new_geo

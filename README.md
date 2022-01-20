@@ -2,7 +2,9 @@
 
 **Reading, Analyzing, Modifying, Converting, Writing Geo-Spatial Raster Data**
 
-![AgriSatPy Banner](./img/AgriSatPy_Banner.jpg)
+<p align="center">
+    <img src="./img/AgriSatPy_Banner.jpg" alt="AgriSatPy-Banner" width="400"/>
+</p>
 
 *AgriSatPy* is a lightweight `Python` package to **explore**, **organize** and **process** geo-spatial **raster** and epecially (satellite) **remote sensing data** in an easy and intuitive manner.
 
@@ -10,7 +12,11 @@ Developed for **agricultural remote sensing applications** with
 **Sentinel-2**, this is still the main thematic focus. However, due to its **modular and object-oriented programming structure**, it allows in principle the **processing of any type of raster data** and can
 be **adapted** to **other remote sensing platforms** or **raster data sources** (e.g., Digital Elevation Models, Land Cover Maps, etc.).
 
-Check out our minimum-effort [examples](#examples) and read about our [philosophy](#philosophy).
+We believe that researchers and analysts should **deal as little as possible with file handling and backend engineering**. In addition, the underlying source code should be **open source** and non-proprietary.
+Therefore, we have developed *AgriSatPy* in such a way that a large part of these tasks is taken away from the user and provided in the form of self-explanatory attributes and methods on a high semantic level.
+
+Check out our minimum-effort <a href="#examples">Examples</a>
+ to get first insights.
 
 ## Main Features
 
@@ -20,6 +26,7 @@ Check out our minimum-effort [examples](#examples) and read about our [philosoph
 * storage of raster bands with different spatial resolutions (and even extents) in a single raster handler instance allowing to do raster analytics **without the need to resample the data first** (e.g., extraction of pixel values across spectral bands with different spatial resolutions)
 * dedicated and convenient **support for Sentinel-2 data** stored in [.SAFE format](https://earth.esa.int/SAFE/) (processing levels: [L1C](https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-2-msi/processing-levels/level-1) and [L2A](https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-2-msi/processing-levels/level-2))
 * implements a **backend** for **operational (Sentinel-2) satellite data storage, querying and processing** using a [PostGIS](https://postgis.net/) `spatial database`.
+* AgriSatPy provides **interfaces** to widely used Python libraries such as [xarray](https://xarray.pydata.org/en/stable/#) and [geopandas](https://geopandas.org/en/stable/) and uses [rasterio](https://rasterio.readthedocs.io/en/latest/) and [numpy](https://numpy.org/) as backend.
 
 ## Structure
 *AgriSatPy* consists of **two main branches**: **ANALYTICS** and **OPERATIONAL**
@@ -32,6 +39,78 @@ The following examples show you how to **get started** with as little effort as 
 
 ### Sentinel-2 Image
 
+The following code snippet reads spectral bands from a Sentinel-2 scene organized in .SAFE folder structure acquired over Southern Germany in Level2A (bottom-of-atmosphere reflectance). The Sentinel-2 scene can be downloaded [here](https://data.mendeley.com/datasets/ckcxh6jskz/1) ( S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.zip):
+
+```python
+from pathlib import Path
+from shapely.geometry import Polygon
+import geopandas as gpd
+from agrisatpy.io.sentinel2 import Sentinel2Handler
+
+# file-path to the .SAFE dataset
+dot_safe_dir = Path('../data/S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.SAFE')
+
+# construct a bounding box for reading a spatial subset of the scene (geographic coordinates)
+ymin, ymax = 47.949, 48.027
+xmin, xmax = 11.295, 11.385
+bbox = Polygon([(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)])
+
+# AgriSatPy expects a vector file or a GeoDataFrame for spatial sub-setting
+bbox_gdf = gpd.GeoDataFrame(geometry=[bbox], crs=4326)
+
+# read data from .SAFE using Sentinel2Handler (reads all 10 and 20m bands + scene classification layer)
+handler = Sentinel2Handler()
+handler.read_from_safe(
+    in_dir=dot_safe_dir,
+    polygon_features=bbox_gdf
+)
+
+# check the bands read. AgriSatPy converts band names (B02, etc.) to color names
+# however, original Sentinel-2 bands also work for selecting bands!
+handler.get_bandnames()
+```
+Output
+```shell
+>>> ['blue', 'green', 'red', 'red_edge_1', 'red_edge_2', 'red_edge_3', 'nir_1', 'nir_2', 'swir_1', 'swir_2', 'scl']
+```
+```python
+# plot false-color infrared preview
+fig_nir = handler.plot_false_color_infrared()
+```
+<p align="left">
+  <img src="./img/AgriSatPy_Sentinel-2_NIR.png" alt="AgriSatPy-Sentinel-NIR" width="400"/>
+</p>
+
+```python
+# plot scene classification layer
+fig_scl = handler.plot_scl()
+```
+<p align="left">
+  <img src="./img/AgriSatPy_Sentinel-2_SCL.png" alt="AgriSatPy-Sentinel-SCL" width="500"/>
+</p>
+
+```python
+# calculate the NDVI using 10m bands (no spatial resampling required)
+handler.calc_si('NDVI')
+fig_ndvi = handler.plot_band('NDVI', colormap='BrBG')
+```
+<p align="left">
+  <img src="./img/AgriSatPy_Sentinel-2_NDVI.png" alt="AgriSatPy-Sentinel-NDVI" width="400"/>
+</p>
+
+```python
+# mask the water (SCL class 6); requires resampling to 10m spatial resolution
+handler.resample(target_resolution=10)
+handler.mask(
+    name_mask_band='SCL',
+    mask_values=[6],  # SCL class 6 := water
+    bands_to_mask=['NDVI']
+)
+fig_ndvi = handler.plot_band('NDVI', colormap='summer')
+```
+<p align="left">
+  <img src="./img/AgriSatPy_Sentinel-2_NDVI_masked.png" alt="AgriSatPy-Sentinel-NDVI_masked" width="400"/>
+</p>
 
 ### Digital Terrain Model Data
 
@@ -62,39 +141,12 @@ fig = handler.plot_band(
     colormap='terrain',
     colorbar_label=f'Elevation above Mean Sea Level [{band_unit}]'
 )
-# optionally save the figure to disk
-fig.savefig('../img/AgriSatPy_SwissALTI3D_sample.png', dpi=150, bbox_inches='tight')
-
 ```
-
 The output:
 
-![AgriSatPy SwissAlti3D Sample](./img/AgriSatPy_SwissALTI3D_sample.png)
-
-
-
-## The philosophy:
-
-We believe that researchers and analysts should **deal as little as possible with file handling and backend engineering**. In addition, the underlying source code should be **open source** and non-proprietary.
-However, in the field of optical remote sensing it is still difficult to analyse satellite data without being confronted with these tasks or resorting to proprietary solutions.
-Therefore, we have developed AgriSatPy in such a way that a large part of these tasks is taken away from the user and provided in the form of self-explanatory attributes and methods on a high semantic level.
-
-AgriSatPy can be used for **rapid prototyping**. At the same time, AgriSatPy also offers support for the **operational use of satellite data** - for example by maintaining a metadatabase and providing API-level
- functions. In contrast to related projects such as the [OpenDataCube](https://www.opendatacube.org/) Initiative, AgriSatPy can be used without the need for complex installations - many of the basic functions
- for interacting with raster data follow the " **plug-and-play** " principle.
-
-AgriSatPy can be used by users with little coding experience as well as by experienced developers. This is made possible by the object-oriented and modular structuring of the code, as well as the detailed
-documentation.
-
-AgriSatPy provides **interfaces** to widely used Python libraries such as [xarray](https://xarray.pydata.org/en/stable/#) and [geopandas](https://geopandas.org/en/stable/) and uses [rasterio](https://rasterio.readthedocs.io/en/latest/) and [numpy](https://numpy.org/) as backend.
-
-## Why AgriSatPy
-
-coming soon
-
-## Capabilities
-
-coming soon
+<p align="left">
+  <img src="./img/AgriSatPy_SwissALTI3D_sample.png" alt="AgriSatPy-Sentinel-NDVI" width="500"/>
+</p>
 
 ## Code Documentation
 
