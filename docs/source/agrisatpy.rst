@@ -1,4 +1,7 @@
-agrisatpy package
+.. _api-docs:
+
+
+API Documentation
 =================
 
 Subpackages
@@ -16,10 +19,3 @@ Subpackages
    agrisatpy.operational
    agrisatpy.utils
 
-Module contents
----------------
-
-.. automodule:: agrisatpy
-   :members:
-   :undoc-members:
-   :show-inheritance:
