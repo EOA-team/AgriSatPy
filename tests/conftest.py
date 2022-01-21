@@ -145,6 +145,37 @@ def get_points():
 
 
 @pytest.fixture()
+def get_points2():
+    """
+    Returns path to test points to be used for pixel extraction
+    """
+    
+    def _get_points():
+        
+        testdata_dir = Path('../../data')
+        testdata_points = testdata_dir.joinpath(
+            Path('sample_points').joinpath('sampling_test_points.shp')
+        )
+        return testdata_points
+    return _get_points
+
+
+@pytest.fixture()
+def get_points3():
+    """
+    Returns path to test points to be used for pixel extraction
+    """
+    
+    def _get_points():
+        
+        testdata_dir = Path('../../data')
+        testdata_points = testdata_dir.joinpath(
+            Path('sample_points').joinpath('BY_Points_2019_EPSG32633.shp')
+        )
+        return testdata_points
+    return _get_points
+
+@pytest.fixture()
 def get_polygons():
     """
     Returns path to agricultural field polygons to use for masking

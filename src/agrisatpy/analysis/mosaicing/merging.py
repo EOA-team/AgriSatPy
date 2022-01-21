@@ -43,10 +43,10 @@ def _get_CRS_and_bounds(
 
 def merge_datasets(
         datasets: List[Path],
-        out_file: Path,
+        out_file: Optional[Path] = None,
         target_crs: Optional[Union[int,CRS]] = None,
         **kwargs
-    ):
+    ) -> Union[None, SatDataHandler]:
     """
     Merges a list of raster datasets using the ``rasterio.merge`` module. The
     function can handle datasets in different coordinate systems by resampling
@@ -60,7 +60,9 @@ def merge_datasets(
         list of datasets (as path-like objects or opened raster datasets)
         to merge into a single raster
     :param out_file:
-        name of the resulting raster dataset
+        name of the resulting raster dataset (optional). If None (default)
+        returns a new ``SatDataHandler`` instance otherwise writes the data
+        to disk as new raster dataset.
     :param target_crs:
         optional target spatial coordinate reference system in which the output
         product shall be generated. Must be passed as integer EPSG code or CRS
@@ -98,10 +100,17 @@ def merge_datasets(
 
     # use rasterio merge to get a new raster dataset
     try:
-        merge(
+        dest, output_transform = merge(
             datasets=datasets,
             dst_path=out_file,
             **kwargs
         )
     except Exception as e:
-        raise Exception(f'Could not merge datasets: {e}') 
+        raise Exception(f'Could not merge datasets: {e}')
+
+    if out_file is not None:
+        return
+
+    # create new SatDataHandler instance from merged datasets
+    handler = SatDataHandler()
+    # TODO: add new handler here

@@ -18,6 +18,114 @@ def test_read_from_bandstack_l1c():
     pass
 
 
+def test_read_pixels_from_safe(get_s2_safe_l1c, get_s2_safe_l2a, get_points2, get_points3):
+    """
+    Tests reading pixels from a .SAFE archive using class and instance methods
+    """
+
+    # test pixels
+    test_point_features = get_points2()
+
+    # test L1C data with pixel lying complete outside of the scene extent
+    safe_archive = get_s2_safe_l1c()
+
+    # use class method (no reading of spectral bands required)
+    gdf_classmethod = Sentinel2Handler.read_pixels_from_safe(
+        point_features=test_point_features,
+        in_dir=safe_archive
+    )
+
+    assert gdf_classmethod.empty, 'pixel values returned although sample points lay completely outside of scene extent' 
+
+    # do the same using the instance method instead
+    handler = Sentinel2Handler()
+    handler.read_from_safe(
+        in_dir=safe_archive,
+        band_selection=['B02']
+    )
+
+    gdf_instancemethod = handler.get_pixels(point_features=test_point_features)
+    assert gdf_instancemethod.empty, 'pixel values returned although sample points lay completely outside of scene extent' 
+
+    # read points from L1C partly inside the scene extent
+    test_point_features = get_points3()
+
+    gdf_classmethod = Sentinel2Handler.read_pixels_from_safe(
+        point_features=test_point_features,
+        in_dir=safe_archive
+    )
+
+    assert gdf_classmethod.shape[0] == 4, 'wrong number of pixels extracted'
+
+    s2_bands = ['B02','B03','B04','B05','B06','B07','B08','B8A','B11','B12']
+    gdf_attributes = [x for x in s2_bands if x in gdf_classmethod.columns]
+    assert s2_bands == gdf_attributes, 'not all bands extracted'
+    assert 'SCL' not in gdf_classmethod.columns, 'SCL is not available for L1C data'
+
+    assert set(gdf_classmethod.B02) == set([875, 795, 908, 749]), 'wrong values for band 02'
+    assert set(gdf_classmethod.B11) == set([1756, 2532, 990, 1254]), 'wrong values for band 11'
+
+    # do the same with the instance method (read bands and then extract the pixels from
+    # the read bands)
+    handler = Sentinel2Handler()
+    handler.read_from_safe(
+        in_dir=safe_archive,
+        band_selection=['B02','B11','B12']
+    )
+
+    # make sure band selection works with band and color names
+    gdf_instancemethod_colornames = handler.get_pixels(
+        point_features=test_point_features,
+        band_selection=['blue','swir_1']
+    )
+    assert 'blue' in gdf_instancemethod_colornames.columns and \
+        'swir_1' in gdf_instancemethod_colornames.columns, 'color names not recognized'
+
+    gdf_instancemethod_bandnames = handler.get_pixels(
+        point_features=test_point_features,
+        band_selection=['B02','B11']
+    )
+    assert 'B02' in gdf_instancemethod_bandnames.columns and \
+        'B11' in gdf_instancemethod_bandnames.columns, 'band names not recognized'
+
+    assert (
+        gdf_instancemethod_bandnames[['B02','B11']].values == gdf_instancemethod_colornames[['blue','swir_1']].values
+    ).all(), 'selecting bands by band and color names returned different results'
+
+    assert gdf_instancemethod_colornames.shape[0] == 4, 'wrong number of pixels extracted'
+
+    # make sure returned spectral values match
+    blue_scaled = gdf_instancemethod_colornames.blue * 10000  # multiply by 10000 because of default int to float conversion
+    assert set(blue_scaled.astype(int)) == set(gdf_classmethod.B02), \
+        'spectral band values not extracted correctly'
+
+    swir_scaled = gdf_instancemethod_colornames.swir_1 * 10000  # multiply by 10000 because of default int to float conversion
+    assert set(swir_scaled.astype(int)) == set(gdf_classmethod.B11), \
+        'spectral band values not extracted correctly'
+
+    # test L2A data
+    test_point_features = get_points2()
+    safe_archive = get_s2_safe_l2a()
+
+    gdf_classmethod = Sentinel2Handler.read_pixels_from_safe(
+        point_features=test_point_features,
+        in_dir=safe_archive
+    )
+
+    assert gdf_classmethod.empty, 'pixel values returned although all of the are outside of the scene extent'
+    assert 'SCL' in gdf_classmethod.columns, 'SCL not attempted to extract'
+
+    # TODO: test with points inside the scene extent
+    # assert gdf_instancemethod.shape[0] == 4, 'wrong number of pixels extracted'
+    # blue_scaled = gdf_instancemethod.blue * 10000
+    # assert set(blue_scaled.astype(int)) == set(gdf_classmethod.B02), 'spectral band values not extracted correctly'
+    #
+    # assert set(gdf_classmethod.SCL) == set([11, 4, 6]), 'wrong pixel values extracted'
+    # assert set(gdf_instancemethod.scl) == set(gdf_classmethod.SCL), 'class and instance method returned different results'
+    #
+    #
+
+
 def test_read_from_safe_l1c(get_s2_safe_l1c):
     """handling of Sentinel-2 data in L1C processing level from .SAFE archives"""
 

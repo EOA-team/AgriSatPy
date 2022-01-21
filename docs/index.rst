@@ -1,35 +1,45 @@
-.. SPART-python documentation master file, created by
-   sphinx-quickstart on Sun Aug 23 23:40:51 2020.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
 
 AgriSatPy
 =========
-AgriSatPy is a lightweight package to organize, explore and process satellite remote sensing data. The development was motivated by the frustration that there are no end-to-end workflows that manage (Sentinel-2) **satellite data** and convert it into formats with which the image data can be used for further **data-driven analysis** with (geo)pandas.
 
-Our focus lies on Sentinel-2 MSI for which we offer special support but other satellite platforms in the optical domain could be added in the future as well.
+.. image:: ./../img/AgriSatPy_Banner.jpg
+  :width: 400
+  :alt: AgriSatPy Banner
 
-When working with Sentinel(-2) data we assume the datasets to follow the [Standard Archive Format for Europe (SAFE)](https://sentinel.esa.int/web/sentinel/user-guides/sentinel-1-sar/data-formats/safe-specification).
+*AgriSatPy* is a lightweight `Python` package to **explore**, **organize** and **process** geo-spatial **raster** and epecially (satellite) **remote sensing data** in an easy and intuitive manner.
 
-Because of our background in agronomy and geography, we developed the tools to efficiently answer our research questions. However, we are convinced that the present package can also be useful to other researchers who need to work with satellite data or want to get familiar with the world of remote sensing.
+Developed for **agricultural remote sensing applications** with
+**Sentinel-2**, this is still the main thematic focus. However, due to its **modular and object-oriented programming structure**, it allows in principle the **processing of any type of raster data** and can
+be **adapted** to **other remote sensing platforms** or **raster data sources** (e.g., Digital Elevation Models, Land Cover Maps, etc.).
+
+We believe that researchers and analysts should **deal as little as possible with file handling and backend engineering**. In addition, the underlying source code should be **open source** and non-proprietary.
+Therefore, we have developed *AgriSatPy* in such a way that a large part of these tasks is taken away from the user and provided in the form of self-explanatory attributes and methods on a high semantic level.
 
 .. toctree::
-   :maxdepth: 6
+   :maxdepth: 3
    :caption: Contents:
    
    source/agrisatpy.rst
+   examples.rst
+   contributing.rst
 
 
 
 Installation
 ------------
-``pip install AgriSatPy``
+The easiest way to install AgriSatPy works via `pip`:
 
+``pip install agrisatpy``
+
+This will also install all required dependencies.
 
 
 Quickstart
 ----------
-To come ...
+
+See :ref:`examples` to get started with *AgriSatPy*. 
+
+For **developers**: All classes, methods and functions are documented in the :ref:`api-docs`.
 
 Indices and tables
 ==================
