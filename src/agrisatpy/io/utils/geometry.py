@@ -94,6 +94,7 @@ def convert_3D_2D(geometry: gpd.GeoSeries) -> gpd.GeoSeries:
     :return:
         updated ``GeoSeries`` without third dimension (z)
     '''
+
     new_geo = []
     for p in geometry:
         if p.has_z:
@@ -108,5 +109,8 @@ def convert_3D_2D(geometry: gpd.GeoSeries) -> gpd.GeoSeries:
                     new_p = Polygon(lines)
                     new_multi_p.append(new_p)
                 new_geo.append(MultiPolygon(new_multi_p))
+        else:
+            new_geo = geometry
+            break
 
     return new_geo
