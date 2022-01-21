@@ -34,7 +34,6 @@ def get_region(
         geodataframe with the geometry of the queried region
     """
 
-    # TODO: test
     query_statement = session.query(
         Regions.geom,
         Regions.region_uid
