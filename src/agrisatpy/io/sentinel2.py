@@ -662,17 +662,39 @@ class Sentinel2Handler(SatDataHandler):
 
 # if __name__ == '__main__':
 #
+#     import cv2
+#
+#     safe_archive = Path('../../../data/S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.SAFE')
+#     field_parcels = Path('../../../data/sample_polygons/BY_Polygons_Canola_2019_EPSG32632.shp')
+#
 #     handler = Sentinel2Handler()
-#     in_file_aoi = Path('/mnt/ides/Lukas/software/AgriSatPy/data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
-#
-#     # bandstack testcase
-#     fname_bandstack = Path('/mnt/ides/Lukas/software/AgriSatPy/data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
-#
-#     safe_archive = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/S2A/ESCH/S2A_MSIL2A_20210615T102021_N0300_R065_T32TMT_20210615T131659.SAFE')
-#
-#     # test pixels
-#     test_point_features = Path('/mnt/ides/Lukas/04_Work/ESCH_2021/sampling_test_points.shp')
-#     gdf_classmethod = Sentinel2Handler.read_pixels_from_safe(
-#         point_features=test_point_features,
-#         in_dir=safe_archive
+#     handler.read_from_safe(
+#         in_dir=safe_archive,
+#         polygon_features=field_parcels,
+#         full_bounding_box_only=True
 #     )
+#
+#     handler.add_bands_from_vector(
+#         in_file_vector=field_parcels,         
+#         snap_band='blue',                   # we use one of the 10m bands
+#         attribute_selection=['crop_code'],  # we can use any selection of numeric attributes; each attribute becomes a new raster band
+#         blackfill_value=0                   # here it is important to choose a value that not occurs in the data to rasterize
+#     )
+#
+#     # resample to 10m first
+#     handler.resample(
+#         target_resolution=10,   # meter
+#         resampling_method=cv2.INTER_NEAREST_EXACT
+#     )
+#
+#     bands_to_mask = handler.get_bandnames()
+#
+#     handler.mask(
+#         name_mask_band='crop_code',
+#         mask_values=[1],  # 1 is the code for canola
+#         bands_to_mask=bands_to_mask,
+#         keep_mask_values=True  # we want to keep all canola pixels
+#     )
+#
+#     gdf_canola_pixels = handler.to_dataframe()
+    

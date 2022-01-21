@@ -1841,6 +1841,11 @@ class SatDataHandler(object):
             if meta_resampled is not None:
                 self.data['meta'] = meta_resampled
 
+        # eventually the handler now fulfills the band stack criteria
+        # in this case, we can set it as a bandstack
+        if self.check_is_bandstack():
+            self._set_bandstack()
+
 
     def mask(
             self,
@@ -2318,6 +2323,11 @@ class SatDataHandler(object):
         # clean the dataframe and remove duplicate column names after merging
         # to avoid (large) redundancies
         gdf = gdf.loc[:,~gdf.columns.duplicated()]
+
+        # remove col, row, x and y since they are helper attributes, only
+        cols_to_drop = ['row', 'col', 'x', 'y']
+        for col_to_drop in cols_to_drop:
+            gdf.drop(col_to_drop, axis=1, inplace=True)
 
         return gdf
 
