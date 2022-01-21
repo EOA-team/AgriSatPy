@@ -1338,7 +1338,8 @@ class SatDataHandler(object):
             user_defined_ticks: Optional[List[Union[str,int,float]]] = None,
             colorbar_label: Optional[str] = None,
             vmin: Optional[Union[int, float]] = None,
-            vmax: Optional[Union[int, float]] = None
+            vmax: Optional[Union[int, float]] = None,
+            fontsize: Optional[int] = 12
         ) -> Figure:
         """
         plots a custom band using matplotlib.pyplot.imshow and the
@@ -1374,6 +1375,9 @@ class SatDataHandler(object):
         :param vmin:
             upper value to use for ``plt.imshow()``. If None it is set to the
             upper 95% percentile of the data to plot.
+        :param fontsize:
+            fontsize to use for axes labels, plot title and colorbar label.
+            12 pts by default.
         :return:
             matplotlib figure object with the band data
             plotted as map
@@ -1532,7 +1536,7 @@ class SatDataHandler(object):
                 cb.set_label(
                     colorbar_label,
                     rotation=270,
-                    fontsize=14,
+                    fontsize=fontsize,
                     labelpad=20,
                     y=0.5
                 )
@@ -1540,16 +1544,22 @@ class SatDataHandler(object):
         # set plot title (name of the band if not RGB or NIR plot)
         if colormap is None:
             if rgb_plot:
-                ax.title.set_text('True Color Image')
+                ax.title.set_text(
+                    'True Color Image'
+                )
             elif nir_plot:
-                ax.title.set_text('False Color Nir-Infrared Image')
+                ax.title.set_text(
+                    'False Color Nir-Infrared Image'
+                )
         else:
-            ax.title.set_text(f'Band: {band_name.upper()}')
+            ax.title.set_text(
+                f'Band: {band_name.upper()}'
+            )
 
         # add axes labels and format ticker
-        ax.set_xlabel(f'X [m] (EPSG:{epsg})', fontsize=12)
+        ax.set_xlabel(f'X [m] (EPSG:{epsg})', fontsize=fontsize)
         ax.xaxis.set_ticks(np.arange(bounds.left, bounds.right, x_interval))
-        ax.set_ylabel(f'Y [m] (EPSG:{epsg})', fontsize=12)
+        ax.set_ylabel(f'Y [m] (EPSG:{epsg})', fontsize=fontsize)
         ax.yaxis.set_ticks(np.arange(bounds.bottom, bounds.top, y_interval))
         ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0f'))
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0f'))
