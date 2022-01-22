@@ -5,6 +5,7 @@ Defines some static attributes of Sentinel-2 MSI.
 from enum import Enum
 from agrisatpy.utils.constants import ProcessingLevels
 
+
 # available processing levels
 class ProcessingLevels(Enum):
     L1C = 'LEVEL1C'
@@ -15,7 +16,6 @@ ProcessingLevelsDB = {
     'L1C' : 'Level-1C',
     'L2A' : 'Level-2A'
 }
-
 
 # native spatial resolution of the S2 bands per processing level
 band_resolution = {
@@ -121,4 +121,3 @@ class SCL_Classes(object):
                 'magenta'           # snow
             ]
         return scl_colors
-
