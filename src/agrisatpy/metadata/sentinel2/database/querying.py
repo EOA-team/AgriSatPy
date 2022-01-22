@@ -14,6 +14,7 @@ import pandas as pd
 from datetime import date
 from geoalchemy2.functions import ST_Intersects
 from geoalchemy2.functions import ST_GeomFromText
+from shapely.geometry import Polygon
 from sqlalchemy import create_engine
 from sqlalchemy import and_
 from sqlalchemy import desc
@@ -39,7 +40,7 @@ def find_raw_data_by_bbox(
         date_start: date,
         date_end: date,
         processing_level: ProcessingLevels,
-        bounding_box: str,
+        bounding_box: Union[Polygon,str],
         cloud_cover_threshold: Optional[Union[int,float]] = 100
     ) -> pd.DataFrame:
     """
@@ -56,7 +57,8 @@ def find_raw_data_by_bbox(
     :param processing_level:
         Sentinel-2 processing level
     :param bounding_box_wkt:
-        bounding box as extented well-known text in geographic coordinates
+        bounding box either as extented well-known text in geographic coordinates
+        or as shapely ``Polygon`` in geographic coordinates (WGS84)
     :param cloud_cover_threshold:
         optional cloud cover threshold to filter datasets by scene cloud coverage.
         Must be provided as number between 0 and 100%.
@@ -67,15 +69,24 @@ def find_raw_data_by_bbox(
     # translate processing level
     processing_level_db = ProcessingLevelsDB[processing_level.name]
 
+    # convert shapely geometry into extended well-known text representation
+    if isinstance(bounding_box, Polygon):
+        bounding_box = f'SRID=4326;{bounding_box.wkt}'
+
     # formulate the query statement using the spatial and time period filter
     query_statement = session.query(
         S2_Raw_Metadata.product_uri,
         S2_Raw_Metadata.scene_id,
+        S2_Raw_Metadata.tile_id,
+        S2_Raw_Metadata.spacecraft_name,
         S2_Raw_Metadata.storage_share,
         S2_Raw_Metadata.storage_device_ip_alias,
         S2_Raw_Metadata.storage_device_ip,
         S2_Raw_Metadata.sensing_date,
         S2_Raw_Metadata.cloudy_pixel_percentage,
+        S2_Raw_Metadata.sensing_orbit_number,
+        S2_Raw_Metadata.sensing_time,
+        S2_Raw_Metadata.cloudy_pixel_percentage
     ).filter(
          ST_Intersects(S2_Raw_Metadata.geom, ST_GeomFromText(bounding_box))
     ).filter(
@@ -132,10 +143,14 @@ def find_raw_data_by_tile(
     query_statement = session.query(
         S2_Raw_Metadata.product_uri,
         S2_Raw_Metadata.scene_id,
+        S2_Raw_Metadata.spacecraft_name,
         S2_Raw_Metadata.storage_share,
         S2_Raw_Metadata.storage_device_ip_alias,
         S2_Raw_Metadata.storage_device_ip,
         S2_Raw_Metadata.sensing_date,
+        S2_Raw_Metadata.cloudy_pixel_percentage,
+        S2_Raw_Metadata.sensing_orbit_number,
+        S2_Raw_Metadata.sensing_time,
         S2_Raw_Metadata.cloudy_pixel_percentage
     ).filter(
         S2_Raw_Metadata.tile_id == tile
