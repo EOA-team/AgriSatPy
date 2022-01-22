@@ -264,6 +264,7 @@ def get_S2_tci(
     :return file_tci:
         file path to the quicklook image
     '''
+
     file_tci = ''
     if is_L2A:
         file_tci = glob.glob(str(in_dir.joinpath('GRANULE/*/IM*/*10*/*TCI*')))[0]
