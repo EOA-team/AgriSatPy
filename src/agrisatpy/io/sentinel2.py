@@ -138,6 +138,12 @@ class Sentinel2Handler(SatDataHandler):
             self._is_l2a = False
             is_l2a = False
 
+        # check if SCL should e read (L2A)
+        if is_l2a and read_scl:
+            scl_in_selection = 'scl' in band_selection or 'SCL' in band_selection
+            if not scl_in_selection:
+                band_selection.append('SCL')
+
         # determine native spatial resolution of Sentinel-2 bands
         band_res = band_resolution[processing_level]
         band_selection_spatial_res = [x for x in band_res.items() if x[0] in band_selection]
@@ -171,7 +177,8 @@ class Sentinel2Handler(SatDataHandler):
         """
 
         # check if SCL is a masked array
-        # if so, fill masked values with no-data class
+        # if so, fill masked values with no-data class (for plotting we need to
+        # manipulate the data directly)
         if isinstance(self.data['scl'], np.ma.core.MaskedArray):
             self.data['scl'] = self.data['scl'].filled(
                 [k for k, v in SCL_Classes.values().items() if v == 'no_data'])
@@ -182,7 +189,7 @@ class Sentinel2Handler(SatDataHandler):
             # get only those colors required (classes in the layer)
             scl_colors = SCL_Classes.colors()
             scl_dict = SCL_Classes.values()
-            scl_classes = list(np.unique(self.data['scl']))
+            scl_classes = list(np.unique(self.get_band('scl')))
             selected_colors = [x for idx,x in enumerate(scl_colors) if idx in scl_classes]
             scl_cmap = colors.ListedColormap(selected_colors)
             scl_ticks = [x[1] for x in scl_dict.items() if x[0] in scl_classes]
@@ -201,14 +208,17 @@ class Sentinel2Handler(SatDataHandler):
     def mask_clouds_and_shadows(
             self,
             bands_to_mask: List[str],
-            cloud_classes: Optional[List[int]]=[2, 3, 7, 8, 9, 10]
+            cloud_classes: Optional[List[int]] = [2, 3, 7, 8, 9, 10]
         ) -> None:
         """
         A Wrapper around the inherited ``mask`` method to mask clouds and
-        shadows based on the SCL band. Works therefore on L2A data only where
-        SCL data is available. Masks the SCL classes 2, 3, 7, 8, 9, 10.
+        shadows based on the SCL band. Works therefore on L2A data, only.
+
+        Masks the SCL classes 2, 3, 7, 8, 9, 10.
+
         If another class selection is desired consider using the mask function
-        from `agrisatpy.utils.io` directly.
+        from `agrisatpy.utils.io` directly or change the default
+        ``cloud_classes``.
 
         :param bands_to_mask:
             list of bands on which to apply the SCL mask
@@ -229,9 +239,84 @@ class Sentinel2Handler(SatDataHandler):
             raise Exception(f'Could not apply cloud mask: {e}')
 
 
+    def get_scl_stats(self) -> pd.DataFrame:
+        """
+        Returns a ``DataFrame`` with the number of pixel for each
+        class of the scene classification layer. Works for data in
+        L2A processing level, only.
+
+        :return:
+            ``DataFrame`` with pixel count of SCL classes available
+            in the currently loaded Sentinel-2 scene. Masked pixels
+            are ignored and also not used for calculating the relative
+            class occurences.
+        """
+
+        # check if SCL is available
+        if not 'scl' in self.get_bandnames():
+            raise BandNotFoundError(
+                'Could not find scene classification layer. Is scene L2A?'
+            )
+
+        scl = self.get_band('SCL')
+
+        # if the scl array is a masked array consider only those pixels
+        # not masked out
+        if isinstance(scl, np.ma.MaskedArray):
+            scl = scl.compressed()
+
+        # overall number of pixels; masked pixels are not considered
+        n_pixels = scl.size
+
+        # count occurence of SCL classes
+        scl_classes, class_counts = np.unique(scl, return_counts=True)
+        class_occurences = dict(zip(scl_classes, class_counts))
+
+        # get SCL class name (in addition to the integer code in the data)
+        scl_class_mapping = SCL_Classes.values()
+        scl_stats_list = []
+        for class_occurence in class_occurences.items():
+
+            # unpack tuple
+            class_code, class_count = class_occurence
+
+            scl_stats_dict = {}
+            scl_stats_dict['Class_Value'] = class_code
+            scl_stats_dict['Class_Name'] = scl_class_mapping[class_code]
+            scl_stats_dict['Class_Abs_Count'] = class_count
+            # calculate percentage of the class count to overall number of pixels in %
+            scl_stats_dict['Class_Rel_Count'] = class_count / n_pixels * 100
+
+            scl_stats_list.append(scl_stats_dict)
+
+        # convert to DataFrame
+        scl_stats_df = pd.DataFrame(scl_stats_list)
+
+        # append also those SCL classes not found in the scene so that always
+        # all SCL classes are returned (this makes handling the DataFrame easier)
+        # there are 12 SCL classes, so if the DataFrame has less rows append the
+        # missing classes
+        if scl_stats_df.shape[0] < len(scl_class_mapping):
+            for scl_class in scl_class_mapping:
+                if scl_class not in scl_stats_df.Class_Value.values:
+
+                    scl_stats_dict = {}
+                    scl_stats_dict['Class_Value'] = scl_class
+                    scl_stats_dict['Class_Name'] = scl_class_mapping[scl_class]
+                    scl_stats_dict['Class_Abs_Count'] = 0
+                    scl_stats_dict['Class_Rel_Count'] = 0
+
+                    scl_stats_df = scl_stats_df.append(
+                        other=scl_stats_dict,
+                        ignore_index=True
+                    )
+
+        return scl_stats_df
+        
+
     def get_cloudy_pixel_percentage(
             self,
-            cloud_classes: Optional[List[int]]=[3, 8, 9, 10]
+            cloud_classes: Optional[List[int]] = [3, 8, 9, 10]
         ) -> float:
         """
         Calculates the cloudy pixel percentage [0-100] for the current AOI
@@ -246,32 +331,21 @@ class Sentinel2Handler(SatDataHandler):
             overall number of valid pixels (SCL != no_data)
         """
 
-        # check if SCL is available
-        if not 'scl' in self.data.keys():
-            raise BandNotFoundError(
-                'Could not find scene classification layer. Is scene L2A?'
-            )
-
-        # check if SCL is a masked array
-        # if so, fill masked values with no-data class
-        if isinstance(self.data['scl'], np.ma.core.MaskedArray):
-            self.data['scl'] = self.data['scl'].filled(
-                [k for k, v in SCL_Classes.values().items() if v == 'no_data'])
+        # get SCL statistics
+        scl_stats_df = self.get_scl_stats()
 
         # sum up pixels labeled as clouds or cloud shadows
-        unique, counts = np.unique(self.data['scl'], return_counts=True)
-        class_occurence = dict(zip(unique, counts))
-        cloudy_pixels = [x[1] for x in class_occurence.items() if x[0] in cloud_classes]
-        scl_nodata = 0
-        non_cloudy_pixels = [
-            x[1] for x in class_occurence.items() if x[0] not in cloud_classes \
-            and x[0] != scl_nodata
-        ]
-        num_cloudy_pixels = sum(cloudy_pixels)
-        num_noncloudy_pixels = sum(non_cloudy_pixels)
-
-        # relate it to the overall number of valid pixels in the AOI
-        cloudy_pixel_percentage = (num_cloudy_pixels / num_noncloudy_pixels) * 100
+        num_cloudy_pixels = scl_stats_df[
+            scl_stats_df.Class_Value.isin(cloud_classes)
+        ]['Class_Abs_Count'].sum()
+        # and all other pixels
+        num_noncloudy_pixels = scl_stats_df[
+            ~scl_stats_df.Class_Value.isin(cloud_classes)
+        ]['Class_Abs_Count'].sum()
+        
+        # relate it to the overall number of valid pixels in the scene and return
+        # the value in %
+        cloudy_pixel_percentage = num_cloudy_pixels / num_noncloudy_pixels * 100
 
         return cloudy_pixel_percentage
 
@@ -648,12 +722,12 @@ if __name__ == '__main__':
     handler = Sentinel2Handler()
     handler.read_from_safe(
         in_dir=safe_archive,
-        # polygon_features=field_parcels,
-        # full_bounding_box_only=True,
+        polygon_features=field_parcels,
+        full_bounding_box_only=False,
         band_selection=band_selection
     )
 
-    handler.get_bandnames()
+    scl_stats_df = handler.get_scl_stats()
 
 #
 #     handler.add_bands_from_vector(
