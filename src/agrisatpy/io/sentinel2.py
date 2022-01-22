@@ -539,7 +539,7 @@ class Sentinel2Handler(SatDataHandler):
         if band_selection is None:
             band_selection = list(s2_band_mapping.keys())
             bands_to_exclude = ['B01', 'B09', 'B10']
-            for band in band_selection:
+            for band in bands_to_exclude:
                 band_selection.remove(band)
 
         # determine which spatial resolutions are selected and check processing level
