@@ -3,6 +3,7 @@ Defines some static attributes of Sentinel-2 MSI.
 '''
 
 from enum import Enum
+from agrisatpy.utils.constants import ProcessingLevels
 
 # available processing levels
 class ProcessingLevels(Enum):
@@ -16,25 +17,43 @@ ProcessingLevelsDB = {
 }
 
 
-# native spatial resolution of the S2 bands
+# native spatial resolution of the S2 bands per processing level
 band_resolution = {
-    'B01': 60,
-    'B02': 10,
-    'B03': 10,
-    'B04': 10,
-    'B05': 20,
-    'B06': 20,
-    'B07': 20,
-    'B08': 10,
-    'B8A': 20,
-    'B09': 60,
-    'B10': 60,
-    'B11': 20,
-    'B12': 20
-        
+    ProcessingLevels.L1C: {
+        'B01': 60,
+        'B02': 10,
+        'B03': 10,
+        'B04': 10,
+        'B05': 20,
+        'B06': 20,
+        'B07': 20,
+        'B08': 10,
+        'B8A': 20,
+        'B09': 60,
+        'B10': 60,
+        'B11': 20,
+        'B12': 20
+    },
+    ProcessingLevels.L2A: {
+        'B01': 60,
+        'B02': 10,
+        'B03': 10,
+        'B04': 10,
+        'B05': 20,
+        'B06': 20,
+        'B07': 20,
+        'B08': 10,
+        'B8A': 20,
+        'B09': 60,
+        'B10': 60,
+        'B11': 20,
+        'B12': 20,
+        'SCL': 20
+    }    
 }
 
 s2_band_mapping = {
+        'B01': 'ultra_blue',
         'B02': 'blue',
         'B03': 'green',
         'B04': 'red',
@@ -43,6 +62,8 @@ s2_band_mapping = {
         'B07': 'red_edge_3',
         'B08': 'nir_1',
         'B8A': 'nir_2',
+        'B09': 'nir_3',
+        'B10': 'swir_0',
         'B11': 'swir_1',
         'B12': 'swir_2',
         'SCL': 'scl'

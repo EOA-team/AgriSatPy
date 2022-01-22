@@ -137,43 +137,17 @@ class Sentinel2Handler(SatDataHandler):
         if processing_level == ProcessingLevels.L1C:
             self._is_l2a = False
             is_l2a = False
-            # remove SCL from band selection if it is there
-            if 'scl' in band_selection:
-                band_selection.remove('scl')
-            if 'SCL' in band_selection:
-                band_selection.remove('SCL')
 
-        # determine which spatial resolutions are selected
-        # (based on the native spatial resolution of Sentinel-2 bands)
-        band_selection_spatial_res = [x[1] for x in band_resolution.items() if x[0] in band_selection]
-        resolution_selection = list(np.unique(band_selection_spatial_res))
+        # determine native spatial resolution of Sentinel-2 bands
+        band_res = band_resolution[processing_level]
+        band_selection_spatial_res = [x for x in band_res.items() if x[0] in band_selection]
 
         # search band files depending on processing level and spatial resolution(s)
         band_df_safe = get_S2_bandfiles_with_res(
             in_dir=in_dir,
-            resolution_selection=resolution_selection,
-            is_L2A=is_l2a
+            band_selection=band_selection_spatial_res,
+            is_l2a=is_l2a
         )
-
-        # search SCL file if processing level is L2A
-        if is_l2a:
-            if read_scl:
-                if 'SCL' not in band_selection:
-                    band_selection.append('SCL')
-                try:
-                    scl_file = get_S2_sclfile(in_dir)
-                    # append to dataframe
-                    record = {
-                        'band_name': 'SCL',
-                        'band_path': str(scl_file),
-                        'band_resolution': 20
-                    }
-                    band_df_safe = band_df_safe.append(record, ignore_index=True)
-                except Exception as e:
-                    raise Exception(f'Could not read SCL file: {e}')
-            else:
-                if 'SCL' in band_selection:
-                    band_selection.remove('SCL')
 
         return band_df_safe
 
@@ -660,19 +634,25 @@ class Sentinel2Handler(SatDataHandler):
         return gdf
 
 
-# if __name__ == '__main__':
-#
-#     import cv2
-#
-#     safe_archive = Path('../../../data/S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.SAFE')
-#     field_parcels = Path('../../../data/sample_polygons/BY_Polygons_Canola_2019_EPSG32632.shp')
-#
-#     handler = Sentinel2Handler()
-#     handler.read_from_safe(
-#         in_dir=safe_archive,
-#         polygon_features=field_parcels,
-#         full_bounding_box_only=True
-#     )
+if __name__ == '__main__':
+
+    import cv2
+
+    safe_archive = Path('../../../data/S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.SAFE')
+    field_parcels = Path('../../../data/sample_polygons/BY_Polygons_Canola_2019_EPSG32632.shp')
+
+    band_selection = ['B8A','B01','SCL']
+
+    handler = Sentinel2Handler()
+    handler.read_from_safe(
+        in_dir=safe_archive,
+        polygon_features=field_parcels,
+        full_bounding_box_only=True,
+        band_selection=band_selection
+    )
+
+    handler.get_bandnames()
+
 #
 #     handler.add_bands_from_vector(
 #         in_file_vector=field_parcels,         

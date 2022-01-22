@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 from typing import Optional
+from typing import Tuple
 from typing import Union
 
 from agrisatpy.config import get_settings
@@ -183,103 +184,63 @@ def get_S2_sclfile(
 
 def get_S2_bandfiles_with_res(
         in_dir: Path,
-        resolution_selection: Optional[List[Union[int,float]]]=[10.0, 20.0],
-        search_str: Optional[str]='*B*.jp2',
-        is_L2A: Optional[bool]=True
+        band_selection: List[Tuple[str, Union[int,float]]],
+        is_l2a: Optional[bool]=True
     ) -> pd.DataFrame:
     '''
-    Returns a selection of native resolution Sentinel-2 bands (Def.: 10, 20 m).
-    Works on MSIL2A data (sen2core derived) but also allows to work on Sentinel2
-    L1C data. In the latter case, the spatial resolution of the single bands is
-    hard-coded since the L1C data structure does not allow to extract the spatial
-    resolution from the file or directory name.
+    Returns the file-paths to the jp2 files with the spectral band data
+    from a .SAFE Sentinel-2 dataset. Supports .SAFE datasets in L1C and
+    L2A processing level.
 
     :param in_dir:
         Directory where the search_string is applied. Here - for Sentinel-2 - the
         it is the .SAFE directory of S2 rawdata files.
-    :param resolution_selection:
-        list of Sentinel-2 spatial resolutions to process (Def: [10, 20] m)
-    :param search_str:
-        search pattern for Sentinel-2 band files
-    :param is_L2A:
-        if False, assumes that the data is in Sentinel-2 L1C processing level. The
-        spatial resolution is then hard-coded for each spectral band. Default is True.
+    :param band_selection:
+        list of tuples. Each tuple contains the name of Sentinel-2 band and
+        its spatial resolution in meters.
+    :param is_l2a:
+        if True (default), assumes that the data is in Sentinel-2 L2A processing
+        level. If False, assumes L1C processing level.
     :returns:
         pandas dataframe of jp2 files
     '''
-    # search for files in subdirectories in case of L2A data
-    if is_L2A:
-        band_list = [
-            glob.glob(
-                str(in_dir.joinpath(f'GRANULE/*/IM*/*{int(x)}*/{search_str}')))
-            for x in resolution_selection
-        ]
-        # convert list of list to dictionary using resolutions as keys
-        band_dict = dict.fromkeys(resolution_selection)
-        for idx, key in enumerate(band_dict.keys()):
-            band_dict[key] = band_list[idx]
-    else:
-        band_dict = {}
-        for spatial_resolution in s2.SPATIAL_RESOLUTIONS.keys():
-            if spatial_resolution not in resolution_selection: continue
-            tmp_list = []
-            for band_name in s2.SPATIAL_RESOLUTIONS[spatial_resolution]:
-                tmp_list.extend(glob.glob(
-                    str(in_dir.joinpath(f'GRANULE/*/IMG_DATA/*_{band_name}.jp2'))))
-            band_dict[spatial_resolution] = tmp_list
 
-    # find the highest resolution
-    highest_resolution = min(resolution_selection)
-    # save the band numbers of those bands with the highest resolution
-    if is_L2A:
-        hires_bands = [x.split('_')[-2] for x in band_dict[highest_resolution]]
-    else:
-        hires_bands = [x.split('_')[-1].replace('jp2', '') \
-                        for x in band_dict[highest_resolution]]
-    
-    # loop over the other resolutions and drop the downsampled high resolution
-    # bands and keep only the native bands per resolution
-    native_bands = band_dict[highest_resolution]
-    resolution_per_band = [highest_resolution for x in hires_bands]
-    for key in band_dict.keys():
+    # L1C and L2A data are organized in a slightly different manner
+    # by looping over the list of tuples provided the file-paths can be extracted
+    band_list = []
+    for item in band_selection:
 
-        if key == highest_resolution:
-            continue
+        # unpack tuple
+        band_name, band_res = item
+        # save returned values to dict
+        band_props = {}
 
-        if is_L2A:
-            lowres_bands = [(x.split('_')[-2], x) for x in band_dict[key]]
+        # search expression for the file depends on the processing level
+        if is_l2a:
+            search_expr = in_dir.joinpath(
+                f'GRANULE/*/IMG_DATA/R{int(band_res)}m/T*_{band_name.upper()}_{int(band_res)}m.jp2'
+            )
         else:
-            lowres_bands = [(x.split('_')[-1].replace('.jp2', ''), x) \
-                            for x in band_dict[key]]
-        lowres_bands2keep = [x[1] for x in lowres_bands if x[0] not in hires_bands]
-        native_bands.extend(lowres_bands2keep)
-        
-        lowres_resolution = [key for x in lowres_bands2keep]
-        resolution_per_band.extend(lowres_resolution)
+            search_expr = in_dir.joinpath(
+                f'GRANULE/*/IMG_DATA/T*_{band_name.upper()}.jp2'
+            )
+        try:
+            band_fpath = Path(glob.glob(str(search_expr))[0])
+        except Exception as e:
+            raise BandNotFoundError(
+                f'Could not determine file-path of {band_name} from {in_dir.name}: {e}'
+            )
 
-    if is_L2A:
-        native_band_names = [x.split('_')[-2] for x in native_bands]
-    else:
-        native_band_names = [x.split('_')[-1].replace('.jp2','') \
-                             for x in native_bands]
-    native_band_df = pd.DataFrame(native_band_names, columns=['band_name'])
-    native_band_df["band_path"] = native_bands
-    native_band_df["band_resolution"] = resolution_per_band
-    
-    native_band_df = native_band_df.sort_values(by='band_name')
+        band_props['band_name'] = band_name
+        band_props['band_path'] = band_fpath
+        band_props['band_resolution'] = band_res
 
-    # Sentinel-2 Band 8A needs "special" treatment in terms of band ordering
-    if 'B8A' in native_band_df['band_name'].values:
+        band_list.append(band_props)
 
-        tmp_bandnums = [int(x.replace('B','')) for x in list(native_band_df['band_name'].values[0:-1])]
-        indices2shift = [i for i,v in enumerate(tmp_bandnums) if v > 8]
-        index_b8a = indices2shift[0]
-        final_band_df = native_band_df.iloc[0:index_b8a]
-        final_band_df = final_band_df.append(native_band_df[native_band_df['band_name']=='B8A'])
-        final_band_df = final_band_df.append(native_band_df.iloc[indices2shift])
-        return final_band_df
-    else:
-        return native_band_df
+    # construct dataframe with all band entries and return
+    band_df = pd.DataFrame(band_list)
+
+    return band_df
 
 
 def get_S2_tci(
