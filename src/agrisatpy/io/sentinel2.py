@@ -490,7 +490,7 @@ class Sentinel2Handler(SatDataHandler):
             polygon_features: Optional[Union[Path, gpd.GeoDataFrame]] = None,
             full_bounding_box_only: Optional[bool] = False,
             int16_to_float: Optional[bool] = True,
-            band_selection: Optional[List[str]] = list(s2_band_mapping.keys()),
+            band_selection: Optional[List[str]] = None,
             read_scl: Optional[bool] = True,
             skip_blackfilled_scenes: Optional[bool] = True
         ) -> None:
@@ -502,6 +502,9 @@ class Sentinel2Handler(SatDataHandler):
         The function works on Sentinel-2 L1C and L2A processing level and reads by
         default all 10 and 20m bands. If the processing level is L2A it also searches
         for the scene classification layer (SCL) and provides it as additional band.
+
+        NOTE:
+            By default, all 10 and 20m bands are loaded (10 bands in total).
 
         :param in_dir:
             file-path to the .SAFE directory containing Sentinel-2 data in
@@ -520,9 +523,10 @@ class Sentinel2Handler(SatDataHandler):
             want to keep the UINT16 datatype and original value range.
         :param band_selection:
             selection of Sentinel-2 bands to read. Per default, all 10 and
-            20m bands are processed. If you wish to read less, specify the
-            band names accordingly, e.g., ['B02','B03','B04'] to read only the
-            VIS bands.
+            20m bands are processed. If you wish to read less or more, specify
+            the band names accordingly, e.g., ['B02','B03','B04'] to read only the
+            VIS bands. If the processing level is L2A the SCL band is **always**
+            loaded unless you set ``read_scl`` to False.
         :param read_scl:
             read SCL file if available (default, L2A processing level).
         :param skip_blackfilled_scenes:
@@ -530,6 +534,13 @@ class Sentinel2Handler(SatDataHandler):
             contains blackfill (nodata), only. Sentinel-2 blackfill is indicated
             by a reflectance of zero in every pixel.
         """
+
+        # load 10 and 20 bands by default
+        if band_selection is None:
+            band_selection = list(s2_band_mapping.keys())
+            bands_to_exclude = ['B01', 'B09', 'B10']
+            for band in band_selection:
+                band_selection.remove(band)
 
         # determine which spatial resolutions are selected and check processing level
         band_df_safe = self._get_band_files(
@@ -716,15 +727,11 @@ if __name__ == '__main__':
     field_parcels = Path('../../../data/sample_polygons/BY_Polygons_Canola_2019_EPSG32632.shp')
 
     # safe_archive = Path('/mnt/ides/Lukas/03_Debug/Sentinel2/S2A_MSIL2A_20171213T102431_N0206_R065_T32TMT_20171213T140708.SAFE')
-
-    band_selection = ['B06']
-
     handler = Sentinel2Handler()
     handler.read_from_safe(
         in_dir=safe_archive,
         polygon_features=field_parcels,
-        full_bounding_box_only=False,
-        band_selection=band_selection
+        full_bounding_box_only=False
     )
 
     scl_stats_df = handler.get_scl_stats()
