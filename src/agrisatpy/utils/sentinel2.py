@@ -1,5 +1,6 @@
 '''
-Sentinel-2 specific helper functions.
+Sentinel-2 specific helper functions to interact with datasets organized
+in .SAFE structure.
 '''
 
 import os
@@ -108,6 +109,9 @@ def get_S2_bandfiles(
     returns all JPEG-2000 files (*.jp2) found in a dataset directory
     (.SAFE).
 
+    TODO:
+        This seems to be a duplicate of ``get_S2_bandfiles_with_res``
+
     :param search_dir:
         directory containing the JPEG2000 band files
     :param resolution:
@@ -116,6 +120,7 @@ def get_S2_bandfiles(
     :return files:
         list of Sentinel-2 single band files
     '''
+
     if resolution is None:
         search_pattern = 'GRANULE/*/IM*/*/*B*.jp2'
     else:
@@ -237,7 +242,7 @@ def get_S2_bandfiles_with_res(
 
         band_list.append(band_props)
 
-    # construct dataframe with all band entries and return
+    # construct pandas DataFrame with all band entries and return
     band_df = pd.DataFrame(band_list)
 
     return band_df

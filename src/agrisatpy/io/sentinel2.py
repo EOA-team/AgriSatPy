@@ -641,13 +641,15 @@ if __name__ == '__main__':
     safe_archive = Path('../../../data/S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.SAFE')
     field_parcels = Path('../../../data/sample_polygons/BY_Polygons_Canola_2019_EPSG32632.shp')
 
-    band_selection = ['B8A','B01','SCL']
+    # safe_archive = Path('/mnt/ides/Lukas/03_Debug/Sentinel2/S2A_MSIL2A_20171213T102431_N0206_R065_T32TMT_20171213T140708.SAFE')
+
+    band_selection = ['B06']
 
     handler = Sentinel2Handler()
     handler.read_from_safe(
         in_dir=safe_archive,
-        polygon_features=field_parcels,
-        full_bounding_box_only=True,
+        # polygon_features=field_parcels,
+        # full_bounding_box_only=True,
         band_selection=band_selection
     )
 
