@@ -56,14 +56,14 @@ def identify_split_scenes(
         metadata_df: pd.DataFrame,
     ) -> pd.DataFrame:
     """
-    Returns entries in a pandas data frame retrieved from a query in AgriSatPy's
+    Returns entries in a pandas ``DataFrame`` retrieved from a query in AgriSatPy's
     metadata base that have the same sensing date. This could indicate, e.g.,
     that scenes have been split because of data take changes which sometimes cause
     Sentinel-2 scenes to be split into two separate .SAFE archives, each of them
     with a large amount of blackfill.
 
     :param metadata_df:
-        dataframe from metadatabase query in which to search with scenes with
+        dataframe from metadata base query in which to search for scenes with
         the same sensing_date
     :return:
         scenes with the same sensing date (might also be empty)
