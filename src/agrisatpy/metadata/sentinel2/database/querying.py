@@ -17,7 +17,7 @@ from geoalchemy2.functions import ST_GeomFromText
 from shapely.geometry import Polygon
 from sqlalchemy import create_engine
 from sqlalchemy import and_
-from sqlalchemy import desc
+from sqlalchemy import asc
 from sqlalchemy.orm import sessionmaker
 from typing import Optional
 from typing import Union
@@ -45,7 +45,8 @@ def find_raw_data_by_bbox(
     ) -> pd.DataFrame:
     """
     Queries the metadata DB by Sentinel-2 bounding box, time period and processing
-    level (and cloud cover).
+    level (and cloud cover). The returned data is ordered by sensing time in
+    ascending order.
 
     NOTE:
         For the spatial query ``ST_Intersects`` is called.
@@ -86,7 +87,8 @@ def find_raw_data_by_bbox(
         S2_Raw_Metadata.cloudy_pixel_percentage,
         S2_Raw_Metadata.sensing_orbit_number,
         S2_Raw_Metadata.sensing_time,
-        S2_Raw_Metadata.cloudy_pixel_percentage
+        S2_Raw_Metadata.cloudy_pixel_percentage,
+        S2_Raw_Metadata.epsg
     ).filter(
          ST_Intersects(S2_Raw_Metadata.geom, ST_GeomFromText(bounding_box))
     ).filter(
@@ -99,7 +101,7 @@ def find_raw_data_by_bbox(
     ).filter(
         S2_Raw_Metadata.cloudy_pixel_percentage <= cloud_cover_threshold
     ).order_by(
-        S2_Raw_Metadata.sensing_date.desc()
+        S2_Raw_Metadata.sensing_date.asc()
     ).statement
 
     # read returned records in DataFrame and return
@@ -151,7 +153,8 @@ def find_raw_data_by_tile(
         S2_Raw_Metadata.cloudy_pixel_percentage,
         S2_Raw_Metadata.sensing_orbit_number,
         S2_Raw_Metadata.sensing_time,
-        S2_Raw_Metadata.cloudy_pixel_percentage
+        S2_Raw_Metadata.cloudy_pixel_percentage,
+        S2_Raw_Metadata.epsg
     ).filter(
         S2_Raw_Metadata.tile_id == tile
     ).filter(
