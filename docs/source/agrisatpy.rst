@@ -1,4 +1,7 @@
-agrisatpy package
+.. _api-docs:
+
+
+API Documentation
 =================
 
 Subpackages
@@ -14,13 +17,5 @@ Subpackages
    agrisatpy.io
    agrisatpy.metadata
    agrisatpy.operational
-   agrisatpy.spatial_resampling
    agrisatpy.utils
 
-Module contents
----------------
-
-.. automodule:: agrisatpy
-   :members:
-   :undoc-members:
-   :show-inheritance:
