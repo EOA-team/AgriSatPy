@@ -2,22 +2,30 @@
 Mapping module for Sentinel-2 data
 '''
 
+import cv2
 import geopandas as gpd
 import uuid
 
 from pathlib import Path
 from shapely.geometry import box
 from sqlalchemy.exc import DatabaseError
+from typing import List
 from typing import Optional
 from typing import Union
 
+from agrisatpy.io import SatDataHandler
+from agrisatpy.io.sentinel2 import Sentinel2Handler
 from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_bbox
 from agrisatpy.operational.mapping.mapper import Mapper
 from agrisatpy.operational.resampling.utils import identify_split_scenes
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
-from agrisatpy.utils.exceptions import InputError
+from agrisatpy.utils.exceptions import InputError, BlackFillOnlyError
 from agrisatpy.utils.types import S2Scenes
 from agrisatpy.metadata.sentinel2.utils import identify_updated_scenes
+from agrisatpy.metadata.utils import reconstruct_path
+
+
+return_types = ['SatDataHandlers', 'xarray', 'GeoDataFrame']
 
 
 class Sentinel2Mapper(Mapper):
@@ -135,7 +143,7 @@ class Sentinel2Mapper(Mapper):
     
         for _, feature in self.polygon_features.iterrows():
     
-            feature_uuid = str(feature[self.unique_id_attribute])
+            feature_uuid = feature[self.unique_id_attribute]
     
             # get available Sentinel-2 data-sets using the maximum cloud coverage
             cloud_cover_threshold = 100
@@ -210,10 +218,13 @@ class Sentinel2Mapper(Mapper):
             self.s2_scenes[feature_uuid] = scenes_df
 
 
-    def extract_aois_from_s2(
+    def extract_areas_of_interest(
             self,
             band_selection: Optional[str] = None,
-            **reducers_options
+            return_type: Optional[str] = 'SatDataHandlers',
+            resampling_method: Optional[int] = cv2.INTER_NEAREST_EXACT,
+            resample_to_highest_resolution: Optional[bool] = True,
+            spatial_reducers: List[str] = None
         ):
         """
         This function takes the dictionary with Sentinel-2 scenes retrieved from
@@ -222,7 +233,97 @@ class Sentinel2Mapper(Mapper):
     
         :param band_selection:
             selection of Sentinel-2 bands to extract. Per default all 10 and 20m are
-            read
+            read (plus the scene classification layer if the processing level is
+            L2A).
+        :param return_type:
+            must be one of 'SatDataHandlers', 'xarray', 'GeoDataFrame'. Note:
+            Only the 'GeoDataFrame' return type should be used with the
+            ``spatial_reducers`` option since spatial reducers always return a
+            single scalar value per raster band and scene date, whereas 'SatDataHandlers'
+            and 'xarray' always keep all band pixels.
+        :param resampling_method:
+            spatial resampling method to use when the ``band_selection`` encompasses
+            bands with different spatial resolutions (e.g., 10 and 20m bands).
+            Uses ``cv2`` in the back and relies on ``cv2.INTER_NEAREST_EXACT`` by
+            default
+        :param resample_to_highest_resolution:
+            if True and resampling is required increase the spatial resolution of all
+            bands to highest resolution found, if False bring all bands to the lowest
+            resolution found.
+        :param spatial_reducers:
+            optional list of ``numpy`` function names taking a 2d array (either an
+            instance of ``numpy.ndarray`` or ``numpy.ma.MaskedArray) that return a single
+            scalar value. E.g., ['nanmean', 'nanmax', 'nanmean'].
         """
-        pass
+
+        if return_type in return_types:
+            raise InputError(f'return_type must be one of {return_types}')
+
+        # check inputs. If the return type is SatDataHandler and reducer_options are not
+        # None raise an error.
+        if return_type in ['SatDataHandlers','xarray'] and spatial_reducers is not None:
+            raise ValueError(
+                'Cannot return list of SatDataHandler instances when spatial ' \
+                'reducer options are selected.\nUse `return_type="GeoDataFrame"` ' \
+                'instead!'
+            )
+
+        # loop over features (AOIs) in feature dict
+        for feature, scenes_df in self.s2_scenes.items():
+
+            # get feature geometry (the original one)
+            feature_geom = self.polygon_features[
+                self.polygon_features[self.unique_id_attribute] == feature
+            ]['geometry']
+
+            # loop over scenes, they are already ordered by date (ascending)
+            # and check for each date which scenes are relevant and require
+            # potential reprojection or merging
+            sensing_dates = scenes_df.sensing_date.unique()
+            for sensing_date in sensing_dates:
+
+                # get all scenes with the current sensing_date
+                scenes_date = scenes_df[scenes_df.sensing_date == sensing_date].copy()
+
+                # multiple scenes - check what to do (reprojection, merging)
+                if scenes_date.shape[0] > 1:
+                    
+                    # TODO: check scene - is it flagged as 'is_split' or has a 'target_epsg' code
+                    # different from its native one.
+                    # if not, simply read selected bands
+                    pass
+
+                # if there is only one scene all we have to do is to read
+                else:
+                    scene_fpath = reconstruct_path(record=scenes_date.iloc[0])
+                
+                    handler = Sentinel2Handler()
+                    try:
+                        handler.read_from_safe(
+                            in_dir=scene_fpath,
+                            polygon_features=feature_geom,
+                            band_selection=band_selection
+                        )
+                    except BlackFillOnlyError:
+                        # if the scene extent is blackfilled (all pixels are no data) continue
+                        # and delete the record from the scenes DataFrame
+                        drop_idx = scenes_df[scenes_df.sensing_date == sensing_date].index
+                        scenes_df.drop(drop_idx, inplace=True)
+                        continue
+                    except Exception as e:
+                        raise Exception from e
+                
+                # check if resampling is required
+                if not handler.check_is_bandstack(band_selection):
+                    # TODO: determine highest or lowest resolution
+                    # handler.resample(target_resolution, resampling_method, pixel_division, band_selection, bands_to_exclude, blackfill_value)
+                        
+                # for xarray: use handler.to_xarray and after the loop xarray.concat
+                # https://xarray.pydata.org/en/stable/generated/xarray.concat.html
+            
+        
+        
+
+
+
         

@@ -5,6 +5,7 @@ Generic mapping module
 from datetime import date
 from geopandas import GeoDataFrame
 from pathlib import Path
+from typing import List
 from typing import Optional
 from typing import Union
 
