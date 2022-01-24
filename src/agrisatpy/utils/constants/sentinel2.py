@@ -52,6 +52,44 @@ band_resolution = {
     }    
 }
 
+# define central wavelengths of the single bands (nm) taken from
+# https://sentinels.copernicus.eu/documents/247904/685211/S2-SRF_COPE-GSEG-EOPG-TN-15-0007_3.0.xlsx
+# and refined for S2A and S2B using information from
+# https://sentinels.copernicus.eu/web/sentinel/missions/sentinel-2/instrument-payload/resolution-and-swath
+central_wavelengths = {
+    'S2A': {
+        'B01': 442.7,
+        'B02': 492.4,
+        'B03': 559.8,
+        'B04': 664.6,
+        'B05': 704.1,
+        'B06': 740.5,
+        'B07': 782.8,
+        'B08': 832.8,
+        'B8A': 864.7,
+        'B09': 945.1,
+        'B10': 1373.5,
+        'B11': 1613.7,
+        'B12': 2202.4
+    },
+    'S2B': {
+        'B01': 442.2,
+        'B02': 492.1,
+        'B03': 559.0,
+        'B04': 664.9,
+        'B05': 703.8,
+        'B06': 739.1,
+        'B07': 779.7,
+        'B08': 832.9,
+        'B8A': 864.0,
+        'B09': 943.2,
+        'B10': 1376.9,
+        'B11': 1610.4,
+        'B12': 2185.7
+    },
+    'unit': 'nm'  
+}
+
 s2_band_mapping = {
         'B01': 'ultra_blue',
         'B02': 'blue',
