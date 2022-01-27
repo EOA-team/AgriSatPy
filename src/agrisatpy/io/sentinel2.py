@@ -75,10 +75,10 @@ class Sentinel2Handler(SatDataHandler):
         :param sel_bands:
             list of selected Sentinel-2 bands
         """
-        old_band_names = self.get_bandnames()
+        old_band_names = self.bandnames
         self.reset_bandnames(new_bandnames=sel_bands)
         self.set_bandaliases(
-            band_names=self.get_bandnames(),
+            band_names=self.bandnames,
             band_aliases=old_band_names
         )
 
@@ -89,7 +89,7 @@ class Sentinel2Handler(SatDataHandler):
         factor to scale value between 0 and 1
         """
 
-        for band_name in self.get_bandnames():
+        for band_name in self.bandnames:
             # SCL band is not converted
             if band_name.upper() == 'SCL':
                 continue
@@ -253,7 +253,7 @@ class Sentinel2Handler(SatDataHandler):
         """
 
         # check if SCL is available
-        if not 'scl' in self.get_bandnames():
+        if not 'scl' in self.bandnames:
             raise BandNotFoundError(
                 'Could not find scene classification layer. Is scene L2A?'
             )
@@ -425,7 +425,7 @@ class Sentinel2Handler(SatDataHandler):
         # loop over bands, set band and color names and 
         sel_bands = self._check_band_selection(band_selection=band_selection)
         new_bandnames = [x[1] for x in sel_bands]
-        old_bandnames = self.get_bandnames()
+        old_bandnames = self.bandnames
         self.reset_bandnames(new_bandnames)
         self.set_bandaliases(new_bandnames, old_bandnames)
 
@@ -472,12 +472,12 @@ class Sentinel2Handler(SatDataHandler):
                     raise Exception(f'Could not read SCL file: {e}')
     
                 # add SCL as new band
-                band_name_scl = scl_reader.get_bandnames()[0]
+                band_name_scl = scl_reader.bandnames[0]
                 self.add_band(
                     band_name='scl',
                     band_data=scl_reader.get_band(band_name_scl),
                     band_alias='SCL',
-                    snap_band=self.get_bandnames()[0]
+                    snap_band=self.bandnames[0]
                 )
     
                 # increase band count in meta
@@ -568,7 +568,7 @@ class Sentinel2Handler(SatDataHandler):
                 )
 
                 # add band meta and bounds (required for adding band data)
-                band_reader_band = band_reader.get_bandnames()[0]
+                band_reader_band = band_reader.bandnames[0]
                 meta = band_reader.get_meta(band_reader_band)
                 attrs = band_reader.get_attrs(band_reader_band)
                 bounds = band_reader.get_bounds(
@@ -752,7 +752,7 @@ if __name__ == '__main__':
     )
     
 #
-#     bands_to_mask = handler.get_bandnames()
+#     bands_to_mask = handler.bandnames
 #
 #     handler.mask(
 #         name_mask_band='crop_code',

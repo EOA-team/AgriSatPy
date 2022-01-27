@@ -2,7 +2,6 @@
 Mapping module for Sentinel-2 data
 '''
 
-import cv2
 import geopandas as gpd
 import uuid
 
@@ -13,7 +12,6 @@ from typing import List
 from typing import Optional
 from typing import Union
 
-from agrisatpy.io import SatDataHandler
 from agrisatpy.io.sentinel2 import Sentinel2Handler
 from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_bbox
 from agrisatpy.operational.mapping.mapper import Mapper
@@ -68,17 +66,30 @@ class Sentinel2Mapper(Mapper):
         self.s2_scenes = S2Scenes({})
 
 
-    def get_sentinel2_scenes(self) -> None:
+    def get_sentinel2_scenes(
+            self,
+            tile_ids: Optional[List[str]] = None
+        ) -> None:
         """
         Queries the Sentinel-2 metadata DB for a selected time period and
-        field parcel geometry (masking all pixels not belonging to the parcel) and
-        returns a ``DataFrame`` with entries for all scenes found.
-    
+        areas of interest (e.g., agricultural field parcels, might be one are many).
+        The method returns a ``DataFrame`` with entries for all Sentinel-2
+        scenes found for *each* AOI.
+
+        NOTE:
+            By passing a list of Sentinel-2 tiles you can explicitly control
+            which Sentinel-2 tiles are considered. This might be useful for
+            mapping tasks where your AOI lies completely within a single
+            Sentinel-2 tile but also overlaps with neighboring tiles. 
+
         The scene selection and processing workflow contains several steps:
     
         1.  Query the metadata DB for **ALL** available scenes that overlap
             the bounding box of a given ``Polygon`` or ``MultiPolygon``
-            feature
+            feature. **IMPORTANT**: By passing a list of Sentinel-2 tiles
+            to consider (``tile_ids``) you can explicitely control which
+            Sentinel-2 tiles are considered! This can be useful for mapping task
+            where you want to consider single tiles, only. 
         2.  Check if for a single sensing date several scenes are available
         3.  If yes check if that's due to Sentinel-2 data take or tiling grid
             design. If yes flag these scenes as potential merge candidates. A
@@ -104,8 +115,10 @@ class Sentinel2Mapper(Mapper):
             `epsg` attribute. This indicates the subsequent extraction function that
             the scene must be reprojected from the original `epsg` into the
             `target_epsg`.
-    
-        
+
+        :param tile_id:
+            optional list of Sentinel-2 tils (e.g., ['T32TMT','T32TGM']) to use for
+            filtering. Only scenes belonging to these tiles are returned then
         :return:
             dictionary with found Sentinel-2 scenes including the `is_split` and
             `target_epsg` entry for each AOI (polygon feature) in `polygon_features`.
@@ -154,6 +167,7 @@ class Sentinel2Mapper(Mapper):
             bbox = box(*feature.geometry_wgs84.bounds)
     
             # use the resulting bbox to query the bounding box
+            # TODO: if only a tile is passed query by tile, only!
             try:
                 scenes_df = find_raw_data_by_bbox(
                     date_start=self.date_start,
@@ -164,6 +178,11 @@ class Sentinel2Mapper(Mapper):
                 )
             except Exception as e:
                 raise DatabaseError(f'Querying metadata DB failed: {e}')
+
+            # filter by tile if required
+            if tile_ids is not None:
+                other_tile_idx = scenes_df[~scenes_df.tile_id.isin(tile_ids)].index
+                scenes_df.drop(other_tile_idx, inplace=True)
     
             if scenes_df.empty:
                 raise UserWarning(
@@ -220,53 +239,20 @@ class Sentinel2Mapper(Mapper):
 
     def extract_areas_of_interest(
             self,
-            band_selection: Optional[str] = None,
-            return_type: Optional[str] = 'SatDataHandlers',
-            resampling_method: Optional[int] = cv2.INTER_NEAREST_EXACT,
-            resample_to_highest_resolution: Optional[bool] = True,
-            spatial_reducers: List[str] = None
-        ):
+            band_selection: Optional[str] = None
+        ) -> None:
         """
         This function takes the dictionary with Sentinel-2 scenes retrieved from
         the metadata DB query in `~Mapper.get_sentinel2_scenes` and extracts the
-        Sentinel-2 data from the original .SAFE archives
+        Sentinel-2 data from the original .SAFE archives into dictionary of
+        ``SatDataHandlers`` organized by image acquisition dates of the underlying
+        scenes.
     
         :param band_selection:
             selection of Sentinel-2 bands to extract. Per default all 10 and 20m are
             read (plus the scene classification layer if the processing level is
             L2A).
-        :param return_type:
-            must be one of 'SatDataHandlers', 'xarray', 'GeoDataFrame'. Note:
-            Only the 'GeoDataFrame' return type should be used with the
-            ``spatial_reducers`` option since spatial reducers always return a
-            single scalar value per raster band and scene date, whereas 'SatDataHandlers'
-            and 'xarray' always keep all band pixels.
-        :param resampling_method:
-            spatial resampling method to use when the ``band_selection`` encompasses
-            bands with different spatial resolutions (e.g., 10 and 20m bands).
-            Uses ``cv2`` in the back and relies on ``cv2.INTER_NEAREST_EXACT`` by
-            default
-        :param resample_to_highest_resolution:
-            if True and resampling is required increase the spatial resolution of all
-            bands to highest resolution found, if False bring all bands to the lowest
-            resolution found.
-        :param spatial_reducers:
-            optional list of ``numpy`` function names taking a 2d array (either an
-            instance of ``numpy.ndarray`` or ``numpy.ma.MaskedArray) that return a single
-            scalar value. E.g., ['nanmean', 'nanmax', 'nanmean'].
         """
-
-        if return_type in return_types:
-            raise InputError(f'return_type must be one of {return_types}')
-
-        # check inputs. If the return type is SatDataHandler and reducer_options are not
-        # None raise an error.
-        if return_type in ['SatDataHandlers','xarray'] and spatial_reducers is not None:
-            raise ValueError(
-                'Cannot return list of SatDataHandler instances when spatial ' \
-                'reducer options are selected.\nUse `return_type="GeoDataFrame"` ' \
-                'instead!'
-            )
 
         # loop over features (AOIs) in feature dict
         for feature, scenes_df in self.s2_scenes.items():
@@ -275,6 +261,11 @@ class Sentinel2Mapper(Mapper):
             feature_geom = self.polygon_features[
                 self.polygon_features[self.unique_id_attribute] == feature
             ]['geometry']
+
+            # initialize stack for storing scenes of the current feature
+            self.feature_stack[feature] = {}
+            # save the feature geometry so it can be used for visualizations
+            self.feature_stack[feature]['geometry'] = feature_geom
 
             # loop over scenes, they are already ordered by date (ascending)
             # and check for each date which scenes are relevant and require
@@ -285,7 +276,8 @@ class Sentinel2Mapper(Mapper):
                 # get all scenes with the current sensing_date
                 scenes_date = scenes_df[scenes_df.sensing_date == sensing_date].copy()
 
-                # multiple scenes - check what to do (reprojection, merging)
+                # multiple scenes for a single date
+                # check what to do (reprojection, merging)
                 if scenes_date.shape[0] > 1:
                     
                     # TODO: check scene - is it flagged as 'is_split' or has a 'target_epsg' code
@@ -312,18 +304,6 @@ class Sentinel2Mapper(Mapper):
                         continue
                     except Exception as e:
                         raise Exception from e
-                
-                # check if resampling is required
-                if not handler.check_is_bandstack(band_selection):
-                    # TODO: determine highest or lowest resolution
-                    # handler.resample(target_resolution, resampling_method, pixel_division, band_selection, bands_to_exclude, blackfill_value)
-                        
-                # for xarray: use handler.to_xarray and after the loop xarray.concat
-                # https://xarray.pydata.org/en/stable/generated/xarray.concat.html
-            
-        
-        
 
-
-
-        
+                # append to the feature stack
+                self.feature_stack[feature][sensing_date] = handler
