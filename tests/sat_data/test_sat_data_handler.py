@@ -27,7 +27,7 @@ def test_add_bands(datadir, get_bandstack, get_polygons):
         snap_band='B02'
     )
 
-    assert 'test' in handler.get_bandnames(), 'band name not added'
+    assert 'test' in handler.bandnames, 'band name not added'
     assert handler.check_is_bandstack(), 'handler should still fulfill the bandstack criteria'
     # check meta, bounds and attribs
     assert handler.get_meta() == handler.get_meta('test'), 'meta not correct'
@@ -149,10 +149,10 @@ def test_add_band_from_shp(datadir, get_bandstack, get_polygons, get_polygons_2)
         snap_band='B02'
     )
 
-    assert len(handler.get_bandnames()) == 12, 'wrong number of bands'
-    assert 'GIS_ID' in handler.get_bandnames(), 'band GIS_ID not rasterized from vector file'
-    assert 'NUTZUNGSCO' in handler.get_bandnames(), 'band NUTZUNGSCO not rasterized from vector file'
-    assert 'NUTZUNG' not in handler.get_bandnames(), 'character attribute NUTZUNG rasterized'
+    assert len(handler.bandnames) == 12, 'wrong number of bands'
+    assert 'GIS_ID' in handler.bandnames, 'band GIS_ID not rasterized from vector file'
+    assert 'NUTZUNGSCO' in handler.bandnames, 'band NUTZUNGSCO not rasterized from vector file'
+    assert 'NUTZUNG' not in handler.bandnames, 'character attribute NUTZUNG rasterized'
 
     # make sure rasterized matches snap band exactly
     gis_id1 = handler.get_band('GIS_ID')
@@ -175,10 +175,10 @@ def test_add_band_from_shp(datadir, get_bandstack, get_polygons, get_polygons_2)
         snap_band='B02'
     )
 
-    assert len(handler.get_bandnames()) == 12, 'wrong number of bands'
-    assert 'GIS_ID' in handler.get_bandnames(), 'band GIS_ID not rasterized from vector file'
-    assert 'NUTZUNGSCO' in handler.get_bandnames(), 'band NUTZUNGSCO not rasterized from vector file'
-    assert 'NUTZUNG' not in handler.get_bandnames(), 'character attribute NUTZUNG rasterized'
+    assert len(handler.bandnames) == 12, 'wrong number of bands'
+    assert 'GIS_ID' in handler.bandnames, 'band GIS_ID not rasterized from vector file'
+    assert 'NUTZUNGSCO' in handler.bandnames, 'band NUTZUNGSCO not rasterized from vector file'
+    assert 'NUTZUNG' not in handler.bandnames, 'character attribute NUTZUNG rasterized'
 
     # make sure the rasterized band is still the same as before (minor difference occure because
     # of the masking algorithm)
@@ -239,8 +239,8 @@ def test_add_band_from_shp(datadir, get_bandstack, get_polygons, get_polygons_2)
         snap_band='B02',
         attribute_selection=['GIS_ID']
     )
-    assert 'GIS_ID' in handler.get_bandnames(), 'attribute not rasterized and added'
-    assert 'NUTZUNGSCO' not in handler.get_bandnames(), 'attribute rasterized although not selected'
+    assert 'GIS_ID' in handler.bandnames, 'attribute not rasterized and added'
+    assert 'NUTZUNGSCO' not in handler.bandnames, 'attribute rasterized although not selected'
 
     # invalid attribute selection
     with pytest.raises(AttributeError):
@@ -261,7 +261,7 @@ def test_add_band_from_shp(datadir, get_bandstack, get_polygons, get_polygons_2)
         snap_band='B02',
         attribute_selection=['NUTZUNGSCO']
     )
-    assert 'NUTZUNGSCO' in handler.get_bandnames(), 'attribute not rasterized and added'
+    assert 'NUTZUNGSCO' in handler.bandnames, 'attribute not rasterized and added'
     nutzungsco = handler.get_band('NUTZUNGSCO')
     assert np.count_nonzero(~np.isnan(nutzungsco)) == snap_band_compressed_shape, 'band contains wrong number of pixels'
     assert handler.get_epsg('NUTZUNGSCO') == 32632, 'wrong EPSG code'
@@ -300,8 +300,8 @@ def test_conversion_to_gpd(datadir, get_bandstack, get_polygons):
     assert (gdf.geom_type == 'Point').all(), 'geodataframe is not of type Point geometry'
     assert 'geometry' in gdf.columns, 'no geometry column found'
     assert gdf.dtypes['geometry'] == 'geometry', 'geometry column has no proper geom datatpye'
-    assert all(elem in gdf.columns for elem in handler.get_bandnames()), 'band names not passed'
-    assert all(gdf.dtypes[handler.get_bandnames()] == 'uint16'), 'band data has wrong datatype'
+    assert all(elem in gdf.columns for elem in handler.bandnames), 'band names not passed'
+    assert all(gdf.dtypes[handler.bandnames] == 'uint16'), 'band data has wrong datatype'
 
     # conversion using only one band
     gdf2 = handler.to_dataframe(band_names=['B02'])
@@ -368,7 +368,7 @@ def test_read_from_bandstack_with_mask(datadir, get_bandstack, get_polygons):
 
     assert handler.check_is_bandstack(), 'not recognized as bandstack although data should'
     assert isinstance(handler.get_band('B02'), np.ma.core.MaskedArray), 'band data was not masked'
-    assert len(handler.get_bandnames()) == 10, 'wrong number of bands'
+    assert len(handler.bandnames) == 10, 'wrong number of bands'
     assert len(handler.get_bandaliases()) == 0, 'band aliases available although they should not'
 
     # direct calculation of NDVI should fail because color names are not defined
@@ -458,7 +458,7 @@ def test_from_cloudoptimized_geotiff(datadir, url):
         fname_bandstack=url
     )
 
-    assert len(handler.get_bandnames()) > 0, 'no data read'
+    assert len(handler.bandnames) > 0, 'no data read'
     band_data = handler.get_band('B1')
     assert isinstance(band_data, np.ndarray), 'band data not read correctly'
     assert band_data.dtype == 'float32', 'expected floating point data'

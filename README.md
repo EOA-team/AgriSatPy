@@ -67,7 +67,7 @@ handler.read_from_safe(
 
 # check the bands read. AgriSatPy converts band names (B02, etc.) to color names
 # however, original Sentinel-2 bands also work for selecting bands!
-handler.get_bandnames()
+handler.bandnames
 ```
 Output
 ```shell

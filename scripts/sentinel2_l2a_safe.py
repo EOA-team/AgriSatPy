@@ -23,7 +23,7 @@ handler.read_from_safe(
 )
 
 # check the bands read. AgriSatPy converts band names (B02, etc.) to color names
-handler.get_bandnames()
+handler.bandnames
 # >>> ['blue', 'green', 'red', 'red_edge_1', 'red_edge_2', 'red_edge_3', 'nir_1', 'nir_2', 'swir_1', 'swir_2', 'scl']
 
 # plot false-color infrared preview

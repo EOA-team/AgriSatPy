@@ -63,7 +63,7 @@ def check_band_names(f):
                     if kwargs != {} and 'band_name' in kwargs.keys():
                         kwargs.update({'band_name': band_name})
                 else:
-                    if band_name not in self.get_bandnames() and band_name not in white_list:
+                    if band_name not in self.bandnames and band_name not in white_list:
                         raise BandNotFoundError(
                             f'{band_names} not found in data dict'
                     )
@@ -75,7 +75,7 @@ def check_band_names(f):
                         band_name = [k for k, v in self._band_aliases.items() if v == band_name][0]
                     # band name must be in band names if not an alias
                     else:
-                        if band_name not in self.get_bandnames() and band_name not in white_list:
+                        if band_name not in self.bandnames and band_name not in white_list:
                             raise BandNotFoundError(f'{band_name} not found in data dict')
                     new_band_names.append(band_name)
                 if len(args) > 0:
@@ -88,7 +88,7 @@ def check_band_names(f):
         # if no band aliasing is enabled the passed name must be in band names
         else:
             if isinstance(band_names, str):
-                if not band_names in self.get_bandnames() and band_names not in white_list:
+                if not band_names in self.bandnames and band_names not in white_list:
                     raise BandNotFoundError(f'{band_names} not found in data dict')
 
         return f(self, *args, **kwargs)

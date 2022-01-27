@@ -13,7 +13,7 @@ handler.read_from_bandstack(
 )
 
 # we can get the band names (usually starting with B1, B2, etc.) from the handler
-band_names = handler.get_bandnames()
+band_names = handler.bandnames
 
 # we can rename the default band names by overwriting them
 # in this case we rename the single band the file has to "Elevation"

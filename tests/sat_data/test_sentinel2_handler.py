@@ -150,7 +150,7 @@ def test_read_from_safe_l1c(get_s2_safe_l1c):
     assert reader.scene_properties.get('processing_level').value == 'LEVEL1C', 'wrong processing level'
 
     # check band list
-    bands = reader.get_bandnames()
+    bands = reader.bandnames
     assert len(bands) == len(band_selection), 'number of bands is wrong'
     assert 'scl' not in bands, 'SCL band cannot be available for L1C data'
 
@@ -183,9 +183,9 @@ def test_read_from_bandstack_l2a(datadir, get_bandstack, get_polygons):
     assert handler.check_is_bandstack(), 'expected band-stacked object'
 
     # check bands, SCL must be available
-    assert 'scl' in handler.get_bandnames(), 'scene classification layer not read'
+    assert 'scl' in handler.bandnames, 'scene classification layer not read'
     assert handler.get_band('scl').dtype == 'uint8', 'wrong datatype for SCL'
-    assert len(handler.get_bandnames()) == 11, 'wrong number of bands read'
+    assert len(handler.bandnames) == 11, 'wrong number of bands read'
     assert len(handler.get_bandaliases()) == 11, 'band aliases not provided correctly'
     assert (handler.get_band('B02').data == handler.get_band('blue').data).all(), 'band aliasing not working'
 
@@ -258,7 +258,7 @@ def test_read_from_safe_with_mask_l2a(datadir, get_s2_safe_l2a, get_polygons, ge
 
     # but calculation of NDVI should work because it requires the 10m bands only
     handler.calc_si('NDVI')
-    assert 'NDVI' in handler.get_bandnames(), 'NDVI not added to handler'
+    assert 'NDVI' in handler.bandnames, 'NDVI not added to handler'
     assert 'NDVI' in handler.get_attrs().keys(), 'NDVI not added to dataset attributes'
 
     # stacking bands should fail because of different spatial resolutions
@@ -270,13 +270,13 @@ def test_read_from_safe_with_mask_l2a(datadir, get_s2_safe_l2a, get_polygons, ge
     for band_to_drop in bands_to_drop:
         handler.drop_band(band_to_drop)
 
-    assert len(handler.get_bandnames()) == 5, 'too many bands left'
+    assert len(handler.bandnames) == 5, 'too many bands left'
     assert handler.check_is_bandstack(), 'data should now fulfill bandstack criteria'
 
     xds = handler.to_xarray()
 
     # make sure attributes were set correctly in xarray
-    assert len(xds.attrs['scales']) == len(handler.get_bandnames()), 'wrong number of bands in attributes'
+    assert len(xds.attrs['scales']) == len(handler.bandnames), 'wrong number of bands in attributes'
 
 
 def test_ignore_scl(datadir, get_s2_safe_l2a, get_polygons_2):
@@ -292,7 +292,7 @@ def test_ignore_scl(datadir, get_s2_safe_l2a, get_polygons_2):
         polygon_features=in_file_aoi,
         read_scl=False
     )
-    assert 'scl' not in handler.get_bandnames(), 'SCL band should not be available'
+    assert 'scl' not in handler.bandnames, 'SCL band should not be available'
 
     # read with weird band ordering
     band_selection = ['B08','B06']
@@ -303,8 +303,8 @@ def test_ignore_scl(datadir, get_s2_safe_l2a, get_polygons_2):
         band_selection=band_selection,
         read_scl=False
     )
-    assert 'scl' not in handler.get_bandnames(), 'SCL band should not be available'
-    assert handler.get_bandnames() == ['nir_1', 'red_edge_2'], 'wrong order of bands'
+    assert 'scl' not in handler.bandnames, 'SCL band should not be available'
+    assert handler.bandnames == ['nir_1', 'red_edge_2'], 'wrong order of bands'
     with pytest.raises(BandNotFoundError):
         handler.get_meta('scl')
 
@@ -359,7 +359,7 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     assert reader.scene_properties.get('processing_level').value == 'LEVEL2A', 'wrong processing level'
 
     # check band list
-    bands = reader.get_bandnames()
+    bands = reader.bandnames
     assert len(bands) == len(band_selection), 'number of bands is wrong'
     assert 'scl' in bands, 'expected SCL band'
 
@@ -484,13 +484,13 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     reader.calc_si(si='NDVI')
     assert type(reader.get_band('NDVI')) in (np.array, np.ndarray), 'VI is not an array'
     assert reader.get_band('NDVI').shape == reader.get_band('red').shape == reader.get_band('nir_1').shape, 'shapes do not fit'
-    assert 'NDVI' in reader.get_bandnames(), 'NDVI not found as band name'
+    assert 'NDVI' in reader.bandnames, 'NDVI not found as band name'
 
     # add custom band
     band_to_add = np.zeros_like(blue)
     reader.add_band(band_name='test', band_data=band_to_add)
     assert (reader.get_band('test') == band_to_add).all(), 'band was not added correctly'
-    assert 'test' in reader.get_bandnames(), 'band "test" not found in reader entries'
+    assert 'test' in reader.bandnames, 'band "test" not found in reader entries'
 
     # check cloud masking using SCL
     cloudy_pixels = reader.get_cloudy_pixel_percentage()
@@ -519,7 +519,7 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     # drop a band
     reader.drop_band('test')
 
-    assert 'test' not in reader.get_bandnames(), 'band "test" still available although dropped'
+    assert 'test' not in reader.bandnames, 'band "test" still available although dropped'
     with pytest.raises(Exception):
         reader.get_band('test')
     with pytest.raises(Exception):

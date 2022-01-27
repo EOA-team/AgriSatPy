@@ -160,7 +160,7 @@ either through their color name (‘blue’) **or** through their band name
 .. code:: python3
 
     # get band names, this will return the color names
-    handler.get_bandnames()
+    handler.bandnames
 
 
 
