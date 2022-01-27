@@ -49,6 +49,7 @@ from typing import Dict
 from typing import List
 from typing import NamedTuple
 from typing import Optional
+from typing import Tuple
 from typing import Union
 from xarray import DataArray
 
@@ -171,6 +172,19 @@ class SatDataHandler(object):
                 f'size and CRS: {is_bandstack}'
          
         return _repr
+
+
+    def __bandnames__(self):
+        """
+        Returns names of the bands currently loaded
+        """
+
+        band_names = []
+        for key, value in self.data.items():
+            if isinstance(value, np.ndarray):
+                band_names.append(key)
+
+        return band_names
 
 
     def from_bandstack(self) -> bool:
@@ -754,12 +768,7 @@ class SatDataHandler(object):
             list of available band names
         """
 
-        band_names = []
-        for key, value in self.data.items():
-            if isinstance(value, np.ndarray):
-                band_names.append(key)
-
-        return band_names
+        return self.__bandnames__()
 
 
     def get_bandaliases(
@@ -1715,9 +1724,10 @@ class SatDataHandler(object):
             target_resolution: Union[int,float],
             resampling_method: Optional[int] = cv2.INTER_CUBIC,
             pixel_division: Optional[bool] = False,
-            band_selection: Optional[List[str]] = [],
+            band_names: Optional[List[str]] = [],
             bands_to_exclude: Optional[List[str]] = [],
-            blackfill_value: Optional[Union[int,float]] = 0
+            blackfill_value: Optional[Union[int,float]] = 0,
+            snap_meta: Optional[Dict[str, Any]] = None
         ) -> None:
         """
         resamples band data on the fly if required into a user-definded spatial
@@ -1734,9 +1744,14 @@ class SatDataHandler(object):
             The method overwrites the original band data when resampling
             is required!
 
-        ATTENTION: If using one of cv2 methods it is crucial to provide a
-        blackfill (no-data) value. Blackfill is where the satellite image has no
-        data.
+        NOTE:
+            To ensure the resampling routine works properly, a snap raster should
+            be provided. This can be done in two ways:
+            a) If at least single band in the selection of bands is already
+            in the target spatial resolution its band metadata will be used for
+            aligning the output.
+            b) If you have no band in the correct spatial resolution or you want
+            to provide a custom alignment ``snap_meta``should be provided.
 
         :param target_resolution:
             target spatial resolution in image projection (i.e., pixel size
@@ -1752,7 +1767,7 @@ class SatDataHandler(object):
             This works, however, only if the spatial resolution is increased, e.g.
             from 20 to 10m. The ``resampling_method`` argument is ignored then.
             Default value is False.
-        :param band_selection:
+        :param band_names:
             list of bands to consider. Per default all bands are used but
             not processed if the bands already have the desired spatial
             resolution
@@ -1764,39 +1779,44 @@ class SatDataHandler(object):
             from the resampling process. Can be ignored if ``pixel_division=True``
             because pixel division only divides pixels into smaller ones that
             align with the original pixels.
+        :param snap_meta:
+            
         """
 
         # loop over bands and resample those bands not in the desired
         # spatial resolution
 
-        if len(band_selection) == 0:
-            band_selection = self.get_bandnames()
+        if len(band_names) == 0:
+            band_names = self.get_bandnames()
         # check if bands are to exclude
         if len(bands_to_exclude) > 0:
             set_to_exclude = set(bands_to_exclude)
-            band_selection = [x for x in band_selection if x not in set_to_exclude]
+            band_names = [x for x in band_names if x not in set_to_exclude]
 
-        snap_band_available = False
-        for idx, band in enumerate(band_selection):
+        # if no snap_meta is provided, search in the band stack for a potential snap band
+        if snap_meta is None:
 
-            pixres = self.get_spatial_resolution(band).x
+            for band in band_names:
 
-            # check if resampling is required, if the band has
-            # already the target resolution use its extent to snap
-            # the other rasters too
-            if pixres == target_resolution:
-                snap_band_available = True
-                snap_shape = self.data[band].shape
-                snap_meta = self.data['meta'][band]
-                # check if the data is masked, in that case also provide
-                # a snap mask
-                if isinstance(self.data[band], np.ma.core.MaskedArray):
-                    snap_mask = self.data[band].mask
-                break
+                pixres = self.get_spatial_resolution(band).x
+                # check if resampling is required, if the band has
+                # already the target resolution use its extent to snap
+                # the other rasters too
+                if pixres == target_resolution:
+                    snap_meta = self.get_meta(band)
+                    # check if the data is masked, in that case also provide
+                    # a snap mask
+                    if isinstance(self.data[band], np.ma.core.MaskedArray):
+                        snap_mask = self.data[band].mask
+                    break
 
-        for idx, band in enumerate(band_selection):
+        # determine shape of resampled band
+        if snap_meta is not None:
+            snap_shape = (snap_meta['height'], snap_meta['width'])
 
-            # check spatial resolution
+        for idx, band in enumerate(band_names):
+
+            # check spatial resolution; ignore bands in the desired resolution
             meta = self.get_meta(band)
             pixres = self.get_spatial_resolution(band).x
             if pixres == target_resolution:
@@ -1816,7 +1836,7 @@ class SatDataHandler(object):
             )
 
             # check if a 'snap' band is available
-            if snap_band_available:
+            if snap_meta is not None:
                 nrows_resampled = snap_shape[0]
                 ncols_resampled = snap_shape[1]
             # if not determine the extent from the bounds
@@ -1834,13 +1854,15 @@ class SatDataHandler(object):
             if isinstance(band_data,  np.ma.core.MaskedArray):
                 band_data = deepcopy(band_data.data)
 
+            scaling_factor = pixres / target_resolution
+
             # resample the array using opencv resize or pixel_division
-            scaling_factor = int(pixres / target_resolution)
             if pixel_division:
-                # determine scaling factor as ratio between current and target spatial resolution
+                # determine scaling factor as ratio between current and
+                # target spatial resolution
                 res = upsample_array(
                     in_array=band_data,
-                    scaling_factor=scaling_factor
+                    scaling_factor=int(scaling_factor)
                 )
             else:
                 # we have to take care about no-data pixels
@@ -1880,20 +1902,21 @@ class SatDataHandler(object):
 
                     # in addition, run pixel division since there will be too many NaN pixels
                     # when using only res from cv2 resize as it sets pixels without full
-                    # spatial context to NaN
+                    # spatial context to NaN. This works, however, only if the target resolution
+                    # decreases the current pixel resolution by an integer scalar
                     try:
                         res_pixel_div = upsample_array(
                             in_array=band_data,
-                            scaling_factor=scaling_factor
+                            scaling_factor=int(scaling_factor)
                         )
                     except Exception as e:
-                        raise ResamplingFailedError(e)
+                        res_pixel_div = np.zeros(0)
 
-                    # replace NaNs with values from pixel division; thus we will get all
-                    # pixel values and the correct blackfill; when working on AOIs this might
-                    # fail because of shape mismatches; in this case keep the cv2 output, which means
-                    # loosing a few pixels but AOIs can usually be filled with data from other
-                    # scenes
+                    # replace NaNs with values from pixel division (if possible); thus we will
+                    # get all pixel values and the correct blackfill
+                    # when working on AOIs this might fail because of shape mismatches;
+                    # in this case keep the cv2 output, which means loosing a few pixels but AOIs
+                    # can usually be filled with data from other scenes
                     if res.shape == res_pixel_div.shape:
                         res[np.isnan(res)] = res_pixel_div[np.isnan(res)]
                     else:
@@ -1905,14 +1928,21 @@ class SatDataHandler(object):
 
             # overwrite entries in self.data
             # if the array is masked, use the masked array from the snap raster
-            # or create a new one in the target resolution using pixel division
+            # or create a new one in the target resolution using nearest neighbor
             if isinstance(self.data[band], np.ma.core.MaskedArray):
-                if not snap_band_available:
-                    in_mask = deepcopy(self.data[band].mask)
-                    snap_mask = upsample_array(
-                        in_array=in_mask,
-                        scaling_factor=scaling_factor
+                if snap_meta is None:
+                    # convert bools to int8 (cv2 does not support boolean arrays)
+                    in_mask = deepcopy(self.data[band].mask).astype('uint8')
+                    # get target shape in the order cv2 expects it
+                    target_shape = (res.shape[1], res.shape[0])
+                    # call nearest neigbor interpolation from cv2
+                    snap_mask = cv2.resize(
+                        in_mask,
+                        target_shape,
+                        cv2.INTER_NEAREST_EXACT
                     )
+                    # convert mask back to boolean array
+                    snap_mask = snap_mask.astype(bool)
                 # save as masked array to back to data dict
                 self.data[band] = np.ma.masked_array(res, mask=snap_mask)
             else:
@@ -1925,7 +1955,7 @@ class SatDataHandler(object):
 
             # check if meta is available from band in target resolution
             # or has to be calculated
-            if snap_band_available:
+            if snap_meta is not None:
                 meta_resampled = snap_meta
             else:
                 meta_resampled = deepcopy(meta)

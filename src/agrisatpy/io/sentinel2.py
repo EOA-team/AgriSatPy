@@ -745,11 +745,12 @@ if __name__ == '__main__':
 #         blackfill_value=0                   # here it is important to choose a value that not occurs in the data to rasterize
 #     )
 #
-#     # resample to 10m first
-#     handler.resample(
-#         target_resolution=10,   # meter
-#         resampling_method=cv2.INTER_NEAREST_EXACT
-#     )
+    # resample to 30m
+    handler.resample(
+        target_resolution=30,   # meter
+        resampling_method=cv2.INTER_CUBIC
+    )
+    
 #
 #     bands_to_mask = handler.get_bandnames()
 #
