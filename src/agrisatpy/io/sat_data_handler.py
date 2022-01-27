@@ -155,7 +155,7 @@ class SatDataHandler(object):
         self.chunksize_y = chunksize_y
 
         self.data = {'meta': None, 'bounds': None, 'attrs': None}
-        self._from_bandstack = False
+        self.from_bandstack = False
         self._has_bandaliases = False
         self._band_aliases = {}
         self.scene_properties = SceneProperties
@@ -222,12 +222,30 @@ class SatDataHandler(object):
 
     @property
     def bandnames(self) -> List[str]:
-        """band names currently loaded"""
+        """raster band names currently loaded"""
         band_names = []
         for key, value in self.data.items():
             if isinstance(value, np.ndarray):
                 band_names.append(key)
         return band_names
+
+    @property
+    def from_bandstack(self) -> bool:
+        """
+        True if the raster bands where read from a single input file
+        where all bands share the same spatial extent and pixel size.
+        """
+        return self._from_bandstack
+
+    @from_bandstack.setter
+    def from_bandstack(self, flag: bool):
+        """
+        True if the raster bands where read from a single input file
+        where all bands share the same spatial extent and pixel size.
+        """
+        if not isinstance(flag, bool):
+            raise TypeError('You must pass a boolean flag')
+        self._from_bandstack = flag
 
     def __repr__(self):
         """
@@ -259,18 +277,6 @@ class SatDataHandler(object):
     def _validate(self, meta_key, meta_values):
         """validates the metadata entries"""
         pass
-
-
-    def from_bandstack(self) -> bool:
-        """
-        checks if the data was read from bandstack derived from
-        `~agrisatpy.operational.resampling` or custom (i.e., sensor-
-        specific) file system structure such as .SAFE in case of
-        Sentinel-2
-        """
-
-        return self._from_bandstack
-
 
     def add_band(
             self,
@@ -332,7 +338,7 @@ class SatDataHandler(object):
                     'MUST be passed'
                 )
             # set from bandstack to True since the first band always fulfills the bandstack criteria
-            self._from_bandstack = first_band_to_add
+            self.from_bandstack = first_band_to_add
 
         # check band name and alias if applicable
         if band_name in self.get_bandnames():
@@ -939,7 +945,7 @@ class SatDataHandler(object):
 
         # if data is band-stacked, meta is always the same
         # otherwise it must be avialable for each band as entry
-        if not self.from_bandstack() and band_name is not None:
+        if not self.from_bandstack and band_name is not None:
             try:
                 return self.data['meta'][band_name]
             except Exception:
@@ -1001,7 +1007,7 @@ class SatDataHandler(object):
         transform = {}
         meta = self.get_meta(band_name=band_name)
 
-        if not self.from_bandstack():
+        if not self.from_bandstack:
             if band_name is not None:
                 transform = meta['transform']
             else:
@@ -1049,7 +1055,7 @@ class SatDataHandler(object):
         bounds = self.data['bounds']
 
         # check if the file is from band stack or if bounds are the same for each band
-        if not self.from_bandstack() and band_name is not None:
+        if not self.from_bandstack and band_name is not None:
             try:
                 bounds = bounds[band_name]
             except Exception:
@@ -1086,7 +1092,7 @@ class SatDataHandler(object):
 
         meta = self.get_meta(band_name=band_name)
 
-        if self._from_bandstack:
+        if self.from_bandstack:
             return meta['crs']
         else:
             if band_name is not None:
@@ -1165,7 +1171,7 @@ class SatDataHandler(object):
             self.data[metadata_key] = {}
 
         # check if the data is band stack
-        if self._from_bandstack:
+        if self.from_bandstack:
             self.data[metadata_key] = metadata_values
         else:
             if band_name is None:
@@ -1418,7 +1424,7 @@ class SatDataHandler(object):
                 }
             )
             # overwrite meta and bounds
-            if not self.from_bandstack():
+            if not self.from_bandstack:
                 self.data['meta'][band_name] = src_meta
                 self.data['bounds'][band_name] = out_bounds
             else:
@@ -1613,7 +1619,7 @@ class SatDataHandler(object):
             band_data[:,:,3] = tmp
 
         # get bounds amd EPSG code
-        if self.from_bandstack():
+        if self.from_bandstack:
             bounds = self.data['bounds']
             epsg = self.data['meta']['crs'].to_epsg()
         else:
@@ -2020,7 +2026,7 @@ class SatDataHandler(object):
 
             # for data from bandstacks updating meta is required only once
             # since all bands have the same spatial resolution
-            if self.from_bandstack() and idx > 0:
+            if self.from_bandstack and idx > 0:
                 continue
 
             # check if meta is available from band in target resolution
@@ -2043,10 +2049,10 @@ class SatDataHandler(object):
                 )
                 meta_resampled['transform'] = affine_resampled
 
-            if not self.from_bandstack():
+            if not self.from_bandstack:
                 self.data['meta'][band] = meta_resampled
 
-        if self.from_bandstack():
+        if self.from_bandstack:
             # check if any band was resampled. else leave everything as it is
             if meta_resampled is not None:
                 self.data['meta'] = meta_resampled
@@ -2296,7 +2302,7 @@ class SatDataHandler(object):
         meta.update(
             {'count': len(self.get_bandnames())}
         )
-        self._from_bandstack = True
+        self.from_bandstack = True
         self.set_meta(meta)
         self.set_bounds(bounds)
 
@@ -2655,7 +2661,7 @@ class SatDataHandler(object):
         ) -> bool:
         """
         Helper function that checks if a SatDataHandler object fulfills
-        the ``from_bandstack()`` criteria. Optionally, the check can be carried
+        the ``from_bandstack`` criteria. Optionally, the check can be carried
         out for a selected subset of bands.
 
         These criteria are:
@@ -2711,7 +2717,7 @@ class SatDataHandler(object):
 
             self.data.update({entry: band_entry})
 
-        self._from_bandstack = True
+        self.from_bandstack = True
 
 
     def _unset_bandstack(self):
@@ -2744,7 +2750,7 @@ class SatDataHandler(object):
                 dst[band_name] = src
             self.data.update({entry: dst})
 
-        self._from_bandstack = False
+        self.from_bandstack = False
 
 
     def to_xarray(
