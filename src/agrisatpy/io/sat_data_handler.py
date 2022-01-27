@@ -70,6 +70,7 @@ from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.utils.arrays import count_valid
 from agrisatpy.utils.reprojection import reproject_raster_dataset
 from agrisatpy.utils.decorators import check_band_names
+from agrisatpy.utils.decorators import check_chunksize
 from agrisatpy.utils.decorators import check_metadata
 from agrisatpy.utils.constants import ProcessingLevels
 
@@ -130,16 +131,28 @@ class SceneProperties(object):
 
 class SatDataHandler(object):
     """
-    basic class for handling single and multi-band raster data
-    from which sensor-specific classes inherit
+    Basic class for handling single and multi-band raster data
+    from which sensor-specific classes inherit.
+
+    :param chunks:
+        if True reads image data in chunks using ``rasterio.windows``.
+        Chunks can be used to read data exceeded the computer's RAM.
+    :param chunksize_x:
+        number of raster band columns to read into a single chunk
+    :param chunksize_y:
+        number of raster band rows to read into a single chunk
     """
 
     def __init__(
             self,
-            name: Optional[str] = ''
+            chunks: Optional[bool] = False,
+            chunksize_x: Optional[int] = 512,
+            chunksize_y: Optional[int] = 512
         ):
 
-        self.name = name
+        self.chunks = chunks
+        self.chunksize_x = chunksize_x
+        self.chunksize_y = chunksize_y
 
         self.data = {'meta': None, 'bounds': None, 'attrs': None}
         self._from_bandstack = False
@@ -147,6 +160,74 @@ class SatDataHandler(object):
         self._band_aliases = {}
         self.scene_properties = SceneProperties
 
+
+    @property
+    def data(self) -> Dict[str, Any]:
+        """The basic handler data dictionary"""
+        return self._data
+
+    @data.setter
+    def data(self, data_dict: Dict[str, Any]) -> None:
+        """The basic handler data dictionary"""
+        if not isinstance(data_dict, dict):
+            raise TypeError('expected dictionary-like object')
+        # make sure all necessary items are provided
+        data_keys = data_dict.keys()
+        check_keys = ['meta', 'bounds', 'attrs']
+        checks = [True for x in data_keys if x in check_keys]
+        if not all(checks):
+            raise KeyError(
+                'data dictionary must contain "meta", "bounds", ' \
+                'and "attrs" keyword'
+            )
+        self._data = data_dict
+
+    @property
+    def chunks(self) -> bool:
+        """flag to use chunks when reading raster data"""
+        return self._chunks
+
+    @chunks.setter
+    def chunks(self, flag: bool) -> None:
+        """flag to use chunks when reading raster data"""
+        self._chunks = flag
+
+    @property
+    def chunksize_x(self) -> int:
+        """chunksize in x directory (columns)"""
+        return self._chunksize_x
+
+    @chunksize_x.setter
+    def chunksize_x(self, chunksize: int) -> None:
+        """chunksize in x directory (columns)"""
+        @check_chunksize
+        def _check(chunksize):
+            pass
+        _check(chunksize=chunksize)
+        self._chunksize_x = chunksize
+
+    @property
+    def chunksize_y(self) -> int:
+        """chunksize in y directory (columns)"""
+        return self._chunksize_y
+
+    @chunksize_y.setter
+    def chunksize_y(self, chunksize: int) -> None:
+        """chunksize in y directory (columns)"""
+        @check_chunksize
+        def _check(chunksize):
+            pass
+        _check(chunksize=chunksize)
+        self._chunksize_y = chunksize
+
+    @property
+    def bandnames(self) -> List[str]:
+        """band names currently loaded"""
+        band_names = []
+        for key, value in self.data.items():
+            if isinstance(value, np.ndarray):
+                band_names.append(key)
+        return band_names
 
     def __repr__(self):
         """
@@ -174,17 +255,10 @@ class SatDataHandler(object):
         return _repr
 
 
-    def __bandnames__(self):
-        """
-        Returns names of the bands currently loaded
-        """
-
-        band_names = []
-        for key, value in self.data.items():
-            if isinstance(value, np.ndarray):
-                band_names.append(key)
-
-        return band_names
+    @check_metadata
+    def _validate(self, meta_key, meta_values):
+        """validates the metadata entries"""
+        pass
 
 
     def from_bandstack(self) -> bool:
@@ -281,13 +355,9 @@ class SatDataHandler(object):
                     'Either a snap band or band_meta, band_bounds, band_attribs must be provided'
                 )
 
-            # validate the entries
-            @check_metadata
-            def _validate(self, meta_key, meta_values):
-                pass
-
-            _validate(self, meta_key='meta', meta_values=band_meta)
-            _validate(self, meta_key='bounds', meta_values=band_bounds)
+            # validate passed metadata
+            self._validate(meta_key='meta', meta_values=band_meta)
+            self._validate(meta_key='bounds', meta_values=band_bounds)
 
         # else check if the snap band has the same shape as the data to add
         else:
@@ -768,7 +838,7 @@ class SatDataHandler(object):
             list of available band names
         """
 
-        return self.__bandnames__()
+        return self.bandnames
 
 
     def get_bandaliases(
@@ -2078,6 +2148,7 @@ class SatDataHandler(object):
 
 
     # TODO: rename in_file_aoi to vector_features
+    # TODO: windowed reading https://rasterio.readthedocs.io/en/latest/topics/windowed-rw.html
     def read_from_bandstack(
             self,
             fname_bandstack: Path,
