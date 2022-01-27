@@ -616,10 +616,11 @@ class Sentinel2Handler(SatDataHandler):
         platform = get_S2_platform_from_safe(dot_safe_name=in_dir)
         processing_level = get_S2_processing_level(dot_safe_name=in_dir)
 
-        self.scene_properties.set(prop='acquisition_time', value=acqui_time)
-        self.scene_properties.set(prop='platform', value=platform)
-        self.scene_properties.set(prop='sensor', value='MSI')
-        self.scene_properties.set(prop='processing_level', value=processing_level)
+        self.scene_properties.acquisition_time = acqui_time
+        self.scene_properties.platform = platform
+        self.scene_properties.sensor = 'MSI'
+        self.scene_properties.processing_level =processing_level
+        self.scene_properties.dataset_uri = in_dir.name
 
 
     @classmethod

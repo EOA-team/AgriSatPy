@@ -93,41 +93,81 @@ class SceneProperties(object):
         known and applicable)
     """
 
-    acquisition_time: datetime.datetime = None
-    platform: str = ''
-    sensor: str = ''
-    processing_level: ProcessingLevels = ProcessingLevels.UNKNOWN
-
-    @classmethod
-    def set(
-            cls,
-            prop: str,
-            value: Any 
+    def __init__(
+            self, 
+            acquisition_time: datetime.datetime = None,
+            platform: str = '',
+            sensor: str = '',
+            processing_level: ProcessingLevels = ProcessingLevels.UNKNOWN,
+            dataset_uri: str = ''
         ):
-        """
-        sets a property value
 
-        :param prop:
-            name of the property for which to set a value
-        :param value:
-            value to set for the property
-        """
-        setattr(cls, prop, value)
-
-    @classmethod
-    def get(
-            cls,
-            prop: str        
-        ) -> Any:
-        """
-        returns the value of a property
-
-        :param prop:
-            name of the property for which to get a value
-        """
-
-        return eval(f'cls.{prop}')
+        self.acquisition_time = acquisition_time
+        self.platform = platform
+        self.sensor = sensor
+        self.processing_level = processing_level
+        self.dataset_uri = ''
     
+    @property
+    def acquisition_time(self) -> datetime.datetime:
+        """acquisition time of the scene"""
+        return self._acquisition_time
+
+    @acquisition_time.setter
+    def acquisition_time(self, time: datetime.datetime) -> None:
+        """acquisition time of the scene"""
+        if not isinstance(time, datetime.datetime):
+            raise TypeError('Expected a datetime.datetime object')
+        self._acquisition_time = time
+
+    @property
+    def platform(self) -> str:
+        """name of the imaging platform"""
+        return self._platform
+
+    @platform.setter
+    def platform(self, value: str) -> None:
+        """name of the imaging plaform"""
+        if not isinstance(value, str):
+            raise TypeError('Expected a str object')
+        self._platform = value
+
+    @property
+    def sensor(self) -> str:
+        """name of the sensor"""
+        return self._sensor
+
+    @sensor.setter
+    def sensor(self, value: str) -> None:
+        """name of the sensor"""
+        if not isinstance(value, str):
+            raise TypeError('Expected a str object')
+        self._sensor = value
+
+    @property
+    def processing_level(self) -> ProcessingLevels:
+        """current processing level"""
+        return self._processsing_level
+
+    @processing_level.setter
+    def processing_level(self, value: ProcessingLevels):
+        """current processing level"""
+        if not isinstance(value, ProcessingLevels):
+            raise TypeError(f'Expected {ProcessingLevels}')
+        self._processing_level = value
+
+    @property
+    def dataset_uri(self) -> str:
+        """unique dataset identifier"""
+        return self._dataset_uri
+
+    @dataset_uri.setter
+    def dataset_uri(self, value: str) -> None:
+        """unique dataset identifier"""
+        if not isinstance(value, str):
+            raise TypeError('Expected a str object')
+        self._dataset_uri = value
+
 
 class SatDataHandler(object):
     """
@@ -156,10 +196,21 @@ class SatDataHandler(object):
 
         self.data = {'meta': None, 'bounds': None, 'attrs': None}
         self.from_bandstack = False
-        self._has_bandaliases = False
+        self.has_bandaliases = False
         self._band_aliases = {}
         self.scene_properties = SceneProperties
 
+    @property
+    def has_bandaliases(self) -> bool:
+        """Indicates if the handler has band aliases"""
+        return self._has_bandaliases
+
+    @has_bandaliases.setter
+    def has_bandaliases(self, flag: bool) -> None:
+        """Indicates if the handler has band aliases"""
+        if not isinstance(flag, bool):
+            raise TypeError('You must pass a boolean flag')
+        self._has_bandaliases = flag
 
     @property
     def data(self) -> Dict[str, Any]:
@@ -396,7 +447,7 @@ class SatDataHandler(object):
                 band_alias = band_name
         else:
             if band_alias is not None:
-                self._has_bandaliases = True
+                self.has_bandaliases = True
 
         if band_alias is not None:
             self._band_aliases[band_name] = band_alias
@@ -880,12 +931,12 @@ class SatDataHandler(object):
             raise Exception from e
 
         # check if self already has aliases
-        if self._has_bandaliases:
+        if self.has_bandaliases:
             # update if aliases already exist
             self._band_aliases.update(alias_dict)
         else:
             self._band_aliases = alias_dict
-            self._has_bandaliases = True
+            self.has_bandaliases = True
 
 
     @check_band_names
@@ -2599,7 +2650,7 @@ class SatDataHandler(object):
 
         # check if band aliases shall be used
         if use_band_aliases:
-            if self._has_bandaliases:
+            if self.has_bandaliases:
                 band_selection = [k for (k,v) in self.get_bandaliases().items() if k in band_selection]
 
         if len(band_selection) == 0:
