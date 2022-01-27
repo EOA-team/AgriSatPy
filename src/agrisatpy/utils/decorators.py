@@ -128,3 +128,26 @@ def check_metadata(f):
     return wrapper
 
 
+def check_chunksize(f):
+    """validates the raster chunk size provided"""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        
+        chunksize = kwargs.get('chunksize', None)
+        if chunksize is None:
+            chunksize = args[0]
+
+        if not isinstance(chunksize, int):
+            raise TypeError(
+                f'Expected type integer got {type(chunksize)}'
+            )
+        if chunksize <= 0:
+            raise ValueError(
+                f'Chunksize must be >= 0. Got {chunksize} instead'
+            )
+        return f(*args, **kwargs)
+
+    return wrapper
+
+    
+
