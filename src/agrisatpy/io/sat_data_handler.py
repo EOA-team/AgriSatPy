@@ -259,7 +259,7 @@ class SatDataHandler(object):
         class_name = class_name.split('.')[1].replace("'>","")
 
         # check loaded bands
-        band_names = self.get_bandnames()
+        band_names = self.bandnames
         is_bandstack = True
         if len(band_names) > 0:
             is_bandstack = self.check_is_bandstack()
@@ -325,11 +325,11 @@ class SatDataHandler(object):
         """
 
         # check if the band is really the first band in the current instance
-        existing_bands = self.get_bandnames()
+        existing_bands = self.bandnames
         if first_band_to_add:
             if len(existing_bands) > 0:
                 raise ValueError(
-                    f'Sorry, but your handler already contains bands: {self.get_bandnames()}\n' \
+                    f'Sorry, but your handler already contains bands: {self.bandnames}\n' \
                     'Set `first_band_to_add` to False and try it again'
                 )
             if (band_meta == None and band_bounds == None and band_attribs == None):
@@ -341,7 +341,7 @@ class SatDataHandler(object):
             self.from_bandstack = first_band_to_add
 
         # check band name and alias if applicable
-        if band_name in self.get_bandnames():
+        if band_name in self.bandnames:
             raise KeyError(f'Duplicated name for band: {band_name}')
         if band_alias is not None:
             if band_alias in self.get_bandaliases().values():
@@ -644,7 +644,7 @@ class SatDataHandler(object):
         """
 
         if band_names is None:
-            band_names = self.get_bandnames()
+            band_names = self.bandnames
 
         # check band shapes
         band_shapes = []
@@ -685,7 +685,7 @@ class SatDataHandler(object):
         """
 
         if band_names is None:
-            band_names = self.get_bandnames()
+            band_names = self.bandnames
 
         summaries = []
         for band_name in band_names:
@@ -974,7 +974,7 @@ class SatDataHandler(object):
         # if a single band is selected, return the corresponding subset;
         # otherwise, return everything in 'attrs'
         if band_name is not None:
-            band_idx = [idx for idx, name in enumerate(self.get_bandnames()) \
+            band_idx = [idx for idx, name in enumerate(self.bandnames) \
                         if name == band_name][0] 
             band_attrs = dict.fromkeys(self.data['attrs'].keys())
             for attr in band_attrs:
@@ -1011,7 +1011,7 @@ class SatDataHandler(object):
             if band_name is not None:
                 transform = meta['transform']
             else:
-                for band in self.get_bandnames():
+                for band in self.bandnames:
                     transform[band] = meta[band]['transform']
         else:
             transform = meta['transform']
@@ -1019,7 +1019,7 @@ class SatDataHandler(object):
         # multiple bands
         if isinstance(transform, dict):
             res = {}
-            for band in self.get_bandnames():
+            for band in self.bandnames:
                 Spatial_Resolution = namedtuple('Spatial_Resolution', 'x y')
                 res[band] = Spatial_Resolution(
                     transform[band][0],
@@ -1067,7 +1067,7 @@ class SatDataHandler(object):
         if return_as_polygon:
             if isinstance(bounds, dict):
                 res = {}
-                for band in self.get_bandnames():
+                for band in self.bandnames:
                     res[band] = box(*bounds[band])
             else:
                 res = box(*bounds)
@@ -1099,7 +1099,7 @@ class SatDataHandler(object):
                 return meta['crs']
             else:
                 res = {}
-                for band in self.get_bandnames():
+                for band in self.bandnames:
                     res[band] = meta[band]['crs']
                 return res
 
@@ -1276,7 +1276,7 @@ class SatDataHandler(object):
         """
 
         # get old band names
-        old_bandnames = self.get_bandnames()
+        old_bandnames = self.bandnames
         if len(old_bandnames) != len(new_bandnames):
             raise InputError(
                 f'The number of new band names ({len(new_bandnames)}) ' \
@@ -1308,7 +1308,7 @@ class SatDataHandler(object):
         """
 
         try:
-            band_idx = [x for x, name in enumerate(self.get_bandnames()) if name == band_name][0]
+            band_idx = [x for x, name in enumerate(self.bandnames) if name == band_name][0]
             del self.data[band_name]
         except Exception as e:
             raise Exception from e
@@ -1368,7 +1368,7 @@ class SatDataHandler(object):
         """
 
         # get band names
-        band_names = self.get_bandnames()
+        band_names = self.bandnames
         
         # loop over bands and reproject them
         for band_name in band_names:
@@ -1447,7 +1447,7 @@ class SatDataHandler(object):
         """
 
         # check the bands
-        band_names = self.get_bandnames()
+        band_names = self.bandnames
         blackfill_list = []
         for band_name in band_names:
             band_data = self.get_band(band_name)
@@ -1776,7 +1776,7 @@ class SatDataHandler(object):
             # the spectral index is calculated from the current handler instance, we can
             # simply look for a band with the same shape as the returned SI raster
             snap_band = None
-            for band_name in self.get_bandnames():
+            for band_name in self.bandnames:
                 band_dim = self.get_band_shape(band_name)
                 if (
                     band_dim.nrows == si_data.shape[0] and
@@ -1863,7 +1863,7 @@ class SatDataHandler(object):
         # spatial resolution
 
         if len(band_names) == 0:
-            band_names = self.get_bandnames()
+            band_names = self.bandnames
         # check if bands are to exclude
         if len(bands_to_exclude) > 0:
             set_to_exclude = set(bands_to_exclude)
@@ -2114,13 +2114,13 @@ class SatDataHandler(object):
 
         # loop over bands specified and mask the invalid pixels
         for idx, band_to_mask in enumerate(bands_to_mask):
-            if band_to_mask not in self.get_bandnames() and \
+            if band_to_mask not in self.bandnames and \
             band_to_mask not in self.get_bandaliases().values():
                 raise BandNotFoundError(
                     f'{band_to_mask} not found in available bands'
                 )
             # check alias
-            if band_to_mask not in self.get_bandnames():
+            if band_to_mask not in self.bandnames:
                 band_to_mask = [k for (k,v) in self.get_bandaliases().items() \
                                 if v == band_to_mask][0]
 
@@ -2300,7 +2300,7 @@ class SatDataHandler(object):
         # meta and bounds are the same single entry for all bands
         # meta and bounds are saved as additional items of the dict
         meta.update(
-            {'count': len(self.get_bandnames())}
+            {'count': len(self.bandnames)}
         )
         self.from_bandstack = True
         self.set_meta(meta)
@@ -2324,7 +2324,7 @@ class SatDataHandler(object):
         # check for black-fill (i.e., if the data only contains nodata an error will be raised)
         if check_for_blackfill:
             if blackfill_value is None:
-                blackfill_value = self.get_band_nodata(self.get_bandnames()[0])
+                blackfill_value = self.get_band_nodata(self.bandnames[0])
             is_blackfilled = self.is_blackfilled(blackfill_value=blackfill_value)
             if is_blackfilled:
                 raise BlackFillOnlyError(
@@ -2457,7 +2457,7 @@ class SatDataHandler(object):
         """
 
         if band_selection is None:
-            band_selection = self.get_bandnames()
+            band_selection = self.bandnames
 
         # define helper function for getting the closest array index for a coordinate
         # map the coordinates to array indices
@@ -2590,12 +2590,12 @@ class SatDataHandler(object):
         # check band_selection, if not provided use all available bands
         if len(band_names) > 0:
             # check if band selection is valid
-            if set(band_names).issubset(self.get_bandnames()):
+            if set(band_names).issubset(self.bandnames):
                 band_selection = band_names
             elif set(band_names).issubset(self.get_bandaliases().values()):
                 band_selection = [k for (k,v) in self.get_bandaliases().items() if v in band_names]
         else:
-            band_selection = self.get_bandnames()
+            band_selection = self.bandnames
 
         # check if band aliases shall be used
         if use_band_aliases:
@@ -2626,7 +2626,7 @@ class SatDataHandler(object):
         dtype_str = str(dtype)
 
         if len(band_selection) > 1:
-            if not all(isinstance(self.get_band(x).dtype, int) for x in self.get_bandnames()):
+            if not all(isinstance(self.get_band(x).dtype, int) for x in self.bandnames):
                 dtype = np.float64
                 dtype_str = 'float64'
 
@@ -2681,9 +2681,9 @@ class SatDataHandler(object):
         ydim_list = []
 
         if band_selection is None:
-            band_selection = self.get_bandnames()
+            band_selection = self.bandnames
         else:
-            if not all(elem in self.get_bandnames() for elem in band_selection):
+            if not all(elem in self.bandnames for elem in band_selection):
                 raise BandNotFoundError(f'Invalid selection of bands')
 
         for band_name in band_selection:
@@ -2704,7 +2704,7 @@ class SatDataHandler(object):
         """
 
         entries = ['meta', 'bounds']
-        band_names = self.get_bandnames()
+        band_names = self.bandnames
 
         for entry in entries:
             src = deepcopy(self.data[entry])
@@ -2734,7 +2734,7 @@ class SatDataHandler(object):
 
         # re-populate the meta, bounds in self.data
         entries = ['meta', 'bounds']
-        band_names = self.get_bandnames()
+        band_names = self.bandnames
         
         for entry in entries:
             src = deepcopy(self.data[entry])
@@ -2777,7 +2777,7 @@ class SatDataHandler(object):
             )
 
         band_array_stack = {}
-        for band_name in self.get_bandnames():
+        for band_name in self.bandnames:
             band_data = deepcopy(self.get_band(band_name))
             # unfortunately, xarray does not support masked arrays, we have to convert
             # the image data to float (if not yet) and fill missing values with NaNs
@@ -2789,7 +2789,7 @@ class SatDataHandler(object):
             band_array_stack[band_name] = tuple([('y','x'), band_data])
 
         # get x, y coordinates and band names
-        master_band = self.get_bandnames()[0]
+        master_band = self.bandnames[0]
         coords = self.get_coordinates(master_band)
 
         # get further attributes
@@ -2844,7 +2844,7 @@ class SatDataHandler(object):
 
         # use all bands if no selection is provided
         if band_names is None:
-            band_names = self.get_bandnames()
+            band_names = self.bandnames
 
         if band_names is None or len(band_names) == 0:
             raise BandNotFoundError(
@@ -2860,7 +2860,7 @@ class SatDataHandler(object):
         
         # get coordinates of the first band in flattened format
         coords = self._flatten_coordinates(
-            band_name=self.get_bandnames()[0],
+            band_name=self.bandnames[0],
             pixel_coordinates_centered=pixel_coordinates_centered
         )
         # get EPSG code
