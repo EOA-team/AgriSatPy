@@ -735,6 +735,7 @@ if __name__ == '__main__':
     )
 
     scl_stats_df = handler.get_scl_stats()
+    band_stats = handler.get_band_summaries()
 
 #
 #     handler.add_bands_from_vector(

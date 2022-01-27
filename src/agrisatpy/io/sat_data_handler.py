@@ -12,6 +12,8 @@ Besides that, ``SatDataHandler`` is a super class from which sensor-specific cla
 (satellite) raster image data inherit.
 '''
 
+import sys
+
 import cv2
 import datetime
 import geopandas as gpd
@@ -131,13 +133,44 @@ class SatDataHandler(object):
     from which sensor-specific classes inherit
     """
 
-    def __init__(self):
+    def __init__(
+            self,
+            name: Optional[str] = ''
+        ):
+
+        self.name = name
 
         self.data = {'meta': None, 'bounds': None, 'attrs': None}
         self._from_bandstack = False
         self._has_bandaliases = False
         self._band_aliases = {}
         self.scene_properties = SceneProperties
+
+
+    def __repr__(self):
+        """
+        Returns information about the current handler object
+        in human-readable form
+        """
+
+        # get memory usage (not sure if it returns the correct value)
+        memory_usage = sys.getsizeof(self)
+        class_name = str(object.__class__(self))
+        class_name = class_name.split('.')[1].replace("'>","")
+
+        # check loaded bands
+        band_names = self.get_bandnames()
+        is_bandstack = True
+        if len(band_names) > 0:
+            is_bandstack = self.check_is_bandstack()
+
+        _repr = f'AgriSatPy core {class_name} ' \
+                f'- memory usage: {memory_usage}bytes\n' \
+                f'Bands loaded:\n{band_names}\n' \
+                f'Bands share same spatial extent, pixel ' \
+                f'size and CRS: {is_bandstack}'
+         
+        return _repr
 
 
     def from_bandstack(self) -> bool:
@@ -515,7 +548,7 @@ class SatDataHandler(object):
         shape.
 
         :param band_names:
-            if not provided stacks all bands
+            if not provided (default) stacks all bands
         :return:
             3d array of stacked bands
         """
@@ -540,6 +573,73 @@ class SatDataHandler(object):
         else:
             return np.stack(stack_bands, axis=0)
 
+
+    @check_band_names
+    def get_band_summaries(
+            self,
+            band_names: Optional[List[str]] = None,
+            operators: Optional[List[str]] = ['nanmin','nanmax','nanmean','nanstd','count_nonzero']
+        ) -> Dict[str, Number]:
+        """
+        Returns summary statistics of all bands or a subset thereof.
+
+        NOTE:
+            If the band data is masked, the statistics are computed for
+            non-mask pixels, only.
+
+        :param band_names:
+            if not provided (default) computes statistics of all bands
+        :param operators:
+            list operators implementing statistical metrics to use. Can be any
+            ``numpy`` function name accepting a 2d array as input
+        """
+
+        if band_names is None:
+            band_names = self.get_bandnames()
+
+        summaries = []
+        for band_name in band_names:
+
+            band_stats = {}
+            band_stats['band_name'] = band_name
+
+            # check for masked array -> using np.ma instead
+            numpy_prefix = 'np'
+            band_stats['masked_array'] = False
+            if isinstance(self.get_band(band_name), np.ma.MaskedArray):
+                numpy_prefix += '.ma'
+                band_stats['masked_array'] = True
+
+            # compute statistics
+            for operator in operators:
+
+                # formulate numpy expression
+                expression = f'{numpy_prefix}.{operator}'
+
+                # numpy.ma has some different function names to consider
+                if band_stats['masked_array']:
+                    if operator.startswith('nan'):
+                        expression = f'{numpy_prefix}.{operator[3::]}'
+                    elif operator.endswith('nonzero'):
+                        expression = f'{numpy_prefix}.count'
+
+                try:
+                    # get function object and use its __call__ method
+                    numpy_function = eval(expression)
+                    band_stats[operator] = numpy_function.__call__(
+                        self.get_band(band_name)
+                    )
+                except TypeError:
+                    raise Exception(
+                        f'Unknown function name for {numpy_prefix}: {operator}'
+                    )
+
+            # append to result list
+            summaries.append(band_stats)
+
+        # create DataFrame from list of band statistics and return
+        return pd.DataFrame(summaries)
+     
 
     @check_band_names
     def get_coordinates(
