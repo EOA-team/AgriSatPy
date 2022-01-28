@@ -620,7 +620,7 @@ class Sentinel2Handler(SatDataHandler):
         self.scene_properties.platform = platform
         self.scene_properties.sensor = 'MSI'
         self.scene_properties.processing_level =processing_level
-        self.scene_properties.dataset_uri = in_dir.name
+        self.scene_properties.scene_id = in_dir.name
 
 
     @classmethod

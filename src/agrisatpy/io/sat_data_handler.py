@@ -99,14 +99,14 @@ class SceneProperties(object):
             platform: str = '',
             sensor: str = '',
             processing_level: ProcessingLevels = ProcessingLevels.UNKNOWN,
-            dataset_uri: str = ''
+            scene_id: str = ''
         ):
 
         self.acquisition_time = acquisition_time
         self.platform = platform
         self.sensor = sensor
         self.processing_level = processing_level
-        self.dataset_uri = ''
+        self.scene_id = scene_id
     
     @property
     def acquisition_time(self) -> datetime.datetime:
@@ -157,16 +157,16 @@ class SceneProperties(object):
         self._processing_level = value
 
     @property
-    def dataset_uri(self) -> str:
-        """unique dataset identifier"""
-        return self._dataset_uri
+    def scene_id(self) -> str:
+        """unique scene identifier"""
+        return self._scene_id
 
-    @dataset_uri.setter
-    def dataset_uri(self, value: str) -> None:
-        """unique dataset identifier"""
+    @scene_id.setter
+    def scene_id(self, value: str) -> None:
+        """unique scene identifier"""
         if not isinstance(value, str):
             raise TypeError('Expected a str object')
-        self._dataset_uri = value
+        self._scene_id = value
 
 
 class SatDataHandler(object):
