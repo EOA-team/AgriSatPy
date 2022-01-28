@@ -519,7 +519,7 @@ class SatDataHandler(object):
 
     def add_bands_from_vector(
             self,
-            in_file_vector: Path,
+            in_file_vector: Union[gpd.GeoDataFrame, Path],
             snap_band: str,
             attribute_selection: Optional[List[str]] = None,
             blackfill_value: Optional[Union[int, float]] = None,
@@ -537,8 +537,8 @@ class SatDataHandler(object):
             to `float32` (default) or `float64` to avoid loss of precision.
 
         :param in_file_vector:
-            any vector file format supported by `fiona` containing one to many
-            features with one to many (numerical) attributes
+            any vector file format supported by `fiona` or ``GeoDataFrame`` containing
+            one to many features with one to many (numerical) attributes.
         :param snap_band:
             band in the current `SatDataHandler` instance to use for aligning the
             rasterized vector features into the band stack.
@@ -571,14 +571,18 @@ class SatDataHandler(object):
             )
 
         # check input vector file
-        if not in_file_vector.exists():
-            raise FileNotFoundError(f'Could not find {in_file_vector}')
+        if not isinstance(in_file_vector, gpd.GeoDataFrame):
+            if not in_file_vector.exists():
+                raise FileNotFoundError(f'Could not find {in_file_vector}')
 
-        # read vector data into a GeoDataFrame
-        try:
-            in_gdf = gpd.read_file(in_file_vector)
-        except Exception as e:
-            raise Exception from e
+            # read vector data into a GeoDataFrame
+            try:
+                in_gdf = gpd.read_file(in_file_vector)
+            except Exception as e:
+                raise Exception from e
+        # if the input is already a GeoDataFrame copy it
+        else:
+            in_gdf = in_file_vector.copy()
 
         # check feature selection (if provided), otherwise use all attributes (columns)
         # of the dataframe

@@ -8,13 +8,14 @@ import uuid
 from pathlib import Path
 from shapely.geometry import box
 from sqlalchemy.exc import DatabaseError
+from typing import Any
 from typing import List
 from typing import Optional
 from typing import Union
 
 from agrisatpy.io.sentinel2 import Sentinel2Handler
 from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_bbox
-from agrisatpy.operational.mapping.mapper import Mapper
+from agrisatpy.operational.mapping.mapper import Mapper, Feature
 from agrisatpy.operational.resampling.utils import identify_split_scenes
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.exceptions import InputError, BlackFillOnlyError
@@ -59,22 +60,25 @@ class Sentinel2Mapper(Mapper):
 
         # initialize super-class
         Mapper.__init__(self, *args, **kwargs)
-    
-        self.processing_level = processing_level
-        self.local_cloud_cover_threshold = local_cloud_cover_threshold
-        self.use_latest_pdgs_baseline = use_latest_pdgs_baseline
-        self.s2_scenes = S2Scenes({})
+
+        object.__setattr__(self, 'processing_level', processing_level)
+        object.__setattr__(self, 'local_cloud_cover_threshold', local_cloud_cover_threshold)
+        object.__setattr__(self, 'use_latest_pdgs_baseline', use_latest_pdgs_baseline)
 
 
     def get_sentinel2_scenes(
             self,
-            tile_ids: Optional[List[str]] = None
-        ) -> None:
+            tile_ids: Optional[List[str]] = None,
+            check_baseline: Optional[bool] = True
+        ) -> gpd.GeoDataFrame:
         """
         Queries the Sentinel-2 metadata DB for a selected time period and
         areas of interest (e.g., agricultural field parcels, might be one are many).
         The method returns a ``DataFrame`` with entries for all Sentinel-2
         scenes found for *each* AOI.
+
+        Returns a ``GeoDataFrame`` containing the original AOIs, there unique ids
+        and the overall scene count.
 
         NOTE:
             By passing a list of Sentinel-2 tiles you can explicitly control
@@ -98,7 +102,9 @@ class Sentinel2Mapper(Mapper):
             was processed by different base-line version. In this case the
             `use_latest_pdgs_baseline` flag becomes relevant. By default we keep
             those scenes with the latest processing baseline and discard the
-            other scenes with older baseline version.
+            other scenes with older baseline version. NOTE: By setting
+            ``check_baseline=False`` you can force AgriSatPy to ignore baseline
+            checks (in this case all baselines available will be returned)
         4.  If the scenes found have different spatial coordinate systems (CRS)
             (usually different UTM zones) flag the data accordingly. The target
             CRS is defined as that CRS the majority of scenes shares.
@@ -119,44 +125,57 @@ class Sentinel2Mapper(Mapper):
         :param tile_id:
             optional list of Sentinel-2 tils (e.g., ['T32TMT','T32TGM']) to use for
             filtering. Only scenes belonging to these tiles are returned then
+        :param check_baseline:
+            if True (default) checks if a scene is available in different PDGS
+            baseline versions
         :return:
             dictionary with found Sentinel-2 scenes including the `is_split` and
-            `target_epsg` entry for each AOI (polygon feature) in `polygon_features`.
+            `target_epsg` entry for each AOI (polygon feature) in `aoi_features`.
         """
     
         # read features and loop over them to process each feature separately
-        is_file = isinstance(self.polygon_features, Path) or \
-                    isinstance(self.polygon_features, str)
+        is_file = isinstance(self.aoi_features, Path) or \
+                    isinstance(self.aoi_features, str)
         if is_file:
             try:
-                self.polygon_features = gpd.read_file(self.polygon_features)
+                aoi_features = gpd.read_file(self.aoi_features)
             except Exception as e:
                 raise InputError(
                     f'Could not read polygon features from file ' \
-                    f'{self.polygon_features}: {e}'
+                    f'{self.aoi_features}: {e}'
                 )
+        else:
+            aoi_features = self.aoi_features.copy()
     
         # for the DB query, the geometries are required in geographic coordinates
         # however, we keep the original coordinates as well to avoid to many reprojections
-        self.polygon_features['geometry_wgs84'] = \
-            self.polygon_features['geometry'].to_crs(4326)
+        aoi_features['geometry_wgs84'] = aoi_features['geometry'].to_crs(4326)
     
         # check if there is a unique feature column
         # otherwise create it using uuid
         if self.unique_id_attribute is not None:
-            if not self.polygon_features[self.unique_id_attribute].is_unique:
+            if not aoi_features[self.unique_id_attribute].is_unique:
                 raise ValueError(
                     f'"{self.unique_id_attribute}" is not unique for each feature'
                 )
         else:
-            self.unique_id_attribute = '_uuid4'
-            self.polygon_features[self.unique_id_attribute] = [
-                uuid.uuid4() for _ in self.polygon_features.iterrows()
+            object.__setattr__(self, 'unique_id_attribute', '_uuid4')
+            aoi_features[self.unique_id_attribute] = [
+                uuid.uuid4() for _ in aoi_features.iterrows()
             ]
-    
-        for _, feature in self.polygon_features.iterrows():
+
+        s2_scenes = {}
+        features = {}
+        for _, feature in aoi_features.iterrows():
     
             feature_uuid = feature[self.unique_id_attribute]
+
+            feature_obj = Feature(
+                identifier=feature_uuid,
+                geom=feature['geometry'],
+                epsg=aoi_features.crs.to_epsg()
+            )
+            features[feature_uuid] = feature_obj
     
             # get available Sentinel-2 data-sets using the maximum cloud coverage
             cloud_cover_threshold = 100
@@ -200,25 +219,27 @@ class Sentinel2Mapper(Mapper):
     
             # check if the data comes from different PDGS baseline versions
             # by default, we always aim for the highest baseline version
-            if not scenes_df_split.empty:
-                scenes_df_updated_baseline = identify_updated_scenes(
-                    metadata_df=scenes_df_split,
-                    return_highest_baseline=self.use_latest_pdgs_baseline
-                )
-                # drop those scenes that were dis-selected because of the PDGS baseline
-                drop_idx = scenes_df[
-                    scenes_df.product_uri.isin(scenes_df_split.product_uri) &
-                    ~scenes_df.product_uri.isin(scenes_df_updated_baseline.product_uri)
-                ].index
-                if not drop_idx.empty:
-                    scenes_df.drop(drop_idx, inplace=True)
-                # check again for split scenes; these scenes are then "really" split
-                scenes_df_split = identify_split_scenes(scenes_df)
+            if check_baseline:
                 if not scenes_df_split.empty:
-                    scenes_df.loc[
-                        scenes_df.product_uri.isin(scenes_df_split.product_uri),
-                        'is_split'
-                    ] = True
+                    scenes_df_updated_baseline = identify_updated_scenes(
+                        metadata_df=scenes_df_split,
+                        return_highest_baseline=self.use_latest_pdgs_baseline
+                    )
+                    # drop those scenes that were dis-selected because of the PDGS baseline
+                    drop_idx = scenes_df[
+                        scenes_df.product_uri.isin(scenes_df_split.product_uri) &
+                        ~scenes_df.product_uri.isin(scenes_df_updated_baseline.product_uri)
+                    ].index
+                    if not drop_idx.empty:
+                        scenes_df.drop(drop_idx, inplace=True)
+
+            # check again for split scenes; these scenes are then "really" split
+            scenes_df_split = identify_split_scenes(scenes_df)
+            if not scenes_df_split.empty:
+                scenes_df.loc[
+                    scenes_df.product_uri.isin(scenes_df_split.product_uri),
+                    'is_split'
+                ] = True
     
             # in case the scenes have different projections (most likely different UTM
             # zone numbers) figure out which will be target UTM zone. To avoid too many
@@ -230,23 +251,31 @@ class Sentinel2Mapper(Mapper):
                 scenes_df.loc[
                     ~scenes_df.epsg.isin(most_common_epsg),
                     'target_crs'
-                ] = most_common_epsg
+                ] = most_common_epsg[0]
         
             # add the scenes_df DataFrame to the dictionary that contains the data for
             # all AOIs (features)
-            self.s2_scenes[feature_uuid] = scenes_df
+            s2_scenes[feature_uuid] = scenes_df
+
+        object.__setattr__(self, 'observations', s2_scenes)
+        object.__setattr__(self, 'features', features)
+
+        # append the raw scene count to AOI features and return
+        aoi_features['raw_scene_count'] = aoi_features[self.unique_id_attribute].apply(
+            lambda x, s2_scenes=s2_scenes: s2_scenes[x].shape[0])
+
+        return aoi_features
 
 
-    def extract_areas_of_interest(
+    def read(
             self,
-            band_selection: Optional[str] = None
+            band_selection: Optional[str] = None,
+            feature_selection: Optional[List[Any]] = None
         ) -> None:
         """
-        This function takes the dictionary with Sentinel-2 scenes retrieved from
-        the metadata DB query in `~Mapper.get_sentinel2_scenes` and extracts the
-        Sentinel-2 data from the original .SAFE archives into dictionary of
-        ``SatDataHandlers`` organized by image acquisition dates of the underlying
-        scenes.
+        This function takes the Sentinel-2 scenes retrieved from the metadata DB query
+        in `~Mapper.get_sentinel2_scenes` and extracts the Sentinel-2 data from the
+        original .SAFE archives.
     
         :param band_selection:
             selection of Sentinel-2 bands to extract. Per default all 10 and 20m are
@@ -255,17 +284,18 @@ class Sentinel2Mapper(Mapper):
         """
 
         # loop over features (AOIs) in feature dict
-        for feature, scenes_df in self.s2_scenes.items():
+        for feature, scenes_df in self.observations.items():
+
+            # in case a feature selection is available check if the current
+            # feature is part of it
+            if feature_selection is not None:
+                if feature in feature_selection:
+                    continue
 
             # get feature geometry (the original one)
-            feature_geom = self.polygon_features[
-                self.polygon_features[self.unique_id_attribute] == feature
-            ]['geometry']
+            feature_gdf = self.features.get(feature).to_gdf()
 
-            # initialize stack for storing scenes of the current feature
-            self.feature_stack[feature] = {}
-            # save the feature geometry so it can be used for visualizations
-            self.feature_stack[feature]['geometry'] = feature_geom
+            
 
             # loop over scenes, they are already ordered by date (ascending)
             # and check for each date which scenes are relevant and require
@@ -283,18 +313,30 @@ class Sentinel2Mapper(Mapper):
                     # TODO: check scene - is it flagged as 'is_split' or has a 'target_epsg' code
                     # different from its native one.
                     # if not, simply read selected bands
+                    scene_fpath = ''
                     pass
 
                 # if there is only one scene all we have to do is to read
                 else:
                     scene_fpath = reconstruct_path(record=scenes_date.iloc[0])
-                
+
+                # read pixels in case the feature's dtype is point
+                if feature_gdf['geometry'].iloc[0].type == 'Point':
+                    feature_gdf = Sentinel2Handler.read_pixels_from_safe(
+                        point_features=feature_gdf,
+                        in_dir=scene_fpath,
+                        band_selection=self.mapper_configs.band_names
+                    )
+                # or the feature
+                else:
                     handler = Sentinel2Handler()
                     try:
                         handler.read_from_safe(
                             in_dir=scene_fpath,
-                            polygon_features=feature_geom,
-                            band_selection=band_selection
+                            aoi_features=feature_gdf,
+                            band_selection=band_selection,
+                            full_bounding_box_only=True,
+                            int16_to_float=False
                         )
                     except BlackFillOnlyError:
                         # if the scene extent is blackfilled (all pixels are no data) continue

@@ -101,7 +101,6 @@ s2_band_mapping = {
         'B08': 'nir_1',
         'B8A': 'nir_2',
         'B09': 'nir_3',
-        'B10': 'swir_0',
         'B11': 'swir_1',
         'B12': 'swir_2',
         'SCL': 'scl'

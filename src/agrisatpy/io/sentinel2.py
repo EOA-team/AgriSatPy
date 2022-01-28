@@ -628,7 +628,7 @@ class Sentinel2Handler(SatDataHandler):
             cls,
             point_features: Union[Path, gpd.GeoDataFrame],
             in_dir: Path,
-            band_selection: Optional[List[str]] = list(s2_band_mapping.keys()),
+            band_selection: Optional[List[str]] = None,
             read_scl: Optional[bool] = True
         ) -> gpd.GeoDataFrame:
         """
@@ -667,6 +667,9 @@ class Sentinel2Handler(SatDataHandler):
             are appened as columns to the dataframe. Existing columns of the input
             `in_file_pixels` are preserved.
         """
+
+        if band_selection is None:
+            band_selection = list(s2_band_mapping.keys())
 
         # check band selection and get file-paths to the single jp2 files
         band_df_safe = cls._get_band_files(
