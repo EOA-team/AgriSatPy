@@ -22,12 +22,11 @@ from agrisatpy.operational.resampling.utils import identify_split_scenes
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.exceptions import InputError, BlackFillOnlyError,\
     DataNotFoundError
-from agrisatpy.utils.types import S2Scenes
 from agrisatpy.metadata.sentinel2.utils import identify_updated_scenes
 from agrisatpy.metadata.utils import reconstruct_path
 
 
-return_types = ['SatDataHandlers', 'xarray', 'GeoDataFrame']
+return_types = ['xarray', 'GeoDataFrame']
 
 
 class Sentinel2Mapper(Mapper):
@@ -257,7 +256,7 @@ class Sentinel2Mapper(Mapper):
                 ] = most_common_epsg[0]
 
             # map the "real" path the dataset
-            scenes_df['real_path'] = scenes_df.apply(lambda x: reconstruct_path(x))
+            scenes_df['real_path'] = scenes_df.apply(lambda x: reconstruct_path(x), axis=1)
         
             # add the scenes_df DataFrame to the dictionary that contains the data for
             # all AOIs (features)
@@ -352,26 +351,38 @@ class Sentinel2Mapper(Mapper):
             )
         
         # get scene(s) closest to the sensing_date provided
-        time_diff = (scenes_df.sensing_date - sensing_date)
-        index_max = (time_diff[(time_diff < pd.to_timedelta(0))].idxmax())
-        scenes_date = scenes_df.ix[[index_max]]
+        scenes_date = scenes_df.iloc[[
+            abs((scenes_df.sensing_date - sensing_date)).argmin()
+        ]]
+        # if two scenes are closest select the scene with smaller cloud coverage
+        if scenes_date.sensing_date.unique().shape[0] > 0:
+            min_cloud_cover = scenes_date.cloudy_pixel_percentage.min()
+            scenes_date = scenes_date[
+                scenes_date.cloudy_pixel_percentage == min_cloud_cover
+            ]
+            # if there are still two scenes (same cloud cover) select the first one
+            # TODO: check CRS first
+            if scenes_date.sensing_date.unique().shape[0] > 0:
+                scenes_date = scenes_date.iloc[[0]].copy()
+
+        actual_sensing_date = scenes_date.sensing_date.iloc[0]
+        scene_id = scenes_date.scene_id.iloc[0]
 
         # multiple scenes for a single date
         # check what to do (re-projection, merging)
         if scenes_date.shape[0] > 1:
-
             res = self._read_multiple_scenes(
                 scenes_date=scenes_date,
                 feature_gdf=feature_gdf
             )
+
         else:
-            
             # if there is only one scene all we have to do is to read
             # read pixels in case the feature's dtype is point
-            if feature_geom.type == 'Point':
+            if feature_gdf['geometry'].iloc[0].type == 'Point':
                 res = Sentinel2Handler.read_pixels_from_safe(
                     point_features=feature_gdf,
-                    in_dir=scenes_date['realpath'].iloc[0],
+                    in_dir=scenes_date['real_path'].iloc[0],
                     band_selection=self.mapper_configs.band_names
                 )
             # or the feature
@@ -395,25 +406,29 @@ class Sentinel2Mapper(Mapper):
                     raise Exception from e
                 res = handler
 
+        # append date to GeoDataFrame
+        if isinstance(res, gpd.GeoDataFrame):
+            res['sensing_date'] = actual_sensing_date
+            res['scene_id'] = scene_id
+
         return res
 
 
     def read(
             self,
-            band_selection: Optional[str] = None,
             feature_selection: Optional[List[Any]] = None
         ) -> None:
         """
         This function takes the Sentinel-2 scenes retrieved from the metadata DB query
         in `~Mapper.get_sentinel2_scenes` and extracts the Sentinel-2 data from the
-        original .SAFE archives.
+        original .SAFE archives for all available scenes.
     
-        :param band_selection:
-            selection of Sentinel-2 bands to extract. Per default all 10 and 20m are
-            read (plus the scene classification layer if the processing level is
-            L2A).
+        :param feature_selection:
+            optional subset of features (you can only select features included
+            in the class constructor class)
         """
 
+        assets = {}
         # loop over features (AOIs) in feature dict
         for feature, scenes_df in self.observations.items():
 
@@ -423,17 +438,20 @@ class Sentinel2Mapper(Mapper):
                 if feature in feature_selection:
                     continue
 
-            # get feature geometry (the original one)
-            feature_gdf = self.features.get(feature).to_gdf()
-            feature_geom = self.features.get(feature).geom
-
             # loop over scenes, they are already ordered by date (ascending)
             # and check for each date which scenes are relevant and require
             # potential reprojection or merging
             sensing_dates = scenes_df.sensing_date.unique()
+            feature_res = []
             for sensing_date in sensing_dates:
+                res = self.get_observation(
+                    feature,
+                    sensing_date
+                )
+                feature_res.append(res)
 
-                
+            # if res is a GeoDataFrame the list can be concated
+            if isinstance(res, gpd.GeoDataFrame):
+                assets[feature] = pd.concat(feature_res)
 
-                # append to the feature stack
-                self.feature_stack[feature][sensing_date] = handler
+        return assets
