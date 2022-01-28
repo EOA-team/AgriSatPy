@@ -5,6 +5,8 @@ Mapping module for Sentinel-2 data
 import geopandas as gpd
 import uuid
 
+from datetime import date
+import pandas as pd
 from pathlib import Path
 from shapely.geometry import box
 from sqlalchemy.exc import DatabaseError
@@ -18,7 +20,8 @@ from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_bbox
 from agrisatpy.operational.mapping.mapper import Mapper, Feature
 from agrisatpy.operational.resampling.utils import identify_split_scenes
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
-from agrisatpy.utils.exceptions import InputError, BlackFillOnlyError
+from agrisatpy.utils.exceptions import InputError, BlackFillOnlyError,\
+    DataNotFoundError
 from agrisatpy.utils.types import S2Scenes
 from agrisatpy.metadata.sentinel2.utils import identify_updated_scenes
 from agrisatpy.metadata.utils import reconstruct_path
@@ -252,6 +255,9 @@ class Sentinel2Mapper(Mapper):
                     ~scenes_df.epsg.isin(most_common_epsg),
                     'target_crs'
                 ] = most_common_epsg[0]
+
+            # map the "real" path the dataset
+            scenes_df['real_path'] = scenes_df.apply(lambda x: reconstruct_path(x))
         
             # add the scenes_df DataFrame to the dictionary that contains the data for
             # all AOIs (features)
@@ -265,6 +271,131 @@ class Sentinel2Mapper(Mapper):
             lambda x, s2_scenes=s2_scenes: s2_scenes[x].shape[0])
 
         return aoi_features
+
+
+    def _read_multiple_scenes(
+            self,
+            scenes_date: pd.DataFrame,
+            feature_gdf: gpd.GeoDataFrame
+        ) -> Union[gpd.GeoDataFrame, Sentinel2Handler]:
+        """
+        Backend method for processing and reading scene data if more than one scene
+        is available for a given sensing date and area of interest
+        """
+        
+        candidate_scene_ids = scenes_date.scene_id.astype(list)
+        feature_id = feature_gdf['identifier'].iloc[0].values
+
+        res = None
+
+        # if the feature is a point we take the data set that is not blackfilled
+        # if more than one data set is not blackfilled  we simply take the
+        # first data set
+        if feature_gdf['geometry'].iloc[0].type == 'Point':
+            for _, candidate_scene in scenes_date.iterrows():
+
+                feature_gdf = Sentinel2Handler.read_pixels_from_safe(
+                    point_features=feature_gdf,
+                    in_dir=candidate_scene.real_path,
+                    band_selection=self.mapper_configs.band_names
+                )
+                # a empty data frame indicates black-fill
+                if feature_gdf.empty:
+                    continue
+
+                # otherwise we take the first non-blackfilled pixel values
+                selected_scene_id = candidate_scene.scene_id
+                res = feature_gdf
+                break
+        # in case of a (Multi-)Polygon: check if one of the candidate scenes complete
+        # contains the feature (i.e., its bounding box). If that's the case and the
+        # returned data is not black-filled, we can take that data set. If none of the
+        # candidate contains the scene complete, merging and (depending on the CRS)
+        # re-reprojection might be required. The result is then saved to disk in a temporary
+        # directory.
+        else:
+            pass
+
+        # delete those scenes in the observations dataframe that were not used
+        candidate_scene_ids.remove(selected_scene_id)
+        drop_idx = self.observations[feature_id][
+            self.observations[feature_id].scene_id.isin(candidate_scene_ids)
+        ].index
+        self.observations[feature_id].drop(drop_idx, inplace=True)
+
+        return res
+
+
+    def get_observation(
+            self,
+            feature: Feature,
+            sensing_date: date
+        ):
+        """
+        Function returning the data for a selected area of interest feature and
+        sensing date. If for the date provided no scenes are found, the data from
+        the scene closest in time is returned
+        
+        """
+
+        # define variable for returning results
+        res = None
+
+        # convert feature to GeoDataFrame
+        feature_gdf = feature.to_gdf()
+
+        # get available observations for the AOI feature
+        scenes_df = self.observations.get(feature.identifier, None)
+        if scenes_df is None:
+            raise DataNotFoundError(
+                f'Could not find any scenes for feature {feature}'
+            )
+        
+        # get scene(s) closest to the sensing_date provided
+        time_diff = (scenes_df.sensing_date - sensing_date)
+        index_max = (time_diff[(time_diff < pd.to_timedelta(0))].idxmax())
+        scenes_date = scenes_df.ix[[index_max]]
+
+        # multiple scenes for a single date
+        # check what to do (re-projection, merging)
+        if scenes_date.shape[0] > 1:
+
+            res = self._read_multiple_scenes(
+                scenes_date=scenes_date,
+                feature_gdf=feature_gdf
+            )
+        else:
+            
+            # if there is only one scene all we have to do is to read
+            # read pixels in case the feature's dtype is point
+            if feature_geom.type == 'Point':
+                res = Sentinel2Handler.read_pixels_from_safe(
+                    point_features=feature_gdf,
+                    in_dir=scenes_date['realpath'].iloc[0],
+                    band_selection=self.mapper_configs.band_names
+                )
+            # or the feature
+            else:
+                handler = Sentinel2Handler()
+                try:
+                    handler.read_from_safe(
+                        in_dir=scenes_date['realpath'].iloc[0],
+                        aoi_features=feature_gdf,
+                        band_selection=self.mapper_configs.band_names,
+                        full_bounding_box_only=True,
+                        int16_to_float=False
+                    )
+                except BlackFillOnlyError:
+                    # if the scene extent is blackfilled (all pixels are no data) continue
+                    # and delete the record from the scenes DataFrame
+                    drop_idx = scenes_df[scenes_df.sensing_date == sensing_date].index
+                    self.observations[feature].drop(drop_idx, inplace=True)
+                    return res
+                except Exception as e:
+                    raise Exception from e
+                res = handler
+
+        return res
 
 
     def read(
@@ -294,8 +425,7 @@ class Sentinel2Mapper(Mapper):
 
             # get feature geometry (the original one)
             feature_gdf = self.features.get(feature).to_gdf()
-
-            
+            feature_geom = self.features.get(feature).geom
 
             # loop over scenes, they are already ordered by date (ascending)
             # and check for each date which scenes are relevant and require
@@ -303,49 +433,7 @@ class Sentinel2Mapper(Mapper):
             sensing_dates = scenes_df.sensing_date.unique()
             for sensing_date in sensing_dates:
 
-                # get all scenes with the current sensing_date
-                scenes_date = scenes_df[scenes_df.sensing_date == sensing_date].copy()
-
-                # multiple scenes for a single date
-                # check what to do (reprojection, merging)
-                if scenes_date.shape[0] > 1:
-                    
-                    # TODO: check scene - is it flagged as 'is_split' or has a 'target_epsg' code
-                    # different from its native one.
-                    # if not, simply read selected bands
-                    scene_fpath = ''
-                    pass
-
-                # if there is only one scene all we have to do is to read
-                else:
-                    scene_fpath = reconstruct_path(record=scenes_date.iloc[0])
-
-                # read pixels in case the feature's dtype is point
-                if feature_gdf['geometry'].iloc[0].type == 'Point':
-                    feature_gdf = Sentinel2Handler.read_pixels_from_safe(
-                        point_features=feature_gdf,
-                        in_dir=scene_fpath,
-                        band_selection=self.mapper_configs.band_names
-                    )
-                # or the feature
-                else:
-                    handler = Sentinel2Handler()
-                    try:
-                        handler.read_from_safe(
-                            in_dir=scene_fpath,
-                            aoi_features=feature_gdf,
-                            band_selection=band_selection,
-                            full_bounding_box_only=True,
-                            int16_to_float=False
-                        )
-                    except BlackFillOnlyError:
-                        # if the scene extent is blackfilled (all pixels are no data) continue
-                        # and delete the record from the scenes DataFrame
-                        drop_idx = scenes_df[scenes_df.sensing_date == sensing_date].index
-                        scenes_df.drop(drop_idx, inplace=True)
-                        continue
-                    except Exception as e:
-                        raise Exception from e
+                
 
                 # append to the feature stack
                 self.feature_stack[feature][sensing_date] = handler
