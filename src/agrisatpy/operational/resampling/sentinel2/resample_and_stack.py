@@ -8,7 +8,7 @@ the output bands into a single multi-band geoTiff file.
 
 For resampling spatial subsets of a scene which are considerably smaller than
 the spatial extent of Sentinel-2 scene (almost 110km by 110km) consider using
-``agrisatpy.io.sentinel.S2_Band_Reader`` and its ``resample()`` method directly.
+``agrisatpy.core.sentinel.S2_Band_Reader`` and its ``resample()`` method directly.
 '''
 
 import cv2
@@ -240,7 +240,7 @@ def resample_and_stack_s2(
       spatial resolution
 
     IMPORTANT: If only a small area of interest shall be processed, also consider
-    ``agrisatpy.io.sentinel2.Sat_Data_Reader.resample`` since this function works
+    ``agrisatpy.core.sentinel2.Sat_Data_Reader.resample`` since this function works
     on the **full** scene extent, only.
 
     :param in_dir:

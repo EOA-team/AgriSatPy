@@ -52,7 +52,7 @@ class SpectralIndices(object):
     def calc_si(self, si: str) -> np.array:
         """
         Calculates the selected spectral index (SI) for
-        spectral band data derived from `~agrisatpy.io.SatDataHandler`.
+        spectral band data derived from `~agrisatpy.core.SatDataHandler`.
         The resulting vi is returned as ``numpy.ndarray``.
 
         :param si:

@@ -2272,7 +2272,7 @@ class SatDataHandler(object):
 
         Examples
         --------
-        >>> from agrisatpy.io import SatDataHandler
+        >>> from agrisatpy.core import SatDataHandler
         >>> handler = SatDataHandler()
         >>> handler.read_from_bandstack('example.tif', in_file_aoi='parcels_boundaries.shp', band_selection=['B1'])
         """

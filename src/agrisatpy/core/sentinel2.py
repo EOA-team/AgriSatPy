@@ -363,7 +363,7 @@ class Sentinel2Handler(SatDataHandler):
         ) -> None:
         """
         Reads Sentinel-2 spectral bands from a band-stacked geoTiff by calling
-        ``agrisatpy.io.Sat_Data_Reader`` as super-class. The bandstack is assumed
+        ``agrisatpy.core.Sat_Data_Reader`` as super-class. The bandstack is assumed
         to originate from AgriSatPy and its ``resample_and_stack_s2`` function.
 
         The function works on Sentinel-2 L1C and L2A processing level and reads by
@@ -496,7 +496,7 @@ class Sentinel2Handler(SatDataHandler):
         ) -> None:
         """
         Reads Sentinel-2 spectral bands from a dataset in .SAFE format by calling
-        ``agrisatpy.io.Sat_Data_Reader`` as super-class.. The .SAFE format is ESA's
+        ``agrisatpy.core.Sat_Data_Reader`` as super-class.. The .SAFE format is ESA's
         standard format for distributing Sentinel-2 data.
 
         The function works on Sentinel-2 L1C and L2A processing level and reads by
