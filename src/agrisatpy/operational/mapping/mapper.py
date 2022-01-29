@@ -15,7 +15,7 @@ from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Union
-from agrisatpy.io.sat_data_handler import SatDataHandler
+from agrisatpy.core.sat_data_handler import SatDataHandler
 
 
 class Feature(object):
