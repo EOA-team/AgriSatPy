@@ -68,7 +68,7 @@ class Sentinel2Mapper(Mapper):
         object.__setattr__(self, 'use_latest_pdgs_baseline', use_latest_pdgs_baseline)
 
 
-    def get_sentinel2_scenes(
+    def get_scenes(
             self,
             tile_ids: Optional[List[str]] = None,
             check_baseline: Optional[bool] = True
@@ -414,7 +414,7 @@ class Sentinel2Mapper(Mapper):
         return res
 
 
-    def read(
+    def get_complete_timeseries(
             self,
             feature_selection: Optional[List[Any]] = None
         ) -> None:
