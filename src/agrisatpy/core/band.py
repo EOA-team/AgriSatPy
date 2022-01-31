@@ -8,19 +8,27 @@ computer, ``zarr`` can be used.
 '''
 
 import geopandas as gpd
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
 import rasterio as rio
 import rasterio.mask
 import zarr
 
+from matplotlib.colors import ListedColormap
+from matplotlib.figure import figaspect
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pathlib import Path
 from rasterio import Affine
 from rasterio import features
+from rasterio.coords import BoundingBox
 from rasterio.crs import CRS
 from shapely.geometry import box
 from shapely.geometry import Polygon
 from typing import Any
 from typing import Dict
+from typing import List
 from typing import Optional
 from typing import Union
 
@@ -29,6 +37,7 @@ from agrisatpy.core.utils.geometry import convert_3D_2D
 from agrisatpy.core.utils.raster import get_raster_attributes
 from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.utils.exceptions import BandNotFoundError, DataExtractionError
+from pickle import FALSE
 
 
 class GeoInfo(object):
@@ -349,7 +358,8 @@ class Band(object):
     @property
     def is_ndarray(self) -> bool:
         """Checks if the band values are a numpy ndarray"""
-        return isinstance(self.values, np.ndarray)
+        return isinstance(self.values, np.ndarray) and not \
+            self.is_masked_array
 
     @property
     def is_masked_array(self) -> bool:
@@ -691,11 +701,216 @@ class Band(object):
             **kwargs
         )
 
-    def plot(self):
+    @classmethod
+    def read_pixels(
+            cls
+        ) -> gpd.GeoDataFrame:
         """
-        Plots the raster values using ``matplotlib``
+        Reads single pixel values from a raster dataset into a ``GeoDataFrame``
         """
         pass
+
+    def plot(
+            self,
+            colormap: Optional[str] = 'gray',
+            discrete_values: Optional[bool] = False,
+            user_defined_colors: Optional[ListedColormap] = None,
+            user_defined_ticks: Optional[List[Union[str,int,float]]] = None,
+            colorbar_label: Optional[str] = None,
+            vmin: Optional[Union[int, float]] = None,
+            vmax: Optional[Union[int, float]] = None,
+            fontsize: Optional[int] = 12
+        ) -> plt.Figure:
+        """
+        Plots the raster values using ``matplotlib``
+
+        :param colormap:
+            String identifying one of matplotlib's colormaps.
+            The default will plot the band in gray values.
+        :param discrete_values:
+            if True (Default) assumes that the band has continuous values
+            (i.e., ordinary spectral data). If False assumes that the
+            data only takes a limited set of discrete values (e.g., in case
+            of a classification or mask layer).
+        :param user_defined_colors:
+            possibility to pass a custom, i.e., user-created color map object
+            not part of the standard matplotlib color maps. If passed, the
+            ``colormap`` argument is ignored.
+        :param user_defined_ticks:
+            list of ticks to overwrite matplotlib derived defaults (optional).
+        :param colorbar_label:
+            optional text label to set to the colorbar.
+        :param vmin:
+            lower value to use for `~matplotlib.pyplot.imshow()`. If None it
+            is set to the lower 5% percentile of the data to plot.
+        :param vmin:
+            upper value to use for `~matplotlib.pyplot.imshow()`. If None it
+            is set to the upper 95% percentile of the data to plot.
+        :param fontsize:
+            fontsize to use for axes labels, plot title and colorbar label.
+            12 pts by default.
+        :returns:
+            matplotlib figure object with the band data
+            plotted as map
+        """
+
+        # get the bounds of the band
+        bounds = BoundingBox(*self.bounds.exterior.bounds)
+
+        # determine intervals for plotting and aspect ratio (figsize)
+        east_west_dim = bounds.right - bounds.left
+        if abs(east_west_dim) < 5000:
+            x_interval = 500
+        elif abs(east_west_dim) >= 5000 and abs(east_west_dim) < 100000:
+            x_interval = 5000
+        else:
+            x_interval = 50000
+        north_south_dim = bounds.top - bounds.bottom
+        if abs(north_south_dim) < 5000:
+            y_interval = 500
+        elif abs(north_south_dim) >= 5000 and abs(north_south_dim) < 100000:
+            y_interval = 5000
+        else:
+            y_interval = 50000
+
+        w_h_ratio = figaspect(east_west_dim / north_south_dim)
+
+        # open figure and axes for plotting
+        fig, ax = plt.subplots(
+            nrows=1,
+            ncols=1,
+            figsize=w_h_ratio,
+            num=1,
+            clear=True
+        )
+
+        # get colormap
+        cmap = user_defined_colors
+        if cmap is None:
+            cmap = plt.cm.get_cmap(colormap)
+
+        # check if data is continuous (spectral) or discrete (np.unit8)
+        if discrete_values:
+            # define the bins and normalize
+            unique_values = np.unique(self.values)
+            norm = mpl.colors.BoundaryNorm(unique_values, cmap.N)
+            img = ax.imshow(
+                self.values,
+                cmap=cmap,
+                norm=norm,
+                extent=[bounds.left, bounds.right, bounds.bottom, bounds.top],
+                interpolation='none'  # important, otherwise img will have speckle!
+            )
+        else:
+            # clip data for displaying to central 90% percentile
+            if vmin is None:
+                vmin = np.nanquantile(self.values, 0.05)
+            if vmax is None:
+                vmax = np.nanquantile(self.values, 0.95)
+
+            # actual displaying of the band data
+            img = ax.imshow(
+                self.values,
+                vmin=vmin,
+                vmax=vmax,
+                extent=[bounds.left, bounds.right, bounds.bottom, bounds.top],
+                cmap=cmap
+            )
+
+        # add colorbar (does not apply in RGB case)
+        if colormap is not None:
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes('right', size='5%', pad=0.05)
+            if discrete_values:
+                cb = fig.colorbar(
+                    img,
+                    cax=cax,
+                    orientation='vertical',
+                    ticks=unique_values,
+                    extend='max'
+                )
+            else:
+                cb = fig.colorbar(
+                    img,
+                    cax=cax,
+                    orientation='vertical'
+                )
+            # overwrite ticker if user defined ticks provided
+            if user_defined_ticks is not None:
+                # TODO: there seems to be one tick missing (?)
+                cb.ax.locator_params(nbins=len(user_defined_ticks))
+                cb.set_ticklabels(user_defined_ticks)
+            # add colorbar label text if provided
+            if colorbar_label is not None:
+                cb.set_label(
+                    colorbar_label,
+                    rotation=270,
+                    fontsize=fontsize,
+                    labelpad=20,
+                    y=0.5
+                )
+
+        ax.title.set_text(self.band_name.upper())
+        # add axes labels and format ticker
+        epsg = self.geo_info.epsg
+        ax.set_xlabel(f'X [m] (EPSG:{epsg})', fontsize=fontsize)
+        ax.xaxis.set_ticks(np.arange(bounds.left, bounds.right, x_interval))
+        ax.set_ylabel(f'Y [m] (EPSG:{epsg})', fontsize=fontsize)
+        ax.yaxis.set_ticks(np.arange(bounds.bottom, bounds.top, y_interval))
+        ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.0f'))
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.0f'))
+
+        return fig
+
+    def mask(
+            self,
+            mask: np.ndarray
+        ):
+        """
+        Mask out pixels based on a boolean array.
+
+        NOTE:
+            If the band is already masked, the new mask updates the
+            existing one. I.e., pixels already masked before remain
+            masked.
+
+        :param mask:
+            ``numpy.ndarray`` of dtype ``boolean`` to use as mask.
+            The mask must match the shape of the raster data.
+        """
+
+        # check shape of mask passed and its dtype
+        if mask.dtype != 'bool':
+            raise TypeError('Mask must be boolean')
+
+        if mask.shape != self.values.shape:
+            raise ValueError(
+                f'Shape of mask {mask.shape} does not match ' \
+                f'shape of band data {self.values.shape}')
+
+        # check if array is already masked
+        if self.is_masked_array:
+            orig_mask = self.values.mask
+            # update the existing mask
+            for row in range(self.nrows):
+                for col in range(self.ncols):
+                    # ignore pixels already masked
+                    if not orig_mask[row, col]:
+                        orig_mask[row, col] = mask[row,col]
+            # update band data array
+            masked_array = np.ma.MaskedArray(
+                data=self.values.data,
+                mask=orig_mask
+            )
+        elif self.is_ndarray:
+            masked_array = np.ma.MaskedArray(
+                data=self.values,
+                mask=mask
+            )
+        elif self.is_zarr:
+            raise NotImplemented()
+            
+        object.__setattr__(self, 'values', masked_array)
 
     def resample(self):
         """
@@ -715,15 +930,49 @@ class Band(object):
         """
         pass
 
+    def scale_data(
+            self,
+            inverse: Optional[bool] = False
+        ) -> None:
+        """
+        Applies scale and offset factors to the data.
+
+        :param inverse:
+            if True reverse the scaling (i.e., takes the inverse
+            of the scale factor and changes the sign of the offset)
+        """
+
+        if inverse:
+            scale = 1. / self.scale
+            offset = -1. * self.offset
+        else:
+            scale, offset = self.scale, self.offset
+
+        if self.is_masked_array:
+            scaled_array = scale * self.values.data + offset
+            scaled_array = np.ma.MaskedArray(
+                data=scaled_array,
+                mask=self.values.mask
+            )
+        object.__setattr__(self, 'values', scaled_array)
+
     def to_dataframe(self):
         """
         Returns a ``GeoDataFrame`` from the raster band data
         """
+        pass
 
     def to_xarray(self):
         """
-        Returns a ``xarray.Dataset`` from the raster band data¨
+        Returns a ``xarray.Dataset`` from the raster band data
         """
+        pass
+
+    def to_rasterio(self):
+        """
+        Writes the band data to a raster dataset using ``rasterio``.
+        """
+        pass
 
         
 
@@ -741,6 +990,90 @@ if __name__ == '__main__':
         full_bounding_box_only=False
     )
 
+    assert band.geo_info.epsg == 32632, 'wrong EPSG code'
+    assert band.band_name == 'B02', 'wrong band name'
+    assert band.is_masked_array, 'array has not been masked'
+    assert band.alias is None, 'band alias was not set'
+    assert set(band.coordinates.keys()) == {'x', 'y'}, 'coordinates not set correctly'
+    assert band.nrows == band.values.shape[0], 'number of rows does not match data array'
+    assert band.ncols == band.values.shape[1], 'number of rows does not match data array'
+    assert band.coordinates['x'].shape[0] == band.ncols, \
+        'number of x coordinates does not match number of columns'
+    assert band.coordinates['y'].shape[0] == band.nrows, \
+        'number of y coordinates does not match number of rows'
+    assert band.values.min() == 19, 'wrong minimum returned from data array'
+    assert band.values.max() == 9504, 'wrong maximum returned from data array'
+    assert band.geo_info.ulx == 475420.0, 'wrong upper left x coordinate'
+    assert band.geo_info.uly == 5256840.0, 'wrong upper left y coordinate'
+
+    band_bounds_mask = band.bounds
+    assert band_bounds_mask.type == 'Polygon'
+    assert band_bounds_mask.exterior.bounds[0] == band.geo_info.ulx, \
+        'upper left x coordinate does not match'
+    assert band_bounds_mask.exterior.bounds[3] == band.geo_info.uly, \
+        'upper left y coordinate does not match'
+
+    assert not band.values.mask.all(), 'not all pixels should be masked'
+
+    band.plot(colorbar_label='Surface Reflectance')
+
+    # test masking with boolean mask (should mask everything)
+    mask = np.ndarray(band.values.shape, dtype='bool')
+    mask.fill(True)
+    band.mask(mask=mask)
+    assert band.values.mask.all(), 'not all pixels masked'
+
+    # test scaling -> nothing should happen at this stage
+    values_before_scaling = band.values
+    band.scale_data()
+    assert (values_before_scaling.data == band.values.data).all(), 'scaling must not have an effect'
+    band.scale_data(inverse=True)
+    assert (values_before_scaling.data == band.values.data).all(), 'scaling must not have an effect'
+
+    # read with scale (gain) and offset factor
+    band = Band.from_rasterio(
+        fpath_raster=fpath_raster,
+        band_idx=1,
+        band_name_dst='B02',
+        color_name='blue',
+        vector_features=vector_features,
+        full_bounding_box_only=True,
+        scale=0.0001
+    )
+
+    # read with full bounding box (no masking just spatial sub-setting)
+    band = Band.from_rasterio(
+        fpath_raster=fpath_raster,
+        band_idx=1,
+        band_name_dst='B02',
+        vector_features=vector_features,
+        full_bounding_box_only=True
+    )
+
+    assert not band.is_masked_array, 'data should not be masked'
+    assert band.is_ndarray, 'band data should be ndarray'
+    assert band.bounds == band_bounds_mask, 'bounds should remain the same regardless of masking'
+
+    mask[100:120,100:200] = False
+    band.mask(mask=mask)
+    assert band.is_masked_array, 'band must now be a masked array'
+    assert not band.values.mask.all(), 'not all pixel should be masked'
+    assert band.values.mask.any(), 'some pixels should be masked'
+
+    # try some cases that must fail
+    # reading from non-existing file
+    # Band.from_rasterio(
+    #     fpath_raster='not_existing_file.tif'
+    # )
+    #
+    # reading wrong band index
+    # Band.from_rasterio(
+    #     fpath_raster=fpath_raster,
+    #     band_idx=22,
+    # )
+    #
+    # try reading datasets completely outside of the band's extent
+
     snap_bounds = band.bounds
 
     # read data from vector source
@@ -752,6 +1085,36 @@ if __name__ == '__main__':
         band_name_dst='gis_id',
         snap_bounds=snap_bounds
     )
+
+    assert band.band_name == 'gis_id', 'wrong band name inserted'
+    assert band.values.dtype == 'float32', 'wrong data type for values'
+    assert band.geo_info.pixres_x == 10, 'wrong pixel size in x direction'
+    assert band.geo_info.pixres_y == -10, 'wrong pixel size in y direction'
+    assert band.geo_info.epsg == 32632, 'wrong EPSG code'
+    assert band.bounds == snap_bounds, 'bounds do not match'
+
+    # without snap bounds
+    band = Band.from_vector(
+        vector_features=vector_features,
+        pixres_x=10,
+        pixres_y=-10,
+        band_name_src='GIS_ID',
+        band_name_dst='gis_id'
+    )
+    assert band.geo_info.pixres_x == 10, 'wrong pixel size in x direction'
+    assert band.geo_info.pixres_y == -10, 'wrong pixel size in y direction'
+    assert band.geo_info.epsg == 32632, 'wrong EPSG code'
+
+    # with custom datatype
+    band = Band.from_vector(
+        vector_features=vector_features,
+        pixres_x=10,
+        pixres_y=-10,
+        band_name_src='GIS_ID',
+        band_name_dst='gis_id',
+        dtype_src='uint16'
+    )
+    assert band.values.dtype == 'uint16', 'wrong data type'
 
     # test with point features
     point_gdf = gpd.read_file(vector_features)
