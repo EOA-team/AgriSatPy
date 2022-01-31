@@ -7,16 +7,28 @@ AgriSatPy stores band data basically as ``numpy`` arrays. Masked arrays of the c
 computer, ``zarr`` can be used.
 '''
 
+import geopandas as gpd
 import numpy as np
+import rasterio as rio
+import rasterio.mask
 import zarr
 
+from pathlib import Path
 from rasterio import Affine
+from rasterio import features
 from rasterio.crs import CRS
 from shapely.geometry import box
+from shapely.geometry import Polygon
 from typing import Any
 from typing import Dict
 from typing import Optional
 from typing import Union
+
+from agrisatpy.core.utils.geometry import check_geometry_types
+from agrisatpy.core.utils.geometry import convert_3D_2D
+from agrisatpy.core.utils.raster import get_raster_attributes
+from agrisatpy.utils.reprojection import check_aoi_geoms
+from agrisatpy.utils.exceptions import BandNotFoundError, DataExtractionError
 
 
 class GeoInfo(object):
@@ -224,6 +236,8 @@ class Band(object):
             wavelength_info: Optional[WavelengthInfo] = None,
             scale: Optional[Union[int, float]] = 1.,
             offset: Optional[Union[int, float]] = 0.,
+            unit: Optional[str] = '',
+            nodata: Optional[Union[int,float]] = None
         ):
         """
         Constructor to instantiate a new band object.
@@ -253,11 +267,27 @@ class Band(object):
             idea is to scale the original band data in such a way that it's either
             possible to store the data in a certain data type or to avoid certain
             values. If not provided, `offset` is set to 0.
+        :param unit:
+            optional (SI) physical unit of the band data (e.g., 'meters' for
+            elevation data)
+        :param nodata:
+            numeric value indicating no-data. If not provided the nodata value
+            is set to ``numpy.nan`` for floating point data, 0 and -999 for
+            unsigned and signed integer data, respectively.
         """
 
         # make sure the passed values are 2-dimensional
         if len(values.shape) != 2:
             raise ValueError('Only two-dimensional arrays are allowed')
+
+        # check nodata value
+        if nodata is None:
+            if values.dtype in ['float16', 'float32', 'float64']:
+                nodata = np.nan
+            elif values.dtype in ['int16', 'int32', 'int64']:
+                nodata = -999
+            elif values.dtype in ['uint8', 'uint16', 'uint32', 'uint64']:
+                nodata = 0
 
         object.__setattr__(self, 'band_name', band_name)
         object.__setattr__(self, 'values', values)
@@ -266,6 +296,8 @@ class Band(object):
         object.__setattr__(self, 'wavelength_info', wavelength_info)
         object.__setattr__(self, 'scale', scale)
         object.__setattr__(self, 'offset', offset)
+        object.__setattr__(self, 'unit', unit)
+        object.__setattr__(self, 'nodata', nodata)
 
     def __setattr__(self, *args, **kwargs):
         raise TypeError('Band object attributes are immutable')
@@ -288,6 +320,17 @@ class Band(object):
         miny = maxy + self.nrows * self.geo_info.pixres_y
         return box(minx, miny, maxx, maxy)
 
+    @property
+    def coordinates(self) -> Dict[str, np.ndarray]:
+        """x-y spatial band coordinates"""
+        nx, ny = self.ncols, self.nrows
+        transform = self.transform
+        shift = 0
+        x, _ = transform * (np.arange(nx) + shift, np.zeros(nx) + shift)
+        _, y = transform * (np.zeros(ny) + shift, np.arange(ny) + shift)
+
+        return {'x': x, 'y': y}
+    
     @property
     def crs(self) -> CRS:
         """Coordinate Reference System of the band"""
@@ -337,11 +380,393 @@ class Band(object):
     def ncols(self) -> int:
         """Number of columns of the band"""
         return self.values.shape[1]
-        
-        
+
+    @property
+    def transform(self) -> Affine:
+        """Affine transformation of the band"""
+        return self.geo_info.as_affine()
+
+    @classmethod
+    def from_rasterio(
+            cls,
+            fpath_raster: Path,
+            band_idx: Optional[int] = 1,
+            band_name_src: Optional[str] = '',
+            band_name_dst: Optional[str] = 'B1',
+            vector_features: Optional[Union[Path, gpd.GeoDataFrame]] = None,
+            full_bounding_box_only: Optional[bool] = False,
+            **kwargs
+        ):
+        """
+        Creates a new ``Band`` instance from any raster dataset understood
+        by ``rasterio``. Reads exactly **one** band from the input dataset!
+
+        NOTE:
+            To read a spatial subset of raster band data only pass
+            `vector_features` which can be one to N (multi)polygon features.
+            For Point features refer to the `read_pixels` method.
+
+        :param fpath_raster:
+            file-path to the raster file from which to read a band
+        :param band_idx:
+            band index of the raster band to read (starting with 1). If not
+            provided the first band will be always read. Ignored if 
+            `band_name_src` is provided.
+        :param band_name_src:
+            instead of providing a band index to read (`band_idx`) a band name
+            can be passed. If provided `band_idx` is ignored.
+        :param band_name_dst:
+            name of the raster band in the resulting ``Band`` instance. If
+            not provided the default value ('B1') is used. Whenever the band
+            name is known it is recommended to use a meaningful band name!
+        :param vector_features:
+            ``GeoDataFrame`` or file with vector features in a format understood
+            by ``fiona`` with one or more vector features of type ``Polygon``
+            or ``MultiPolygon``. Unless `full_bounding_box_only` is set to True
+            masks out all pixels not covered by the provided vector features.
+            Otherwise the spatial bounding box encompassing all vector features
+            is read as a spatial subset of the input raster band.
+            If the coordinate system of the vector differs from the raster data
+            source the vector features are projected into the CRS of the raster
+            band before extraction.
+        :param full_bounding_box_only:
+            if False (default) pixels not covered by the vector features are masked
+            out using ``maskedArray`` in the back. If True, does not mask pixels
+            within the spatial bounding box of the `vector_features`.
+        :param kwargs:
+            further key-word arguments to pass to `~agrisatpy.core.band.Band`.
+        :returns:
+            new ``Band`` instance from a ``rasterio`` dataset.
+        """
+
+        # check vector features if provided
+        masking = False
+        if vector_features is not None:
+
+            masking = True
+            gdf_aoi = check_aoi_geoms(
+                in_dataset=vector_features,
+                fname_raster=fpath_raster,
+                full_bounding_box_only=full_bounding_box_only
+            )
+            # check for third dimension (has_z) and flatten it to 2d
+            gdf_aoi.geometry = convert_3D_2D(gdf_aoi.geometry)
+
+            # check geometry types of the input features
+            allowed_geometry_types = ['Polygon', 'MultiPolygon']
+            gdf_aoi = check_geometry_types(
+                in_dataset=gdf_aoi,
+                allowed_geometry_types=allowed_geometry_types
+            )
+
+        # read data using rasterio
+        with rio.open(fpath_raster, 'r') as src:
+
+            # parse image attributes
+            attrs = get_raster_attributes(riods=src)
+            transform = src.meta['transform']
+            epsg = src.meta['crs'].to_epsg()
+
+            # overwrite band_idx if band_name_src is provided
+            band_names = list(src.descriptions)
+            if band_name_src != '':
+                if band_name_src not in band_names:
+                    raise BandNotFoundError(
+                        f'Could not find band "{band_name_src}" ' \
+                        f'in {fpath_raster}'
+                    )
+                band_idx = band_names.index(band_name_src)
+
+            # check if band_idx is valid
+            if band_idx > len(band_names):
+                raise IndexError(
+                    f'Band index {band_idx} is out of range for a ' \
+                    f'dataset with {len(band_names)} bands')
+                
+
+            # read selected band
+            if not masking:
+                # TODO: add zarr support here -> when is_tile == 1
+                if attrs.get('is_tile', 0) == 1:
+                    pass
+                band_data = src.read(band_idx)
+            else:
+                band_data, transform = rio.mask.mask(
+                    src,
+                    gdf_aoi.geometry,
+                    crop=True, 
+                    all_touched=True, # IMPORTANT!
+                    indexes=band_idx,
+                    filled=False
+                )
+                # check if the mask contains any True value
+                # if not cast the array from maskedArray to ndarray
+                if np.count_nonzero(band_data.mask) == 0:
+                    band_data = band_data.data
+
+        # get scale, offset and unit (if available) from the raster attributes
+        scale, scales = 1, attrs.get('scales', None)
+        if scales is not None:
+            scale = scales[band_idx-1]
+        offset, offsets = 0, attrs.get('offsets', None)
+        if offsets is not None:
+            offset = offsets[band_idx-1]
+        unit, units = '', attrs.get('unit', None)
+        if units is not None:
+            unit = units[band_idx-1]
+        nodata, nodata_vals = None, attrs.get('nodatavals', None)
+        if nodata_vals is not None:
+            nodata = nodata_vals[band_idx-1]
+
+        # reconstruct geo-info
+        geo_info = GeoInfo(
+            epsg=epsg,
+            ulx=transform.c,
+            uly=transform.f,
+            pixres_x=transform.a,
+            pixres_y=transform.e
+        )
+
+        # create new Band instance
+        return cls(
+            band_name=band_name_dst,
+            values=band_data,
+            geo_info=geo_info,
+            scale=scale,
+            offset=offset,
+            unit=unit,
+            nodata=nodata,
+            **kwargs
+        )
+
+    @classmethod
+    def from_vector(
+            cls,
+            vector_features: Union[Path, gpd.GeoDataFrame],
+            pixres_x: Union[int, float],
+            pixres_y: Union[int, float],
+            band_name_src: Optional[str] = '',
+            band_name_dst: Optional[str] = 'B1',
+            nodata_dst: Optional[Union[int, float]] = 0,
+            snap_bounds: Optional[Polygon] = None,
+            dtype_src: Optional[str] = 'float32',
+            **kwargs
+        ):
+        """
+        Creates a new ``Band`` instance from a ``GeoDataFrame`` or a file with
+        vector features in a format understood by ``fiona`` with geometries
+        of type ``Point``, ``Polygon`` or ``MultiPolygon`` using a single user-
+        defined attribute (column in the data frame). The spatial reference
+        system of the resulting band will be the same as for the input vector data.
+
+        :param vector_featueres:
+            file-path to a vector file or ``GeoDataFrame`` from which to convert
+            a column to raster. Please note that the column must have a numerical
+            data type.
+        :param pixres_x:
+            pixel grid cell size in x-directorion in the unit given by the spatial
+            reference system of the vector features.
+        :param pixres_y:
+            pixel grid cell size in y-directorion in the unit given by the spatial
+            reference system of the vector features.
+        :param band_name_src:
+            name of the attribute in the vector features' attribute table to
+            convert to a new ``Band`` instance
+        :param band_name_dst:
+            name of the resulting ``Band`` instance. "B1" by default.
+        :param nodata_dst:
+            nodata value in the resulting band data to fill raster grid cells
+            having no value assigned from the input vector features. If not
+            provided the nodata value is set to 0 (rasterio default)
+        :param dtype_src:
+            datatype of the resulting raster array. Per default "float32" is used.
+        :returns:
+            new ``Band`` instance from a vector features source
+        """
+
+        # check passed vector geometries
+        if isinstance(vector_features, Path):
+            gdf_aoi = gpd.read_file(vector_features)
+        else:
+            gdf_aoi = vector_features.copy()
+
+        allowed_geometry_types = ['Point', 'Polygon', 'MultiPolygon']
+        in_gdf = check_geometry_types(
+            in_dataset=gdf_aoi,
+            allowed_geometry_types=allowed_geometry_types
+        )
+
+        # check passed attribute selection
+        if not band_name_src in in_gdf.columns:
+            raise AttributeError(
+                f'{band_name_src} not found in input vector dataset'
+            )
+
+        # infer the datatype (i.e., try if it is possible to cast the
+        # attribute to float32, otherwise do not process the feature)
+        try:
+            in_gdf[band_name_src].astype(dtype_src)
+        except ValueError as e:
+            raise TypeError(
+                f'Attribute "{band_name_src}" seems not to be numeric')
+
+        # clip features to the spatial extent of a bounding box if available
+        # clip the input to the bounds of the snap band
+        if snap_bounds is not None:
+            try:
+                in_gdf = in_gdf.clip(
+                    mask=snap_bounds
+                )
+            except Exception as e:
+                raise DataExtractionError(
+                    'Could not clip input vector features to ' \
+                    f'snap raster bounds: {e}'
+                )
+
+        # make sure there are still features left
+        if in_gdf.empty:
+            raise DataExtractionError(
+                'Seems there are no features to convert'
+        )
+
+        # infer shape and affine of the resulting raster grid if not provided
+        if snap_bounds is None:
+            if set(in_gdf.geometry.type.unique()) == set(['Polygon', 'MultiPolygon']):
+                minx = in_gdf.geometry.bounds.minx.min()
+                maxx = in_gdf.geometry.bounds.maxx.max()
+                miny = in_gdf.geometry.bounds.miny.min()
+                maxy = in_gdf.geometry.bounds.maxy.max()
+            else:
+                minx = in_gdf.geometry.x.min()
+                maxx = in_gdf.geometry.x.max()
+                miny = in_gdf.geometry.y.min()
+                maxy = in_gdf.geometry.y.max()
+            snap_bounds = box(minx, miny, maxx, maxy)
+        else:
+            minx, miny, maxx, maxy = snap_bounds.exterior.bounds
+
+        # calculate number of columns from bounding box of all features
+        # always round to the next bigger integer value to make sure no
+        # value gets lost
+        rows = int(np.ceil(abs((maxy - miny) / pixres_y)))
+        cols = int(np.ceil(abs((maxx - minx) / pixres_x)))
+        snap_shape = (rows, cols)
+
+        # initialize new GeoInfo instance
+        geo_info = GeoInfo(
+            epsg=in_gdf.crs.to_epsg(),
+            ulx=minx,
+            uly=maxy,
+            pixres_x=pixres_x,
+            pixres_y=pixres_y
+        )
+
+        # rasterize the vector features
+        try:
+            shapes = (
+                    (geom,value) for geom, value in zip(
+                        in_gdf.geometry,
+                        in_gdf[band_name_src].astype(dtype_src)
+                    )
+                )
+            rasterized = features.rasterize(
+                shapes=shapes,
+                out_shape=snap_shape,
+                transform=geo_info.as_affine(),
+                all_touched=True,
+                fill=nodata_dst,
+                dtype=dtype_src
+            )
+        except Exception as e:
+            raise Exception(
+                    f'Could not process attribute "{band_name_src}": {e}'
+                )
+
+        # initialize new Band instance
+        return cls(
+            band_name=band_name_dst,
+            values=rasterized,
+            geo_info=geo_info,
+            nodata=nodata_dst,
+            **kwargs
+        )
+
+    def plot(self):
+        """
+        Plots the raster values using ``matplotlib``
+        """
+        pass
+
+    def resample(self):
+        """
+        Changes the raster grid cell (pixel) size
+        """
+        pass
+
+    def reproject(self):
+        """
+        Projects the raster data into a different spatial coordinate system
+        """
+        pass
+
+    def reduce(self):
+        """
+        Reduces the raster data to a scalar
+        """
+        pass
+
+    def to_dataframe(self):
+        """
+        Returns a ``GeoDataFrame`` from the raster band data
+        """
+
+    def to_xarray(self):
+        """
+        Returns a ``xarray.Dataset`` from the raster band data¨
+        """
+
         
 
 if __name__ == '__main__':
+
+    # read data from raster
+    fpath_raster = Path('../../../data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
+    vector_features = Path('../../../data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
+
+    band = Band.from_rasterio(
+        fpath_raster=fpath_raster,
+        band_idx=1,
+        band_name_dst='B02',
+        vector_features=vector_features,
+        full_bounding_box_only=False
+    )
+
+    snap_bounds = band.bounds
+
+    # read data from vector source
+    band = Band.from_vector(
+        vector_features=vector_features,
+        pixres_x=10,
+        pixres_y=-10,
+        band_name_src='GIS_ID',
+        band_name_dst='gis_id',
+        snap_bounds=snap_bounds
+    )
+
+    # test with point features
+    point_gdf = gpd.read_file(vector_features)
+    point_gdf.geometry = point_gdf.geometry.apply(lambda x: x.centroid)
+
+    band_from_points = Band.from_vector(
+        vector_features=point_gdf,
+        pixres_x=10,
+        pixres_y=-10,
+        band_name_src='GIS_ID',
+        band_name_dst='gis_id',
+        snap_bounds=snap_bounds,
+        dtype_src='uint16'
+    )
+    
 
     from shapely.geometry import Polygon
 
