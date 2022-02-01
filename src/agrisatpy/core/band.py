@@ -47,6 +47,7 @@ from agrisatpy.utils.arrays import count_valid, upsample_array
 from agrisatpy.utils.exceptions import BandNotFoundError, \
     DataExtractionError, ResamplingFailedError, ReprojectionError
 from agrisatpy.utils.reprojection import reproject_raster_dataset
+from abc import abstractstaticmethod
 
 
 class GeoInfo(object):
@@ -431,6 +432,50 @@ class Band(object):
         """Affine transformation of the band"""
         return self.geo_info.as_affine()
 
+    @staticmethod
+    def _get_pixel_geometries(
+            vector_features: Union[Path, gpd.GeoDataFrame],
+            fpath_raster: Optional[Path] = None,
+            raster_crs: Union[int, CRS] = None
+        ) -> gpd.GeoDataFrame:
+        """
+        Process passed pixel geometries including reprojection of the
+        vector features (if required) into the spatial reference system
+        of the raster band and extraction of centroid coordinates if
+        the vector features are of type ``Polygon`` or ``MultiPolygon``
+
+        :param vector_features:
+            passed vector features to calling instance or class method
+        :param fpath_raster:
+            optional file path to the raster dataset. To be used when
+            called from a classmethod
+        :param raster_crs:
+            optional raster EPSG code. To be used when called from an
+            instance method.
+        :returns:
+            ``GeoDataFrame`` with ``Point`` features for extracting
+            pixel values
+        """
+        # check input point features
+        gdf = check_aoi_geoms(
+            in_dataset=vector_features,
+            fname_raster=fpath_raster,
+            raster_crs=raster_crs,
+            full_bounding_box_only=False
+        )
+        allowed_geometry_types = ['Point', 'Polygon', 'MultiPolygon']
+        gdf = check_geometry_types(
+            in_dataset=gdf,
+            allowed_geometry_types=allowed_geometry_types
+        )
+
+        # convert to centroids if the geometries are not of type Point
+        gdf.geometry = gdf.geometry.apply(
+            lambda x: x.centroid if x.type in ['Polygon', 'MultiPolygon'] else x
+        )
+
+        return gdf
+
     @classmethod
     def from_rasterio(
             cls,
@@ -784,20 +829,9 @@ class Band(object):
         """
 
         # check input point features
-        gdf = check_aoi_geoms(
-            in_dataset=vector_features,
-            fname_raster=fpath_raster,
-            full_bounding_box_only=False
-        )
-        allowed_geometry_types = ['Point', 'Polygon', 'MultiPolygon']
-        gdf = check_geometry_types(
-            in_dataset=gdf,
-            allowed_geometry_types=allowed_geometry_types
-        )
-
-        # convert to centroids if the geometries are not of type Point
-        gdf.geometry = gdf.geometry.apply(
-            lambda x: x.centroid if x.type in ['Polygon', 'MultiPolygon'] else x
+        gdf = cls._get_pixel_geometries(
+            vector_features=vector_features,
+            fpath_raster=fpath_raster
         )
 
         # use rasterio.sample to extract the pixel values from the raster
@@ -917,11 +951,89 @@ class Band(object):
 
         return meta
 
-    def get_pixels(self):
+    def get_pixels(
+            self,
+            vector_features: Union[Path, gpd.GeoDataFrame]
+        ):
         """
-        Returns pixel values from a ``Band`` instance raster values
+        Returns pixel values from a ``Band`` instance raster values.
+
+        The extracted band array values are stored in a new column in the
+        returned `vector_features` ``GeoDataFrame`` named like the name
+        of the band.
+
+        If you do not want to read the entire raster data first consider
+        using `~agrisatpy.core.Band.read_pixels` instead.
+
+        NOTE:
+            Masked pixels are set to the band's nodata value.
+
+        :param vector_features:
+            file-path or ``GeoDataFrame`` to features defining the pixels to read
+            from the ``Band`` raster values. The geometries can be of type ``Point``,
+            ``Polygon`` or ``MultiPolygon``. In the latter two cases the centroids
+            are used to extract pixel values, whereas for point features the
+            closest raster grid cell is selected.
         """
-        pass
+
+        # get pixel point features
+        gdf = self._get_pixel_geometries(
+            vector_features=vector_features,
+            raster_crs=self.crs
+        )
+
+        # drop points outside of the band's bounding box (speeds up the process)
+        band_bbox = BoundingBox(*self.bounds.exterior.bounds)
+        gdf = gdf.cx[band_bbox.left:band_bbox.right, band_bbox.bottom:band_bbox.top]
+
+        # define helper function for getting the closest array index for a coordinate
+        # map the coordinates to array indices
+        def _find_nearest_array_index(array, value):
+            return np.abs(array - value).argmin()
+
+        # calculate the x and y array indices required to extract the pixel values
+        gdf['x'] = gdf.geometry.x
+        gdf['y'] = gdf.geometry.y
+
+        # get band coordinates
+        coords = self.coordinates
+
+        # get column (x) indices
+        gdf['col'] = gdf['x'].apply(
+            lambda x, coords=coords, find_nearest_array_index=_find_nearest_array_index:
+            find_nearest_array_index(coords['x'], x)
+        )
+        # get row (y) indices
+        gdf['row'] = gdf['y'].apply(
+            lambda y, coords=coords, find_nearest_array_index=_find_nearest_array_index:
+            find_nearest_array_index(coords['y'], y)
+        )
+
+        # add column to store band values
+        gdf[self.band_name] = np.empty(gdf.shape[0])
+
+        # loop over sample points and add them as new entries to the GeoDataFrame
+        for _, record in gdf.iterrows():
+            # get array value for the current column and row, continue on out-of-bounds error
+            try:
+                array_value = self.values[record.row, record.col]
+            except IndexError:
+                continue
+            # ignore masked pixels
+            if self.is_masked_array:
+                if array_value.mask:
+                    array_value = self.nodata
+            gdf.loc[
+                (gdf.row == record.row) & (gdf.col == record.col),
+                self.band_name
+            ] = array_value
+
+        # clean up GeoDataFrame
+        cols_to_drop = ['row', 'col', 'x', 'y']
+        for col_to_drop in cols_to_drop:
+            gdf.drop(col_to_drop, axis=1, inplace=True)
+
+        return gdf
         
     def plot(
             self,
@@ -1669,9 +1781,7 @@ if __name__ == '__main__':
     assert reprojected.is_masked_array, 'mask must not be lost after reprojection'
     assert np.round(reprojected.geo_info.ulx) == 2693130.0, 'wrong upper left x coordinate'
     assert np.round(reprojected.geo_info.uly) == 1257861.0, 'wrong upper left y coordinate'
-
     reprojected.to_rasterio('/tmp/reprojected.jp2')
-    
 
     # get band statistics
     stats = band.reduce(method=['mean', 'min', 'max'])
@@ -1782,6 +1892,12 @@ if __name__ == '__main__':
     assert pixels.shape[0] == gdf.shape[0], 'not all geometries extracted'
     assert pixels.geometry.type.unique().shape[0] == 1, 'there are too many different geometry types'
     assert pixels.geometry.type.unique()[0] == 'Point', 'wrong geometry type'
+
+    # compare against results from instance method
+    pixels_inst = band.get_pixels(vector_features)
+    assert (pixels.geometry == pixels_inst.geometry).all(), \
+        'pixel geometry must be always the same'
+    assert band.band_name in pixels_inst.columns, 'extracted band data not found'
 
     # try features outside of the extent of the raster
     pixels = Band.read_pixels(
