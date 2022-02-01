@@ -8,7 +8,7 @@ from agrisatpy.utils.exceptions import BandNotFoundError
 from agrisatpy.utils.exceptions import DataExtractionError
 
 
-def test_add_bands(datadir, get_bandstack, get_polygons):
+def test_add_bands(datadir, get_bandstack, get_polygons, get_points3):
     """tests adding and removing bands from a handler"""
 
     fname_bandstack = get_bandstack()
