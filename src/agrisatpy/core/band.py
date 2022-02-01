@@ -26,6 +26,7 @@ from rasterio import Affine
 from rasterio import features
 from rasterio.coords import BoundingBox
 from rasterio.crs import CRS
+from rasterio.drivers import driver_from_extension
 from shapely.geometry import box
 from shapely.geometry import Point
 from shapely.geometry import Polygon
@@ -827,6 +828,36 @@ class Band(object):
         attrs = deepcopy(self.__dict__)
         return Band(**attrs)
 
+    def get_meta(
+            self,
+            driver: Optional[str] = 'gTiff',
+            **kwargs
+        ) -> Dict[str, Any]:
+        """
+        Returns a ``rasterio`` compatible dictionary with raster dataset
+        metadata.
+
+        :param driver:
+            name of the ``rasterio`` driver. `gTiff` (GeoTiff) by default
+        :param kwargs:
+            additional keyword arguments to append to metadata dictionary
+        :returns:
+            ``rasterio`` compatible metadata dictionary to be used for
+            writing new raster datasets
+        """
+        meta = {}
+        meta['height'] = self.nrows
+        meta['width'] = self.ncols
+        meta['crs'] = CRS.from_epsg(self.geo_info.epsg)
+        meta['dtype'] = str(self.values.dtype)
+        meta['count'] = 1
+        meta['nodata'] = self.nodata
+        meta['transform'] = self.geo_info.as_affine()
+        meta['driver'] = driver
+        meta.update(kwargs)
+
+        return meta
+        
     def plot(
             self,
             colormap: Optional[str] = 'gray',
@@ -1195,7 +1226,7 @@ class Band(object):
         # TODO: think about ulx and uly if the target_shape is passed!!!
         if inplace:
             object.__setattr__(self, 'values', res)
-            object.__setattr__(self, 'geon_info', new_geo_info)
+            object.__setattr__(self, 'geo_info', new_geo_info)
         else:
             attrs = deepcopy(self.__dict__)
             attrs.update({
@@ -1354,13 +1385,49 @@ class Band(object):
         """
         pass
 
-    def to_rasterio(self):
+    def to_rasterio(
+            self,
+            fpath_raster: Path,
+            **kwargs
+        ) -> None:
         """
         Writes the band data to a raster dataset using ``rasterio``.
-        """
-        pass
 
-        
+        :param fpath_raster:
+            file-path to the raster dataset to create. The ``rasterio``
+            driver is identified by the file-name extension. In case
+            jp2 is selected, loss-less compression is carried out.
+        :param kwargs:
+            additional keyword arguments to append to metadata dictionary
+            used by ``rasterio`` to write datasets
+        """
+
+        # check output file naming and driver
+        try:
+            driver = driver_from_extension(fpath_raster)
+        except Exception as e:
+            raise ValueError(
+                'Could not determine GDAL driver for ' \
+                f'{fpath_raster.name}: {e}'
+            )
+
+        # construct meta dictionary required by rasterio
+        meta = self.get_meta(driver, **kwargs)
+
+        # make sure JPEG compression is loss-less
+        if driver == 'JP2OpenJPEG':
+            meta.update({
+                'QUALITY': '100',
+                'REVERSIBLE': 'YES'
+            })
+
+        # open the result dataset and try to write the bands
+        with rio.open(fpath_raster, 'w+', **meta) as dst:
+            # set band name
+            dst.set_band_description(1, self.band_name)
+            # write band data
+            dst.write(self.values, 1)
+
 
 if __name__ == '__main__':
 
@@ -1433,6 +1500,7 @@ if __name__ == '__main__':
     assert resampled.is_masked_array, 'mask should be preserved'
 
     # resample to 5m inplace
+    old_shape = (band.nrows, band.ncols)
     band.resample(
         target_resolution=5,
         inplace=True
@@ -1440,6 +1508,16 @@ if __name__ == '__main__':
     assert band.nrows == 588, 'wrong number of rows after resampling'
     assert band.ncols == 442, 'wrong number of columns after resampling'
     assert band.is_masked_array, 'mask should be preserved'
+
+    # resample back to 10m and align to old shape
+    band.resample(
+        target_resolution=10,
+        target_shape=old_shape,
+        interpolation_method=cv2.INTER_CUBIC,
+        inplace=True
+    )
+
+    assert (band.nrows, band.ncols) == old_shape, 'resampling to target shape did not work'
 
     # test masking with boolean mask (should mask everything)
     mask = np.ndarray(band.values.shape, dtype='bool')
@@ -1469,6 +1547,15 @@ if __name__ == '__main__':
     #     vector_features=vector_features_2,
     #     full_bounding_box_only=False
     # )
+
+    # write band data to disk
+    fpath_out = Path('/tmp/test.jp2')
+    band.to_rasterio(fpath_raster=fpath_out)
+
+    assert fpath_out.exists(), 'output dataset not written'
+    band_read_again = Band.from_rasterio(fpath_out)
+    assert (band_read_again.values == band.values.data).all(), \
+        'band data not the same after writing'
 
     # read single pixels from raster dataset
     pixels = Band.read_pixels(
@@ -1519,6 +1606,8 @@ if __name__ == '__main__':
     #     band_idx=22,
     # )
     #
+
+    resampled = band.resample(target_resolution=5)
 
     snap_bounds = band.bounds
 
