@@ -16,6 +16,7 @@ import rasterio as rio
 import rasterio.mask
 import zarr
 
+from copy import deepcopy
 from matplotlib.colors import ListedColormap
 from matplotlib.figure import figaspect
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -25,6 +26,7 @@ from rasterio import features
 from rasterio.coords import BoundingBox
 from rasterio.crs import CRS
 from shapely.geometry import box
+from shapely.geometry import Point
 from shapely.geometry import Polygon
 from typing import Any
 from typing import Dict
@@ -37,7 +39,6 @@ from agrisatpy.core.utils.geometry import convert_3D_2D
 from agrisatpy.core.utils.raster import get_raster_attributes
 from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.utils.exceptions import BandNotFoundError, DataExtractionError
-from pickle import FALSE
 
 
 class GeoInfo(object):
@@ -703,12 +704,124 @@ class Band(object):
 
     @classmethod
     def read_pixels(
-            cls
+            cls,
+            fpath_raster: Path,
+            vector_features: Union[Path, gpd.GeoDataFrame],
+            band_idx: Optional[int] = 1,
+            band_name_src: Optional[str] = '',
+            band_name_dst: Optional[str] = 'B1'
         ) -> gpd.GeoDataFrame:
         """
         Reads single pixel values from a raster dataset into a ``GeoDataFrame``
+
+        NOTE:
+            The pixels to read are defined by a ``GeoDataFrame`` or file with
+            vector features understood by ``fiona``. If the geometry type is not
+            ``Point`` the centroids will be used for extracting the closest
+            grid cell value.
+
+        :param fpath_raster:
+            file-path to the raster dataset from which to extract pixel values
+        :param vector_features:
+            file-path or ``GeoDataFrame`` to features defining the pixels to read
+            from a raster dataset. The geometries can be of type ``Point``,
+            ``Polygon`` or ``MultiPolygon``. In the latter two cases the centroids
+            are used to extract pixel values, whereas for point features the
+            closest raster grid cell is selected.
+        :param band_idx:
+            band index of the raster band to read (starting with 1). If not
+            provided the first band will be always read. Ignored if 
+            `band_name_src` is provided.
+        :param band_name_src:
+            instead of providing a band index to read (`band_idx`) a band name
+            can be passed. If provided `band_idx` is ignored.
+        :param band_name_dst:
+            name of the raster band in the resulting ``GeoDataFrame`` (i.e.,
+            column name)
+        :returns:
+            ``GeoDataFrame`` with extracted pixel values. If the vector features
+            defining the sampling points are not within the spatial extent of the
+            raster dataset the pixel values are set to nodata (inferred from
+            the raster source)
         """
-        pass
+
+        # check input point features
+        gdf = check_aoi_geoms(
+            in_dataset=vector_features,
+            fname_raster=fpath_raster,
+            full_bounding_box_only=False
+        )
+        allowed_geometry_types = ['Point', 'Polygon', 'MultiPolygon']
+        gdf = check_geometry_types(
+            in_dataset=gdf,
+            allowed_geometry_types=allowed_geometry_types
+        )
+
+        # convert to centroids if the geometries are not of type Point
+        gdf.geometry = gdf.geometry.apply(
+            lambda x: x.centroid if x.type in ['Polygon', 'MultiPolygon'] else x
+        )
+
+        # use rasterio.sample to extract the pixel values from the raster
+        # to do so, we need a list of coordinate tuples
+        coord_list = [(x,y) for x,y in zip(gdf.geometry.x , gdf['geometry'].y)]
+        with rio.open(fpath_raster, 'r') as src:
+            # overwrite band_idx if band_name_src is provided
+            band_names = list(src.descriptions)
+            if band_name_src != '':
+                if band_name_src not in band_names:
+                    raise BandNotFoundError(
+                        f'Could not find band "{band_name_src}" ' \
+                        f'in {fpath_raster}'
+                    )
+                band_idx = band_names.index(band_name_src)
+            try:
+                # yield all values from the generator
+                def _sample(src, coord_list, band_idx):
+                    yield from src.sample(coord_list, band_idx)
+                pixel_samples =list(_sample(src, coord_list, band_idx))
+            except Exception as e:
+                raise Exception(f'Extraction of pixels from raster failed: {e}')
+
+        # append the extracted pixels to the exisiting geodataframe. We can do
+        # so, because we have passed the pixels in the same order as they occur
+        # in the dataframe
+        band_list = [x[0] for x in pixel_samples]
+        gdf[band_name_dst] = band_list
+
+        return gdf
+
+    def _flatten_coordinates(self) -> Dict[str, np.array]:
+        """
+        Flattens band coordinates. To be used when converting an array to
+        ``geopandas.GeoDataFrame``.
+
+        :returns:
+            dictionary of ``numpy.ndarray`` containing the x and y
+            coordinates in flattened format to match the flattened band
+            values in ``Fortran`` order
+        """
+             
+        # get coordinates
+        coords = self.coordinates
+        # flatten x coordinates along the y-axis
+        flat_x_coords = np.repeat(coords['x'], self.nrows)
+        # flatten y coordinates along the x-axis
+        flat_y_coords = np.tile(coords['y'], self.ncols)
+    
+        out_coords = {
+            'x': flat_x_coords,
+            'y': flat_y_coords
+        }
+    
+        return out_coords
+
+    def copy(self):
+        """
+        Returns a copy of the current ``Band`` instance
+        """
+        attrs = deepcopy(self.__dict__)
+        return Band(**attrs)
 
     def plot(
             self,
@@ -864,7 +977,8 @@ class Band(object):
 
     def mask(
             self,
-            mask: np.ndarray
+            mask: np.ndarray,
+            inplace: Optional[bool] = False
         ):
         """
         Mask out pixels based on a boolean array.
@@ -877,6 +991,12 @@ class Band(object):
         :param mask:
             ``numpy.ndarray`` of dtype ``boolean`` to use as mask.
             The mask must match the shape of the raster data.
+        :param inplace:
+            if False (default) returns a copy of the ``Band`` instance
+            with the changes applied. If True overwrites the values
+            in the current instance.
+        :returns:
+            ``Band`` instance if `inplace` is False, None instead.
         """
 
         # check shape of mask passed and its dtype
@@ -909,8 +1029,13 @@ class Band(object):
             )
         elif self.is_zarr:
             raise NotImplemented()
-            
-        object.__setattr__(self, 'values', masked_array)
+
+        if inplace:
+            object.__setattr__(self, 'values', masked_array)
+        else:
+            attrs = deepcopy(self.__dict__)
+            attrs.update({'values': masked_array})
+            return Band(**attrs)
 
     def resample(self):
         """
@@ -924,22 +1049,72 @@ class Band(object):
         """
         pass
 
-    def reduce(self):
+    def reduce(
+            self,
+            method: Union[str,List[str]]
+        ) -> Dict[str, Union[int, float]]:
         """
         Reduces the raster data to a scalar
+
+        :param method:
+            any ``numpy`` function taking a two-dimensional array as input
+            and returning a single scalar. Can be a single function name
+            (e.g., "mean") or a list of function names (e.g., ["mean", "median"])
+        :returns:
+            a dictionary with scalar results
         """
-        pass
+
+        if isinstance(method, str):
+            method = [method]
+
+        # determine numpy prefix
+        if self.is_masked_array:
+            numpy_prefix = 'np.ma'
+        elif self.is_ndarray:
+            numpy_prefix = 'np.'
+        elif self.is_zarr:
+            raise NotImplemented()
+        
+        # compute statistics
+        stats = {}
+        for operator in method:
+            # formulate numpy expression
+            expression = f'{numpy_prefix}.{operator}'
+            # numpy.ma has some different function names to consider
+            if operator.startswith('nan'):
+                expression = f'{numpy_prefix}.{operator[3::]}'
+            elif operator.endswith('nonzero'):
+                expression = f'{numpy_prefix}.count'
+            try:
+                # get function object and use its __call__ method
+                numpy_function = eval(expression)
+                stats[operator] = numpy_function.__call__(
+                    self.values
+                )
+            except TypeError:
+                raise Exception(
+                    f'Unknown function name for {numpy_prefix}: {operator}'
+                )
+
+        return stats
 
     def scale_data(
             self,
-            inverse: Optional[bool] = False
-        ) -> None:
+            inverse: Optional[bool] = False,
+            inplace: Optional[bool] = False
+        ):
         """
         Applies scale and offset factors to the data.
 
         :param inverse:
             if True reverse the scaling (i.e., takes the inverse
             of the scale factor and changes the sign of the offset)
+        :param inplace:
+            if False (default) returns a copy of the ``Band`` instance
+            with the changes applied. If True overwrites the values
+            in the current instance.
+        :returns:
+            ``Band`` instance if `inplace` is False, None instead.
         """
 
         if inverse:
@@ -954,13 +1129,63 @@ class Band(object):
                 data=scaled_array,
                 mask=self.values.mask
             )
-        object.__setattr__(self, 'values', scaled_array)
+        elif self.is_ndarray:
+            scaled_array = scale * self.values + offset
+        elif self.is_zarr:
+            raise NotImplemented()
 
-    def to_dataframe(self):
+        if inplace:
+            object.__setattr__(self, 'values', scaled_array)
+        else:
+            attrs = deepcopy(self.__dict__)
+            attrs.update({'values': scaled_array})
+            return Band(**attrs)
+
+    def to_dataframe(self) -> gpd.GeoDataFrame:
         """
         Returns a ``GeoDataFrame`` from the raster band data
+
+        :returns:
+            ``GeoDataFrame`` of raster values in the spatial coordinate
+            system of the raster band data. The geometry type is always
+            ``Point``.
         """
-        pass
+        # get coordinates of the first band in flattened format
+        coords = self._flatten_coordinates()
+        # get EPSG code
+        epsg = self.geo_info.epsg
+
+        # if the band is a masked array, we need numpy.ma functions
+        new_shape = self.nrows * self.ncols
+        if self.is_masked_array:
+            flattened = np.ma.reshape(self.values, new_shape, order='F')
+            # save mask to array
+            mask = flattened.mask
+            # compress array (removes masked values)
+            flattened = flattened.compressed()
+            # mask band coordinates
+            for coord in coords:
+                coord_masked = np.ma.MaskedArray(data=coords[coord], mask=mask)
+                coord_compressed = coord_masked.compressed()
+                coords.update(
+                    {
+                        coord: coord_compressed
+                    }
+                )
+        # otherwise we can use numpy ndarray's functions
+        elif self.is_ndarray:
+            flattened = np.reshape(self.values, new_shape, order='F')
+        elif self.is_zarr:
+            raise NotImplemented()
+
+        # convert the coordinates to shapely geometries
+        coordinate_geoms = [Point(c[0], c[1]) for c in list(zip(coords['x'], coords['y']))]
+        # call the GeoDataFrame constructor
+        gdf = gpd.GeoDataFrame(geometry=coordinate_geoms, crs=epsg)
+        # add band data
+        gdf[self.band_name] = flattened
+
+        return gdf
 
     def to_xarray(self):
         """
@@ -981,6 +1206,7 @@ if __name__ == '__main__':
     # read data from raster
     fpath_raster = Path('../../../data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
     vector_features = Path('../../../data/sample_polygons/ZH_Polygons_2020_ESCH_EPSG32632.shp')
+    vector_features_2 = Path('../../../data/sample_polygons/BY_Polygons_Canola_2019_EPSG32632.shp')
 
     band = Band.from_rasterio(
         fpath_raster=fpath_raster,
@@ -1017,10 +1243,33 @@ if __name__ == '__main__':
 
     band.plot(colorbar_label='Surface Reflectance')
 
+    # get band statistics
+    stats = band.reduce(method=['mean', 'min', 'max'])
+    mean_stats = band.reduce(method='mean')
+    assert mean_stats['mean'] == stats['mean'], 'miss-match of metrics'
+    assert stats['min'] == band.values.min(), 'minimum not calculated correctly'
+    assert stats['max'] == band.values.max(), 'maximum not calculated correctly'
+
+    # convert to GeoDataFrame
+    gdf = band.to_dataframe()
+    assert (gdf.geometry.type == 'Point').all(), 'wrong geometry type'
+    assert set(gdf.columns) == {'geometry', 'B02'}, 'wrong column labels'
+    assert gdf.shape[0] == 29674, 'wrong number of pixels converted'
+    assert gdf.B02.max() == stats['max'], 'band statistics not the same after conversion'
+    assert gdf.B02.min() == stats['min'], 'band statistics not the same after conversion'
+    assert gdf.B02.mean() == stats['mean'], 'band statistics not the same after conversion'
+
     # test masking with boolean mask (should mask everything)
     mask = np.ndarray(band.values.shape, dtype='bool')
     mask.fill(True)
-    band.mask(mask=mask)
+
+    # try without inplace
+    masked_band = band.mask(mask=mask, inplace=False)
+    assert isinstance(masked_band, Band), 'wrong return type'
+    assert (masked_band.values.mask == mask).all(), 'mask not applied correctly'
+    assert (masked_band.values.data == band.values.data).all(), 'data not preserved correctly'
+
+    band.mask(mask=mask, inplace=True)
     assert band.values.mask.all(), 'not all pixels masked'
 
     # test scaling -> nothing should happen at this stage
@@ -1030,16 +1279,32 @@ if __name__ == '__main__':
     band.scale_data(inverse=True)
     assert (values_before_scaling.data == band.values.data).all(), 'scaling must not have an effect'
 
-    # read with scale (gain) and offset factor
-    band = Band.from_rasterio(
+    # read data with AOI outside of the raster bounds -> should raise a ValueError
+    # band = Band.from_rasterio(
+    #     fpath_raster=fpath_raster,
+    #     band_idx=1,
+    #     band_name_dst='B02',
+    #     vector_features=vector_features_2,
+    #     full_bounding_box_only=False
+    # )
+
+    # read single pixels from raster dataset
+    pixels = Band.read_pixels(
         fpath_raster=fpath_raster,
-        band_idx=1,
-        band_name_dst='B02',
-        color_name='blue',
-        vector_features=vector_features,
-        full_bounding_box_only=True,
-        scale=0.0001
+        vector_features=vector_features
     )
+    assert 'B1' in pixels.columns, 'extracted band data not found'
+    gdf = gpd.read_file(vector_features)
+    assert pixels.shape[0] == gdf.shape[0], 'not all geometries extracted'
+    assert pixels.geometry.type.unique().shape[0] == 1, 'there are too many different geometry types'
+    assert pixels.geometry.type.unique()[0] == 'Point', 'wrong geometry type'
+
+    # try features outside of the extent of the raster
+    pixels = Band.read_pixels(
+        fpath_raster=fpath_raster,
+        vector_features=vector_features_2
+    )
+    assert (pixels.B1 == 0).all(), 'nodata not set properly to features outside of raster extent'
 
     # read with full bounding box (no masking just spatial sub-setting)
     band = Band.from_rasterio(
@@ -1072,7 +1337,6 @@ if __name__ == '__main__':
     #     band_idx=22,
     # )
     #
-    # try reading datasets completely outside of the band's extent
 
     snap_bounds = band.bounds
 
