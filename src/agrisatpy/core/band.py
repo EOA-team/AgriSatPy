@@ -28,6 +28,7 @@ from rasterio import features
 from rasterio.coords import BoundingBox
 from rasterio.crs import CRS
 from rasterio.drivers import driver_from_extension
+from rasterio.enums import Resampling
 from shapely.geometry import box
 from shapely.geometry import Point
 from shapely.geometry import Polygon
@@ -44,7 +45,8 @@ from agrisatpy.core.utils.raster import get_raster_attributes
 from agrisatpy.utils.reprojection import check_aoi_geoms
 from agrisatpy.utils.arrays import count_valid, upsample_array
 from agrisatpy.utils.exceptions import BandNotFoundError, \
-    DataExtractionError, ResamplingFailedError
+    DataExtractionError, ResamplingFailedError, ReprojectionError
+from agrisatpy.utils.reprojection import reproject_raster_dataset
 
 
 class GeoInfo(object):
@@ -103,7 +105,6 @@ class GeoInfo(object):
             pixel grid cell size in y direction in units of the spatial reference
             system.
         """
-
         # make sure the EPSG code is valid
         try:
             CRS.from_epsg(epsg)
@@ -132,7 +133,6 @@ class GeoInfo(object):
         :returns:
             ``GeoInfo`` instance as ``rasterio.Affine``
         """
-
         return Affine(
             a=self.pixres_x,
             b=0,
@@ -140,6 +140,30 @@ class GeoInfo(object):
             d=0,
             e=self.pixres_y,
             f=self.uly
+        )
+
+    @classmethod
+    def from_affine(
+            cls,
+            affine: Affine,
+            epsg: int
+        ):
+        """
+        Returns a ``GeoInfo`` instance from a ``rasterio.Affine`` object
+
+        :param affine:
+            ``rasterio.Affine`` object
+        :param epsg:
+            EPSG code identifying the spatial coordinate system
+        :returns:
+            new ``GeoInfo`` instance
+        """
+        return cls(
+            epsg=epsg,
+            ulx=affine.c,
+            uly=affine.f,
+            pixres_x=affine.a,
+            pixres_y=affine.e
         )
 
 
@@ -603,6 +627,8 @@ class Band(object):
             provided the nodata value is set to 0 (rasterio default)
         :param dtype_src:
             datatype of the resulting raster array. Per default "float32" is used.
+        :param kwargs:
+            additional key-word arguments to pass to `~agrisatpy.core.Band`
         :returns:
             new ``Band`` instance from a vector features source
         """
@@ -854,11 +880,11 @@ class Band(object):
         attrs['offsets'] = (self.offset, )
         attrs['descriptions'] = (self.color_name, )
         attrs['crs'] = self.geo_info.epsg
-        attrs['transform'] = self.geo_info.as_affine()
+        attrs['transform'] = tuple(self.transform)
+        attrs['units'] = (self.unit, )
         attrs.update(kwargs)
 
         return attrs
-        
 
     def get_meta(
             self,
@@ -884,7 +910,7 @@ class Band(object):
         meta['dtype'] = str(self.values.dtype)
         meta['count'] = 1
         meta['nodata'] = self.nodata
-        meta['transform'] = self.geo_info.as_affine()
+        meta['transform'] = self.transform
         meta['is_tile'] = self.is_tiled
         meta['driver'] = driver
         meta.update(kwargs)
@@ -1274,11 +1300,80 @@ class Band(object):
             })
             return Band(**attrs)
 
-    def reproject(self):
+    def reproject(
+            self,
+            target_crs: Union[int, CRS],
+            dst_transform: Optional[Affine] = None,
+            interpolation_method: Optional[int] = Resampling.nearest,
+            num_threads: Optional[int] = 1,
+            inplace: Optional[bool] = False,
+            **kwargs
+        ):
         """
         Projects the raster data into a different spatial coordinate system
         """
-        pass
+
+        # collect options for reprojection
+        reprojection_options = {
+            'src_crs': self.crs,
+            'src_transform': self.transform,
+            'dst_crs': target_crs,
+            'src_nodata': self.nodata,
+            'resampling': interpolation_method,
+            'num_threads': num_threads,
+            'dst_transform': dst_transform
+        }
+        reprojection_options.update(kwargs)
+
+        # check for array type; masked arrays are not supported directly
+        # also we have to cast to float for performing the reprojection
+        if self.is_masked_array:
+            band_data = deepcopy(self.values.data).astype(float)
+            band_mask = deepcopy(self.values.mask).astype(float)
+        elif self.is_ndarray:
+            band_data = deepcopy(self.values).astype(float)
+        elif self.is_zarr:
+            raise NotImplementedError()
+
+        try:
+            out_data, out_transform = reproject_raster_dataset(
+                raster=band_data,
+                **reprojection_options
+            )
+        except Exception as e:
+            raise ReprojectionError(
+                f'Could not re-project band {self.band_name}: {e}'
+            )
+
+        # cast array back to original dtype
+        out_data = out_data[0,:,:].astype(self.values.dtype)
+
+        # reproject the mask separately
+        if self.is_masked_array:
+            out_mask, _ = reproject_raster_dataset(
+                raster=band_mask,
+                **reprojection_options
+            )
+            out_mask = out_mask.astype(bool)
+            out_data = np.ma.MaskedArray(
+                data=out_data,
+                mask=out_mask[0,:,:]
+            )
+
+        new_geo_info = GeoInfo.from_affine(
+            affine=out_transform,
+            epsg=target_crs
+        )
+        if inplace:
+            object.__setattr__(self, 'values', out_data)
+            object.__setattr__(self, 'geo_info', new_geo_info)
+        else:
+            attrs = deepcopy(self.__dict__)
+            attrs.update({
+                'values': out_data,
+                'geo_info': new_geo_info
+            })
+            return Band(**attrs)
 
     def reduce(
             self,
@@ -1567,6 +1662,17 @@ if __name__ == '__main__':
 
     band.plot(colorbar_label='Surface Reflectance')
 
+    # reproject to Swiss Coordinate System (EPSG:2056)
+    reprojected = band.reproject(target_crs=2056)
+
+    assert reprojected.crs == 2056, 'wrong EPSg after reprojection'
+    assert reprojected.is_masked_array, 'mask must not be lost after reprojection'
+    assert np.round(reprojected.geo_info.ulx) == 2693130.0, 'wrong upper left x coordinate'
+    assert np.round(reprojected.geo_info.uly) == 1257861.0, 'wrong upper left y coordinate'
+
+    reprojected.to_rasterio('/tmp/reprojected.jp2')
+    
+
     # get band statistics
     stats = band.reduce(method=['mean', 'min', 'max'])
     mean_stats = band.reduce(method='mean')
@@ -1593,6 +1699,8 @@ if __name__ == '__main__':
         'array values changed after conversion to xarray'
     assert np.count_nonzero(~np.isnan(xarr.B02)) == band.values.compressed().shape[0], \
         'masked values were not set to nan correctly'
+    assert xarr.dims['y'] == band.nrows and xarr.dims['x'] == band.ncols, \
+        'wrong number of rows and columns in xarray'
 
     # resample to 20m spatial resolution using bi-cubic interpolation
     resampled = band.resample(
