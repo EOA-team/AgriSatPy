@@ -15,6 +15,7 @@ import matplotlib.ticker as ticker
 import numpy as np
 import rasterio as rio
 import rasterio.mask
+import xarray as xr
 import zarr
 
 from copy import deepcopy
@@ -252,7 +253,8 @@ class Band(object):
             scale: Optional[Union[int, float]] = 1.,
             offset: Optional[Union[int, float]] = 0.,
             unit: Optional[str] = '',
-            nodata: Optional[Union[int,float]] = None
+            nodata: Optional[Union[int,float]] = None,
+            is_tiled: Optional[Union[int, bool]] = 0
         ):
         """
         Constructor to instantiate a new band object.
@@ -289,6 +291,9 @@ class Band(object):
             numeric value indicating no-data. If not provided the nodata value
             is set to ``numpy.nan`` for floating point data, 0 and -999 for
             unsigned and signed integer data, respectively.
+        :param is_tiled:
+            boolean flag indicating if the raster data is sub-divided into
+            tiles. False (zero) by default.
         """
 
         # make sure the passed values are 2-dimensional
@@ -313,6 +318,7 @@ class Band(object):
         object.__setattr__(self, 'offset', offset)
         object.__setattr__(self, 'unit', unit)
         object.__setattr__(self, 'nodata', nodata)
+        object.__setattr__(self, 'is_tiled', is_tiled)
 
     def __setattr__(self, *args, **kwargs):
         raise TypeError('Band object attributes are immutable')
@@ -340,12 +346,11 @@ class Band(object):
         """x-y spatial band coordinates"""
         nx, ny = self.ncols, self.nrows
         transform = self.transform
-        shift = 0
-        x, _ = transform * (np.arange(nx) + shift, np.zeros(nx) + shift)
-        _, y = transform * (np.zeros(ny) + shift, np.arange(ny) + shift)
+        x, _ = transform * (np.arange(nx), np.zeros(nx))
+        _, y = transform * (np.zeros(ny), np.arange(ny))
 
         return {'x': x, 'y': y}
-    
+
     @property
     def crs(self) -> CRS:
         """Coordinate Reference System of the band"""
@@ -533,6 +538,7 @@ class Band(object):
         nodata, nodata_vals = None, attrs.get('nodatavals', None)
         if nodata_vals is not None:
             nodata = nodata_vals[band_idx-1]
+        is_tiled = attrs.get('is_tiled', 0)
 
         # reconstruct geo-info
         geo_info = GeoInfo(
@@ -552,6 +558,7 @@ class Band(object):
             offset=offset,
             unit=unit,
             nodata=nodata,
+            is_tiled=is_tiled,
             **kwargs
         )
 
@@ -828,6 +835,31 @@ class Band(object):
         attrs = deepcopy(self.__dict__)
         return Band(**attrs)
 
+    def get_attributes(
+            self,
+            **kwargs
+        ) -> Dict[str, Any]:
+        """
+        Returns raster data attributes in ``rasterio`` compatible way
+
+        :param kwargs:
+            key-word arguments to insert into the raster attributes
+        :returns:
+            dictionary compatible with ``rasterio`` attributes
+        """
+        attrs = {}
+        attrs['is_tiled'] = self.is_tiled
+        attrs['nodatavals'] = (self.nodata, )
+        attrs['scales'] = (self.scale, )
+        attrs['offsets'] = (self.offset, )
+        attrs['descriptions'] = (self.color_name, )
+        attrs['crs'] = self.geo_info.epsg
+        attrs['transform'] = self.geo_info.as_affine()
+        attrs.update(kwargs)
+
+        return attrs
+        
+
     def get_meta(
             self,
             driver: Optional[str] = 'gTiff',
@@ -848,15 +880,22 @@ class Band(object):
         meta = {}
         meta['height'] = self.nrows
         meta['width'] = self.ncols
-        meta['crs'] = CRS.from_epsg(self.geo_info.epsg)
+        meta['crs'] = self.crs
         meta['dtype'] = str(self.values.dtype)
         meta['count'] = 1
         meta['nodata'] = self.nodata
         meta['transform'] = self.geo_info.as_affine()
+        meta['is_tile'] = self.is_tiled
         meta['driver'] = driver
         meta.update(kwargs)
 
         return meta
+
+    def get_pixels(self):
+        """
+        Returns pixel values from a ``Band`` instance raster values
+        """
+        pass
         
     def plot(
             self,
@@ -1243,10 +1282,11 @@ class Band(object):
 
     def reduce(
             self,
-            method: Union[str,List[str]]
+            method: Union[str,List[str]],
+            by: Optional[Union[Path, gpd.GeoDataFrame]] = None
         ) -> Dict[str, Union[int, float]]:
         """
-        Reduces the raster data to a scalar
+        Reduces the raster data to scalar values.
 
         :param method:
             any ``numpy`` function taking a two-dimensional array as input
@@ -1255,6 +1295,8 @@ class Band(object):
         :returns:
             a dictionary with scalar results
         """
+
+        # TODO: implement reduce by vector features
 
         if isinstance(method, str):
             method = [method]
@@ -1379,11 +1421,65 @@ class Band(object):
 
         return gdf
 
-    def to_xarray(self):
+    def to_xarray(
+            self,
+            attributes: Dict[str, Any] = {},
+            **kwargs
+        ):
         """
-        Returns a ``xarray.Dataset`` from the raster band data
+        Returns a ``xarray.Dataset`` from the raster band data.
+
+        NOTE:
+            To ensure consistency with ``xarray`` pixel coordinates are
+            shifted from the upper left pixel corner to the center.
+
+        :param attributes:
+            additional raster attributes to update or add
+        :param kwargs:
+            additional key-word arguments to pass to `~xarray.Dataset`
+        :return:
+            ``xarray.DataSet`` with x and y coordinates. Raster attributes
+            are preserved.
         """
-        pass
+
+        band_data = deepcopy(self.values)
+        # masked pixels are set to nodata
+        if self.is_masked_array:
+            try:
+                band_data.filled(self.nodata)
+            # on type error cast to float since this is most likely caused
+            # by a data type miss-match (int <-> float)
+            except TypeError:
+                band_data = band_data.astype(float)
+                band_data.filled(self.nodata)
+            except Exception as e:
+                raise ValueError(
+                    f'Cannot set masked pixels to nodata: {e}'
+                )
+
+        # get coordinates and shift them half a pixel size
+        shift_x = 0.5 * self.geo_info.pixres_x
+        shift_y = 0.5 * self.geo_info.pixres_y
+        coords = self.coordinates
+        coords.update({
+            'x': [val + shift_x for val in coords['x']],
+            'y': [val + shift_y for val in coords['y']]
+        })
+
+        # define attributes
+        attrs = self.get_attributes(**attributes)
+
+        # call Dataset constructor
+        band_tuple = tuple([('y','x'), band_data])
+        band_dict = {self.band_name: band_tuple}
+        xds = xr.Dataset(
+            band_dict,
+            coords=coords,
+            attrs=attrs,
+            **kwargs
+        )
+
+        return xds
 
     def to_rasterio(
             self,
@@ -1486,6 +1582,17 @@ if __name__ == '__main__':
     assert gdf.B02.max() == stats['max'], 'band statistics not the same after conversion'
     assert gdf.B02.min() == stats['min'], 'band statistics not the same after conversion'
     assert gdf.B02.mean() == stats['mean'], 'band statistics not the same after conversion'
+
+    # convert to xarray
+    xarr = band.to_xarray()
+    assert xarr.x.values[0] == band.geo_info.ulx + 0.5*band.geo_info.pixres_x, \
+        'pixel coordinate not shifted to center of pixel in xarray'
+    assert xarr.y.values[0] == band.geo_info.uly + 0.5*band.geo_info.pixres_y, \
+        'pixel coordinate not shifted to center of pixel in xarray'
+    assert (xarr.B02.values == band.values.astype(float)).all(), \
+        'array values changed after conversion to xarray'
+    assert np.count_nonzero(~np.isnan(xarr.B02)) == band.values.compressed().shape[0], \
+        'masked values were not set to nan correctly'
 
     # resample to 20m spatial resolution using bi-cubic interpolation
     resampled = band.resample(
