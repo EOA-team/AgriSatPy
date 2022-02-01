@@ -7,6 +7,7 @@ AgriSatPy stores band data basically as ``numpy`` arrays. Masked arrays of the c
 computer, ``zarr`` can be used.
 '''
 
+import cv2
 import geopandas as gpd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -32,13 +33,16 @@ from typing import Any
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Tuple
 from typing import Union
 
 from agrisatpy.core.utils.geometry import check_geometry_types
 from agrisatpy.core.utils.geometry import convert_3D_2D
 from agrisatpy.core.utils.raster import get_raster_attributes
 from agrisatpy.utils.reprojection import check_aoi_geoms
-from agrisatpy.utils.exceptions import BandNotFoundError, DataExtractionError
+from agrisatpy.utils.arrays import count_valid, upsample_array
+from agrisatpy.utils.exceptions import BandNotFoundError, \
+    DataExtractionError, ResamplingFailedError
 
 
 class GeoInfo(object):
@@ -1037,11 +1041,168 @@ class Band(object):
             attrs.update({'values': masked_array})
             return Band(**attrs)
 
-    def resample(self):
+    def resample(
+            self,
+            target_resolution: Union[int, float],
+            interpolation_method: Optional[int] = cv2.INTER_NEAREST_EXACT,
+            target_shape: Optional[Tuple[int, int]] = None,
+            inplace: Optional[bool] = False
+        ):
         """
-        Changes the raster grid cell (pixel) size
+        Changes the raster grid cell (pixel) size.
+        Nodata pixels are not used for resampling.
+
+        :param target_resolution:
+            spatial resolution (grid cell size) in units of the spatial
+            reference system. Applies to x and y direction.
+        :param interpolation_method:
+            opencv interpolation method. Per default nearest neighbor
+            interpolation is used (`~cv2.INTER_NEAREST_EXACT`). See the
+            `~cv2` documentation for a list of available methods.
+        :param target_shape:
+            shape of the output in terms of number of rows and columns.
+            If None (default) the `target_shape` parameter is inferred
+            from the band data. If you want to make sure the output is
+            *aligned* with another raster band (co-registered) provide
+            this parameter.
+        :param inplace:
+            if False (default) returns a copy of the ``Band`` instance
+            with the changes applied. If True overwrites the values
+            in the current instance.
+        :returns:
+            ``Band`` instance if `inplace` is False, None instead.
         """
-        pass
+
+        # resampling currently works on grids with identitical x and y
+        # grid cell size only
+        if abs(self.geo_info.pixres_x) != abs(self.geo_info.pixres_y):
+            raise NotImplementedError(
+                'Resampling currently supports regular grids only '\
+                'where the grid cell size is the same in x and y ' \
+                'direction'
+            )
+
+        # check if a target shape is provided
+        if target_shape is not None:
+            nrows_resampled = target_shape[0]
+            ncols_resampled = target_shape[1]
+        # if not determine the extent from the bounds
+        else:
+            bounds = BoundingBox(*self.bounds.exterior.bounds)
+            # calculate new size of the raster
+            ncols_resampled = int(np.ceil((bounds.right - bounds.left) / target_resolution))
+            nrows_resampled = int(np.ceil((bounds.top - bounds.bottom) / target_resolution))
+            target_shape = (nrows_resampled, ncols_resampled)
+
+        # opencv2 switches the axes order!
+        dim_resampled = (ncols_resampled, nrows_resampled)
+
+        # check if the band data is stored in a masked array
+        # if so, replace the masked values with NaN
+        if self.is_masked_array:
+            band_data = deepcopy(self.values.data)
+        elif self.is_ndarray:
+            band_data = deepcopy(self.values)
+        elif self.is_zarr:
+            raise NotImplementedError()
+            
+        scaling_factor = abs(self.geo_info.pixres_x / target_resolution)
+        blackfill_value = self.nodata
+
+        # we have to take care about no-data pixels
+        valid_pixels = count_valid(
+            in_array=band_data,
+            no_data_value=blackfill_value
+        )
+        all_pixels = band_data.shape[0] * band_data.shape[1]
+        # if all pixels are valid, then we can directly proceed to the resampling
+        if valid_pixels == all_pixels:
+            try:
+                res = cv2.resize(
+                    band_data,
+                    dsize=dim_resampled,
+                    interpolation=interpolation_method
+                )
+            except Exception as e:
+                raise ResamplingFailedError(e)
+        else:
+            # blackfill pixel should be set to NaN before resampling
+            type_casting = False
+            if band_data.dtype in ['uint8', 'uint16', 'uint32', \
+            'int8', 'int16','int32', 'int64']:
+                tmp = deepcopy(band_data).astype(float)
+                type_casting = True
+            else:
+                tmp = deepcopy(band_data)
+            tmp[tmp == blackfill_value] = np.nan
+            # resample data
+            try:
+                res = cv2.resize(
+                    tmp,
+                    dsize=dim_resampled,
+                    interpolation=interpolation_method
+                )
+            except Exception as e:
+                raise ResamplingFailedError(e)
+
+            # in addition, run pixel division since there will be too many NaN pixels
+            # when using only res from cv2 resize as it sets pixels without full
+            # spatial context to NaN. This works, however, only if the target resolution
+            # decreases the current pixel resolution by an integer scalar
+            try:
+                res_pixel_div = upsample_array(
+                    in_array=band_data,
+                    scaling_factor=int(scaling_factor)
+                )
+            except Exception as e:
+                res_pixel_div = np.zeros(0)
+
+            # replace NaNs with values from pixel division (if possible); thus we will
+            # get all pixel values and the correct blackfill
+            # when working on spatial subsets this might fail because of shape mismatches;
+            # in this case keep the cv2 output, which means loosing a few pixels
+            if res.shape == res_pixel_div.shape:
+                res[np.isnan(res)] = res_pixel_div[np.isnan(res)]
+            else:
+                res[np.isnan(res)] = blackfill_value
+
+            # cast back to original datatype if required
+            if type_casting:
+                res = res.astype(band_data.dtype)
+
+        # if the array is masked, resample the mask as well
+        if self.is_masked_array:
+            # convert bools to int8 (cv2 does not support boolean arrays)
+            in_mask = deepcopy(self.values.mask).astype('uint8') 
+            out_mask = cv2.resize(
+                in_mask,
+                dim_resampled,
+                cv2.INTER_NEAREST_EXACT
+            )
+            # convert mask back to boolean array
+            out_mask = out_mask.astype(bool)
+            # save as masked array
+            res = np.ma.masked_array(data=res, mask=out_mask)
+
+        # update the geo_info
+        geo_info = deepcopy(self.geo_info.__dict__)
+        geo_info.update({
+            'pixres_x': np.sign(band.geo_info.pixres_x) * target_resolution,
+            'pixres_y': np.sign(band.geo_info.pixres_y) * target_resolution
+        })
+        new_geo_info = GeoInfo(**geo_info)
+
+        # TODO: think about ulx and uly if the target_shape is passed!!!
+        if inplace:
+            object.__setattr__(self, 'values', res)
+            object.__setattr__(self, 'geon_info', new_geo_info)
+        else:
+            attrs = deepcopy(self.__dict__)
+            attrs.update({
+                'values': res,
+                'geo_info': new_geo_info
+            })
+            return Band(**attrs)
 
     def reproject(self):
         """
@@ -1258,6 +1419,27 @@ if __name__ == '__main__':
     assert gdf.B02.max() == stats['max'], 'band statistics not the same after conversion'
     assert gdf.B02.min() == stats['min'], 'band statistics not the same after conversion'
     assert gdf.B02.mean() == stats['mean'], 'band statistics not the same after conversion'
+
+    # resample to 20m spatial resolution using bi-cubic interpolation
+    resampled = band.resample(
+        target_resolution=20,
+        interpolation_method=cv2.INTER_CUBIC
+    )
+    assert resampled.geo_info.pixres_x == 20, 'wrong pixel size after resampling'
+    assert resampled.geo_info.pixres_y == -20, 'wrong pixel size after resampling'
+    assert resampled.geo_info != band.geo_info, 'geo info must not be the same'
+    assert resampled.ncols < band.ncols, 'spatial resolution should decrease'
+    assert resampled.nrows < band.ncols, 'spatial resolution should decrease'
+    assert resampled.is_masked_array, 'mask should be preserved'
+
+    # resample to 5m inplace
+    band.resample(
+        target_resolution=5,
+        inplace=True
+    )
+    assert band.nrows == 588, 'wrong number of rows after resampling'
+    assert band.ncols == 442, 'wrong number of columns after resampling'
+    assert band.is_masked_array, 'mask should be preserved'
 
     # test masking with boolean mask (should mask everything)
     mask = np.ndarray(band.values.shape, dtype='bool')
