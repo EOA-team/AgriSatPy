@@ -1,14 +1,14 @@
 '''
-This module defines the ``SatDataHandler`` class which is the basic class for reading, plotting,
+This module defines the ``RasterDataHandler`` class which is the basic class for reading, plotting,
 transforming, manipulating and writing (geo-referenced) raster data in an intuitive, object-oriented
 way (in terms of software philosophy).
 
-It relies on ``rasterio`` for all in- and output operations to read data from files (or URIs)
-``GDAL`` drivers. ``SatDataHandler``  stores the band data in a dict-like data structure
-preserving the geo-spatial and related image metadata. Additionally, the class implements methods
-for converting image data to ``xarray`` datasets and ``geopandas`` dataframes.
+A ``RasterDataHandler`` is collection of to zero to N `~agrisatpy.core.Band` instances, where each
+band denotes a two-dimensional array at its core. The ``RasterDataHandler`` class allows thereby
+to handle ``Band`` instances with different spatial reference systems, spatial resolutions (i.e.,
+grid cell sizes) and spatial extents.
 
-Besides that, ``SatDataHandler`` is a super class from which sensor-specific classes for reading
+Besides that, ``RasterDataHandler`` is a super class from which sensor-specific classes for reading
 (satellite) raster image data inherit.
 '''
 
@@ -26,6 +26,7 @@ import rasterio as rio
 import rasterio.mask
 import xarray as xr
 
+from collections.abc import MutableMapping
 from copy import deepcopy
 from collections import namedtuple
 from matplotlib.colors import ListedColormap
@@ -53,13 +54,14 @@ from typing import Tuple
 from typing import Union
 from xarray import DataArray
 
+from agrisatpy.core.band import Band
 
 from agrisatpy.analysis.spectral_indices import SpectralIndices
 from agrisatpy.config import get_settings
-from agrisatpy.io.utils.raster import get_raster_attributes
-from agrisatpy.io.utils.geometry import check_geometry_types
-from agrisatpy.io.utils.geometry import convert_3D_2D
-from agrisatpy.operational.resampling.utils import upsample_array
+from agrisatpy.core.utils.raster import get_raster_attributes
+from agrisatpy.core.utils.geometry import check_geometry_types
+from agrisatpy.core.utils.geometry import convert_3D_2D
+from agrisatpy.utils.arrays import upsample_array
 from agrisatpy.utils.exceptions import NotProjectedError, DataExtractionError
 from agrisatpy.utils.exceptions import InputError
 from agrisatpy.utils.exceptions import ReprojectionError
@@ -73,6 +75,7 @@ from agrisatpy.utils.decorators import check_band_names
 from agrisatpy.utils.decorators import check_chunksize
 from agrisatpy.utils.decorators import check_metadata
 from agrisatpy.utils.constants import ProcessingLevels
+from pickle import FALSE
 
 
 logger = get_settings().logger
@@ -91,23 +94,39 @@ class SceneProperties(object):
     :attribute processing_level:
         processing level of the remotely sensed data (if
         known and applicable)
+    :attribute scene_id:
+        unique scene identifier
     """
 
     def __init__(
             self, 
-            acquisition_time: datetime.datetime = None,
+            acquisition_time: datetime.datetime = datetime.datetime(2999,1,1),
             platform: str = '',
             sensor: str = '',
             processing_level: ProcessingLevels = ProcessingLevels.UNKNOWN,
             scene_id: str = ''
         ):
+        """
+        Class constructor
 
+        :param acquisition_time:
+            image acquisition time
+        :param platform:
+            name of the imaging platform
+        :param sensor:
+            name of the imaging sensor
+        :param processing_level:
+            processing level of the remotely sensed data (if
+            known and applicable)
+        :param scene_id:
+            unique scene identifier
+        """
         self.acquisition_time = acquisition_time
         self.platform = platform
         self.sensor = sensor
         self.processing_level = processing_level
         self.scene_id = scene_id
-    
+
     @property
     def acquisition_time(self) -> datetime.datetime:
         """acquisition time of the scene"""
@@ -169,37 +188,257 @@ class SceneProperties(object):
         self._scene_id = value
 
 
-class SatDataHandler(object):
+class RasterDataHandler(MutableMapping):
     """
     Basic class for handling single and multi-band raster data
     from which sensor-specific classes inherit.
 
-    :param chunks:
-        if True reads image data in chunks using ``rasterio.windows``.
-        Chunks can be used to read data exceeded the computer's RAM.
-    :param chunksize_x:
-        number of raster band columns to read into a single chunk
-    :param chunksize_y:
-        number of raster band rows to read into a single chunk
+    A ``RasterDataHandler`` contains zero to N instances of
+    `~agrisatpy.core.Band`. Bands are always indexed using their band
+    name, therefore the band name must be **unique**!
+
+    :attrib scene_properties:
+        instance of `SceneProperties` for storing scene (i.e., dataset-wide)
+        metadata. Designed for the usage with remote sensing data.
     """
 
     def __init__(
             self,
-            chunks: Optional[bool] = False,
-            chunksize_x: Optional[int] = 512,
-            chunksize_y: Optional[int] = 512
+            bands: Optional[List[Band]] = None,
+            scene_properties: Optional[SceneProperties] = None
         ):
+        """
+        Class constructor
 
-        self.chunks = chunks
-        self.chunksize_x = chunksize_x
-        self.chunksize_y = chunksize_y
+        :param bands:
+            optional list of `~agrisatpy.core.Band` instances.
+        :param scene_properties:
+            optional scene properties of the dataset handled by the
+            current ``RasterDataHandler`` instance
+        """
 
-        self.data = {'meta': None, 'bounds': None, 'attrs': None}
-        self.from_bandstack = False
-        self.has_bandaliases = False
-        self._band_aliases = {}
-        self.scene_properties = SceneProperties
+        if scene_properties is None:
+            scene_properties = SceneProperties()
+        if not isinstance(scene_properties, SceneProperties):
+            raise TypeError('scene_properties takes only objects ' \
+                            'of type SceneProperties')
+        self.scene_properties = scene_properties
 
+        # bands are stored in a dictionary like collection
+        self._frozen = False
+        self.collection = dict()
+        self._frozen = True
+
+        self._band_aliases = []
+        if bands is not None:
+            for band in bands:
+                if not isinstance(band, Band):
+                    raise TypeError('Only Band objects can be passed')
+                self._band_aliases.append(band.color_name)
+            self.__setitem__(band)
+
+    def __getitem__(self, key: str) -> Band:
+        return self.collection[key]
+
+    def __setitem__(self, item: Band):
+        if not isinstance(item, Band):
+            raise TypeError('Only Band objects can be passed')
+        key = item.band_name
+        if key in self.collection.keys():
+            raise KeyError('Duplicate band names not permitted')
+        value = item.copy()
+        self.collection[key] = value
+
+    def __delitem__(self, key: str):
+        del self.collection[key]
+
+    def __iter__(self):
+        return iter(self.collection)
+    
+    def __len__(self) -> int:
+        return len(self.collection)
+
+    @property
+    def band_names(self) -> List[str]:
+        """band names in collection"""
+        return list(self.collection.keys())
+
+    @property
+    def band_aliases(self) -> List[str]:
+        """band aliases in collection"""
+        return self._band_aliases
+
+    @property
+    def collection(self) -> MutableMapping:
+        """collection of the bands currently loaded"""
+        return self._collection
+
+    @collection.setter
+    def collection(self, value):
+        """collection of the bands currently loaded"""
+        if not isinstance(value, dict):
+            raise TypeError(
+                'Only dictionaries can be passed'
+            )
+        if self._frozen:
+            raise ValueError(
+                'Existing collections cannot be overwritten'
+            )
+        if not self._frozen:
+            self._collection = value
+
+    def add_band(self, band: Band) -> None:
+        """
+        Adds a band to the currently handled collection
+        """
+        self.__setitem__(band)
+
+    def drop_band(self, band_name: str):
+        """
+        Deletes a band from the currently handled collection
+
+        :param band_name:
+            name of the band to drop
+        """
+        self.__delitem__(band_name)
+
+    def is_bandstack(
+            self,
+            band_selection: Optional[List[str]] = None
+        ) -> Union[bool, None]:
+        """
+        Checks if the rasters handled in the collection fulfill the bandstack
+        criteria.
+
+        These criteria are:
+            - all bands have the same CRS
+            - all bands have the same x and y dimension (number of rows and columns)
+            - all bands must have the same upper left corner coordinates
+
+        :param band_selection:
+            if not None, checks only a list of selected bands. By default,
+            all bands of the current object are checked.
+        :returns:
+            True if the current object fulfills the criteria else False;
+            None if no bands are loaded into the handler's collection.
+        """
+        if band_selection is None:
+            band_selection = self.band_names
+        else:
+            if not all(elem in self.bandnames for elem in band_selection):
+                raise BandNotFoundError(f'Invalid selection of bands')
+
+        # return None if no bands are in collection
+        if len(band_selection) == 0:
+            return None
+
+        # otherwise use the first band (that will then always exist)
+        # as reference to check the other bands (if any) against
+        first_geo_info = self[band_selection[0]].geo_info
+        first_shape = (
+            self[band_selection[0]].nrows,
+            self[band_selection[0]].ncols
+        )
+        for idx in range(1, len(band_selection)):
+            this_geo_info = self[band_selection[idx]].geo_info
+            this_shape = (
+                self[band_selection[idx]].nrows,
+                self[band_selection[idx]].ncols
+            )
+            if this_shape != first_shape:
+                return False
+            if this_geo_info.epsg != first_geo_info.epsg:
+                return False
+            if this_geo_info.ulx != first_geo_info.ulx:
+                return False
+            if this_geo_info.uly != first_geo_info.uly:
+                return False
+            if this_geo_info.pixres_x != first_geo_info.pixres_x:
+                return False
+            if this_geo_info.pixres_y != first_geo_info.pixres_y:
+                return False
+
+        return True
+
+
+
+if __name__ == '__main__':
+
+    import pytest
+    from agrisatpy.core.band import GeoInfo
+
+    handler = RasterDataHandler()
+    assert handler.scene_properties.acquisition_time == datetime.datetime(2999,1,1)
+    assert len(handler) == 0, 'there should not be any items so far'
+    assert handler.is_bandstack() is None, 'cannot check for bandstack without bands'
+
+    # test with band instance from np.ndarray
+    epsg = 32633
+    ulx = 300000
+    uly = 5100000
+    pixres_x, pixres_y = 10, -10
+    
+    geo_info = GeoInfo(
+        epsg=epsg,
+        ulx=ulx,
+        uly=uly,
+        pixres_x=pixres_x,
+        pixres_y=pixres_y
+    )
+    
+    band_name = 'random'
+    values = np.random.random(size=(100,120))
+    band = Band(band_name=band_name, values=values, geo_info=geo_info)
+
+    handler = RasterDataHandler(bands=[band])
+    assert len(handler) == 1, 'wrong number of bands in collection'
+    assert isinstance(handler[band_name], Band), 'not a proper band in collection'
+    assert handler[band_name].band_name == band_name, 'incorrect band name'
+    assert handler.band_names == [band_name], 'wrong number of band names'
+    assert handler.band_aliases == [''], 'band aliases were not set'
+
+    # make sure the collection is protected properly
+    with pytest.raises(TypeError):
+        handler.collection = 'ttt'
+
+    with pytest.raises(ValueError):
+        handler.collection = dict()
+
+    # add a second band
+    zeros = np.zeros_like(values)
+    band = Band(band_name=band_name, values=zeros, geo_info=geo_info)
+
+    # first try with the same band name
+    with pytest.raises(KeyError):
+        handler.add_band(band)
+
+    band_name_zeros = 'zeros'
+    band = Band(band_name=band_name_zeros, values=zeros, geo_info=geo_info)
+    handler.add_band(band)
+    assert set(handler.band_names) == {band_name, band_name_zeros}, \
+        'band names not set properly in collection'
+    assert (handler[band_name_zeros].values == zeros).all(), \
+        'values not inserted correctly'
+    assert (handler[band_name].values == values).all(), \
+        'values not inserted correctly'
+
+    # bands should fulfil the band stack criterion
+    assert handler.is_bandstack(), 'bands must fulfill bandstack criterion'
+
+    # drop one of the bands again
+    handler.drop_band('random')
+    assert 'random' not in handler.band_names, 'band name still exists after dropping it'
+    with pytest.raises(KeyError):
+        handler['random']
+
+    # drop non-existing band
+    with pytest.raises(KeyError):
+        handler.drop_band('test')
+
+
+
+
+class SatDataHandler():
     @property
     def has_bandaliases(self) -> bool:
         """Indicates if the handler has band aliases"""

@@ -2,6 +2,9 @@
 A band is a two-dimensional array that can be located via a spatial coordinate system.
 Each band thus has a name and an array of values, which are usually numeric.
 
+It relies on ``rasterio`` for all in- and output operations to read data from files (or URIs)
+using ``GDAL`` drivers.
+
 AgriSatPy stores band data basically as ``numpy`` arrays. Masked arrays of the class
 `~numpy.ma.MaskedArray` are also supported. For very large data sets that exceed the RAM of the
 computer, ``zarr`` can be used.
