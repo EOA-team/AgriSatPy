@@ -75,7 +75,6 @@ from agrisatpy.utils.decorators import check_band_names
 from agrisatpy.utils.decorators import check_chunksize
 from agrisatpy.utils.decorators import check_metadata
 from agrisatpy.utils.constants import ProcessingLevels
-from pickle import FALSE
 
 
 logger = get_settings().logger
@@ -269,6 +268,11 @@ class RasterDataHandler(MutableMapping):
         return self._band_aliases
 
     @property
+    def has_band_aliases(self) -> bool:
+        """collection supports aliasing"""
+        return len(self.band_aliases) > 0
+
+    @property
     def collection(self) -> MutableMapping:
         """collection of the bands currently loaded"""
         return self._collection
@@ -360,6 +364,25 @@ class RasterDataHandler(MutableMapping):
 
         return True
 
+    @check_band_names
+    def plot_band(
+            self,
+            band_name: str,
+            **kwargs
+        ) -> Figure:
+        """
+        Plots a band in the collection of raster bands.
+
+        Wrapper method around `~agrisatpy.core.Band.plot`.
+
+        :param band_name:
+            name of the band to plot. Aliasing is supported.
+        :param kwargs:
+            key-word arguments to pass to `~agrisatpy.core.Band.plot`
+        :returns:
+            `~matplotlib.pyplot.Figure` with band plotted as map
+        """
+        return self[band_name].plot(**kwargs)
 
 
 if __name__ == '__main__':
