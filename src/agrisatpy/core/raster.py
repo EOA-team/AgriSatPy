@@ -35,6 +35,7 @@ from matplotlib.pyplot import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from numbers import Number
 from pathlib import Path
+from PIL import Image
 from rasterio import Affine
 from rasterio import features
 from rasterio.crs import CRS
@@ -290,6 +291,12 @@ class RasterCollection(MutableMapping):
             self.__setitem__(band)
 
     def __getitem__(self, key: str) -> Band:
+        # check for band alias if any
+        if self.has_band_aliases:
+            if key not in self.band_names:
+                if key in self.band_aliases:
+                    band_idx = self.band_aliases.index(key)
+                    key = self.band_names[band_idx]
         return self.collection[key]
 
     def __setitem__(self, item: Band):
@@ -488,7 +495,7 @@ class RasterCollection(MutableMapping):
         if band_selection is None:
             band_selection = self.band_names
         else:
-            if not all(elem in self.bandnames for elem in band_selection):
+            if not all(elem in self.band_names for elem in band_selection):
                 raise BandNotFoundError(f'Invalid selection of bands')
 
         # return None if no bands are in collection
@@ -578,6 +585,85 @@ class RasterCollection(MutableMapping):
         return self[band_name].plot(**kwargs)
 
     @check_band_names
+    def plot_multiple_bands(
+            self,
+            band_selection: Optional[List[str]] = None,
+            **kwargs
+        ):
+        """
+        Plots three selected bands in a pseudo RGB with 8bit color-depth.
+
+        IMPORTANT:
+            The bands to plot **must** have the same spatial resolution,
+            extent and CRS
+
+        :param band_selection:
+            optional list of bands to plot. If not provided takes the
+            first three bands (or less) to plot
+        :returns:
+            `~matplotlib.pyplot.Figure` with band plotted as map in
+            8bit color depth
+        """
+        # check passed band_selection
+        if band_selection is None:
+            band_selection = self.band_names
+        # if one band was passed only call plot band
+        if len(band_selection) == 1:
+            return self.plot_band(band_name=band_selection[0], **kwargs)
+
+        # if too many bands are passed take the first three
+        if len(band_selection) > 3:
+            band_selection = band_selection[0:3]
+        # but raise an error when less than three bands are available
+        # unless it's
+        elif len(band_selection) < 3:
+            raise ValueError('Need three bands to plot')
+
+        # check if data can be stacked
+        if not self.is_bandstack(band_selection):
+            raise ValueError(
+                'Bands to plot must share same spatial extent, pixel size and CRS'
+            )
+
+        # get bounds in the spatial coordinate system for plotting
+        xmin, ymin, xmax, ymax = self[band_selection[0]].bounds.exterior.bounds
+        # clip values to 8bit color depth
+        array_list = []
+        for band_name in band_selection:
+            band_data = self.get_band(band_name).values
+            new_arr = ((band_data - band_data.min()) * \
+                       (1/(band_data.max() - band_data.min()) * \
+                        255)).astype('uint8')
+            array_list.append(new_arr)
+        # stack arrays into 3d array
+        stack = np.dstack(array_list)
+        # get quantiles to improve plot visibility
+        vmin = np.nanquantile(stack, 0.1)
+        vmax = np.nanquantile(stack, 0.9)
+        fig = plt.figure(**kwargs)
+        ax = fig.add_subplot(111)
+        ax.imshow(
+            stack,
+            vmin=vmin,
+            vmax=vmax,
+            extent=[xmin, xmax, ymin, ymax]
+        )
+        # set axis labels
+        epsg = self[band_selection[0]].geo_info.epsg
+        if self[band_selection[0]].crs.is_geographic:
+            unit = 'deg'
+        elif self[band_selection[0]].crs.is_projected:
+            unit = 'm'
+        fontsize = kwargs.get('fontsize', 12)
+        ax.set_xlabel(f'X [{unit}] (EPSG:{epsg})', fontsize=fontsize)
+        ax.set_ylabel(f'Y [{unit}] (EPSG:{epsg})', fontsize=fontsize)
+        # add title str
+        title_str = ", ".join(band_selection)
+        ax.set_title(title_str, fontdict={'fontsize': fontsize})
+
+        return fig
+
+    @check_band_names
     def get_band(self, band_name: str) -> Union[Band, None]:
         """
         Returns a single band from the collection or None
@@ -608,7 +694,7 @@ class RasterCollection(MutableMapping):
         pass
 
     @check_band_names
-    def reproject_bands(
+    def reproject(
             self,
             band_selection: Optional[List[str]] = None,
             inplace: Optional[bool] = False,
@@ -626,6 +712,8 @@ class RasterCollection(MutableMapping):
             overwrites existing raster band entries
         :param kwargs:
             key-word arguments to pass to `~agrisatpy.core.Band.reproject`
+        :returns:
+            new RasterCollection if `inplace==False`, None otherwise
         """
         if band_selection is None:
             band_selection = self.band_names
@@ -648,6 +736,154 @@ class RasterCollection(MutableMapping):
                 )
 
         return collection
+
+    @check_band_names
+    def resample(
+            self,
+            band_selection: Optional[List[str]] = None,
+            inplace: Optional[bool] = False,
+            **kwargs
+        ):
+        """
+        Resamples band in the collection into a different spatial resolution
+
+        :param band_selection:
+            selection of bands to process. If not provided uses all
+            bands
+        :param inplace:
+            if False returns a new `RasterCollection` (default) otherwise
+            overwrites existing raster band entries
+        :param kwargs:
+            key-word arguments to pass to `~agrisatpy.core.Band.resample`
+        :returns:
+            new RasterCollection if `inplace==False`, None otherwise
+        """
+        if band_selection is None:
+            band_selection = self.band_names
+        # initialize a new raster collection if inplace is False
+        collection = None
+        kwargs.update({'inplace': True})
+        if not inplace:
+            collection = RasterCollection()
+            kwargs.update({'inplace': False})
+
+        # loop over band reproject the selected ones
+        for band_name in band_selection:
+            if inplace:
+                self.collection[band_name].resample(**kwargs)
+            else:
+                band = self.get_band(band_name)
+                collection.add_band(
+                    band_constructor=band.resample,
+                    **kwargs
+                )
+
+        return collection
+
+    def mask(
+            self,
+            mask: Union[str, np.ndarray],
+            mask_values: Optional[List[Any]],
+            keep_mask_values: Optional[bool] = False,
+            bands_to_mask: Optional[List[str]] = None,
+            inplace: Optional[bool] = False
+        ):
+        """
+        Masks pixels of bands in the collection using a boolean array.
+
+        IMPORTANT:
+            The mask band (or mask array) and the bands to mask **must**
+            have the same shape!
+
+        :param mask:
+            either a band out of the collection (identified through its
+            band name) or a ``numpy.ndarray`` of datatype boolean.
+        :param mask_values:
+            if `mask` is a band out of the collection, a list of values
+            **must** be specified to create a boolean mask. Ignored if `mask`
+            is already a boolean ``numpy.ndarray``
+        :param keep_mask_values:
+            if False (default), pixels in `mask` corresponding to `mask_values`
+            are masked, otherwise all other pixel values are masked.
+            Ignored if `mask` is already a boolean ``numpy.ndarray``.
+        :param bands_to_mask:
+            bands in the collection to mask based on `mask`. If not provided,
+            all bands are masked
+        :param inplace:
+            if False returns a new `RasterCollection` (default) otherwise
+            overwrites existing raster band entries
+        :returns:
+            new RasterCollection if `inplace==False`, None otherwise
+        """
+        # check mask and prepare it if required
+        if isinstance(mask, np.ndarray):
+            if mask.dtype != 'bool':
+                raise TypeError('When providing an array it must be boolean')
+            if len(mask.shape) != 2:
+                raise ValueError('When providing an array it must be 2-dimensional')
+        elif isinstance(mask, str):
+            try:
+                mask = self.get_band(mask)
+            except Exception as e:
+                raise ValueError(f'Invalid mask band: {e}')
+            # translate mask band into boolean array
+            if mask_values is None:
+                raise ValueError(
+                    'When using a band as mask, you have to provide a list of mask values'
+                )
+            # convert the mask to a temporary binary mask
+            tmp = np.zeros_like(mask)
+            # set valid classes to 1, the other ones are zero
+            if keep_mask_values:
+                # drop all other values not in mask_values
+                tmp[~np.isin(mask, mask_values)] = 1
+            else:
+                # drop all values in mask_values
+                tmp[np.isin(mask, mask_values)] = 1
+            mask = tmp.astype('bool')
+        else:
+            raise TypeError(
+                f'Mask must be either band_name or np.ndarray not {type(mask)}'
+            )
+
+        # check shapes of bands and mask before applying the mask
+        if not self.is_bandstack(band_selection=bands_to_mask):
+            raise ValueError(
+                'Can only mask bands that have the same spatial extent, pixel size and CRS'
+            )
+        if mask.shape[0] != self[bands_to_mask[0]].nrows:
+            raise ValueError(
+                f'Number of rows in mask ({mask.shape[0]}) does not match ' \
+                f'number of rows in the raster data ({self[bands_to_mask[0]].nrows})'
+            )
+        if mask.shape[1] != self[bands_to_mask[0]].ncols:
+            raise ValueError(
+                f'Number of columns in mask ({mask.shape[1]}) does not match ' \
+                f'number of columns in the raster data ({self[bands_to_mask[0]].ncols})'
+            )
+
+        # initialize a new raster collection if inplace is False
+        collection = None
+        if not inplace:
+            collection = RasterCollection()
+
+        # loop over band reproject the selected ones
+        for band_name in bands_to_mask:
+            if inplace:
+                self.collection[band_name].mask(
+                    mask=mask,
+                    inplace=inplace
+                )
+            else:
+                band = self.get_band(band_name)
+                collection.add_band(
+                    band_constructor=band.mask,
+                    mask=mask,
+                    inplace=inplace
+                )
+
+        return collection
+
 
 if __name__ == '__main__':
 
@@ -750,7 +986,7 @@ if __name__ == '__main__':
     gTiff_collection['B02'].crs == 32632, 'wrong CRS'
 
     # read multi-band geoTiff into new handler with custom destination names
-    colors = ['blue', 'red', 'green', 'red_edge_1', 'red_edge_2', 'red_edge_3', \
+    colors = ['blue', 'green', 'red', 'red_edge_1', 'red_edge_2', 'red_edge_3', \
               'nir_1', 'nir_2', 'swir_1', 'swir_2']
     gTiff_collection = RasterCollection.from_multi_band_raster(
         fpath_raster=fpath_raster,
@@ -768,6 +1004,27 @@ if __name__ == '__main__':
     # try reprojection of raster bands to geographic coordinates
     reprojected = gTiff_collection.reproject_bands(target_crs=4326)
     assert reprojected.band_names == gTiff_collection.band_names, 'band names not the same'
+
+    # reproject inplace
+    gTiff_collection.reproject_bands(target_crs=4326, inplace=True)
+    assert gTiff_collection.get_band('blue').crs == reprojected.get_band('blue').crs, \
+        'CRS not updated properly'
+
+    # plot RGB
+    fig_rgb = reprojected.plot_multiple_bands(band_selection=['red', 'green', 'blue'])
+    assert isinstance(fig_rgb, plt.Figure), 'not a matplotlib figure'
+
+    # resample all bands to 5m
+    gTiff_collection = RasterCollection.from_multi_band_raster(
+        fpath_raster=fpath_raster,
+        band_aliases=colors
+    )
+    resampled = gTiff_collection.resample_bands(
+        target_resolution=5
+    )
+    assert resampled['green'].geo_info.pixres_x == 5, 'resolution was not changed'
+    assert resampled['green'].ncols == 2206, 'wrong number of columns'
+    assert resampled['green'].nrows == 2200, 'wrong number of rows'
 
 
 class SatDataHandler():
