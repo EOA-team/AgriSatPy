@@ -46,6 +46,7 @@ from shapely.geometry import box
 from shapely.geometry import Point
 from shapely.geometry import Polygon
 from typing import Any
+from typing import Callable
 from typing import Dict
 from typing import List
 from typing import NamedTuple
@@ -55,7 +56,6 @@ from typing import Union
 from xarray import DataArray
 
 from agrisatpy.core.band import Band
-
 from agrisatpy.analysis.spectral_indices import SpectralIndices
 from agrisatpy.config import get_settings
 from agrisatpy.core.utils.raster import get_raster_attributes
@@ -78,7 +78,6 @@ from agrisatpy.utils.constants import ProcessingLevels
 
 
 logger = get_settings().logger
-
 
 class SceneProperties(object):
     """
@@ -120,6 +119,22 @@ class SceneProperties(object):
         :param scene_id:
             unique scene identifier
         """
+        # type checking first
+        if not isinstance(acquisition_time, datetime.datetime):
+            raise TypeError(
+                f'A datetime.datetime object is required: {acquisition_time}'
+            )
+        if not isinstance(platform, str):
+            raise TypeError(f'A str object is required: {platform}')
+        if not isinstance(sensor, str):
+            raise TypeError(f'A str object is required: {sensor}')
+        if not isinstance(processing_level, ProcessingLevels):
+            raise TypeError(
+                f'A ProcessingLevels object is required: {processing_level}'
+            )
+        if not isinstance(scene_id, str):
+            raise TypeError(f'A str object is required: {scene_id}')
+
         self.acquisition_time = acquisition_time
         self.platform = platform
         self.sensor = sensor
@@ -187,10 +202,10 @@ class SceneProperties(object):
         self._scene_id = value
 
 
-class RasterDataHandler(MutableMapping):
+class RasterCollection(MutableMapping):
     """
-    Basic class for handling single and multi-band raster data
-    from which sensor-specific classes inherit.
+    Basic class for storing and handling single and multi-band raster
+    data from which sensor- or application-specific classes inherit.
 
     A ``RasterDataHandler`` contains zero to N instances of
     `~agrisatpy.core.Band`. Bands are always indexed using their band
@@ -203,17 +218,55 @@ class RasterDataHandler(MutableMapping):
 
     def __init__(
             self,
-            bands: Optional[List[Band]] = None,
-            scene_properties: Optional[SceneProperties] = None
+            band_constructor: Optional[Callable[..., Band]] = None,
+            scene_properties: Optional[SceneProperties] = None,
+            *args,
+            **kwargs
         ):
         """
-        Class constructor
+        Initializes a new `RasterCollection` with 0 or 1 band
 
-        :param bands:
-            optional list of `~agrisatpy.core.Band` instances.
+        Examples:
+        --------
+        >>> from agrisatpy.core.raster import RasterDataHandler
+        >>> from agrisatpy.core.band import Band
+        >>> from agrisatpy.core.band import GeoInfo
+
+        Empty `RasterDataHandler`:
+        >>> handler = RasterDataHandler()
+        >>> handler.empty
+
+        New Handler from `numpy.ndarray` (default Band constructor)
+        Define GeoInfo and Array first and use them to initialize a new Handler
+        instance:
+        >>> epsg = 32633
+        >>> ulx, uly = 300000, 5100000
+        >>> pixres_x, pixres_y = 10, -10
+        >>> geo_info = GeoInfo(epsg=epsg,ulx=ulx,uly=uly,pixres_x=pixres_x,pixres_y=pixres_y)
+        >>> band_name = 'random'
+        >>> color_name = 'blue'
+        >>> values = np.random.random(size=(100,120))
+        >>> handler = RasterDataHandler(
+        >>>         band_constructor=Band,
+        >>>         band_name=band_name,
+        >>>         values=values,
+        >>>         color_name=color_name,
+        >>>         geo_info=geo_info
+        >>> )
+
+
+        :param band_constructor:
+            optional callable returning an `~agrisatpy.core.Band`
+            instance.
         :param scene_properties:
             optional scene properties of the dataset handled by the
-            current ``RasterDataHandler`` instance
+            current ``RasterCollection`` instance
+        :param args:
+            arguments to pass to `band_constructor` or one of its
+            class methods (`Band.from_rasterio`, `Band.from_vector`)
+        :param kwargs:
+            key-word arguments to pass to `band_constructor`  or one of its
+            class methods (`Band.from_rasterio`, `Band.from_vector`)
         """
 
         if scene_properties is None:
@@ -229,11 +282,11 @@ class RasterDataHandler(MutableMapping):
         self._frozen = True
 
         self._band_aliases = []
-        if bands is not None:
-            for band in bands:
-                if not isinstance(band, Band):
-                    raise TypeError('Only Band objects can be passed')
-                self._band_aliases.append(band.color_name)
+        if band_constructor is not None:
+            band = band_constructor.__call__(*args, **kwargs)
+            if not isinstance(band, Band):
+                raise TypeError('Only Band objects can be passed')
+            self._band_aliases.append(band.band_alias)
             self.__setitem__(band)
 
     def __getitem__(self, key: str) -> Band:
@@ -268,6 +321,11 @@ class RasterDataHandler(MutableMapping):
         return self._band_aliases
 
     @property
+    def empty(self) -> bool:
+        """Handler has bands loaded"""
+        return len(self.collection) == 0
+
+    @property
     def has_band_aliases(self) -> bool:
         """collection supports aliasing"""
         return len(self.band_aliases) > 0
@@ -291,15 +349,116 @@ class RasterDataHandler(MutableMapping):
         if not self._frozen:
             self._collection = value
 
-    def add_band(self, band: Band) -> None:
+    @classmethod
+    def from_multi_band_raster(
+            cls,
+            fpath_raster: Path,
+            band_idxs: Optional[List[int]] = None,
+            band_names_src: Optional[List[str]] = None,
+            band_names_dst: Optional[List[str]] = None,
+            band_aliases: Optional[List[str]] = None,
+            **kwargs
+        ):
         """
-        Adds a band to the currently handled collection
+        Loads bands from a multi-band raster file into a new
+        `RasterCollection` instance.
+
+        Wrapper around `~agrisatpy.core.Band.from_rasterio` for
+        1 to N raster bands.
+
+        :param fpath_raster:
+            file-path to the raster file (technically spoken, this
+            can also have just a single band)
+        :param band_idxs:
+            optional list of band indices in the raster dataset
+            to read. If not provided (default) all bands are loaded.
+            Ignored if `band_names_src` is provided.
+        :param band_names_src:
+            optional list of band names in the raster dataset to
+            read. If not provided (default) all bands are loaded. If
+            `band_idxs` and `band_names_src` are provided, the former
+            is ignored.
+        :param band_names_dst:
+            optional list of band names in the resulting collection.
+            Must match the length and order of `band_idxs` or
+            `band_names_src`
+        :param band_aliases:
+            optional list of aliases to use for *aliasing* of band names
+        :param kwargs:
+            optional key-word arguments accepted by
+            `~agrisatpy.core.Band.from_rasterio`
+        :returns:
+            `RasterCollection` instance with loaded bands from the
+            input raster data set.
         """
-        self.__setitem__(band)
+        # chech band selection
+        if band_idxs is None:
+            try:
+                with rio.open(fpath_raster, 'r') as src:
+                    band_names = list(src.descriptions)
+                    band_count = src.count
+            except Exception as e:
+                raise IOError(f'Could not read {fpath_raster}: {e}')
+            # use default band names if not provided in data set
+            if len(band_names) == 0:
+                band_names_src = [f'B{idx+1}' for idx in range(band_count)]
+            # is a selection of bands provided? If no use all available bands
+            # otherwise check the band indices
+            if band_names_src is None:
+                # get band indices of all bands, add 1 since GDAL starts
+                # counting at 1
+                band_idxs = [x+1 for x in range(band_count)]
+            else:
+                # get band indices of selected bands (+1 because of GDAL)
+                band_idxs = [band_names.index(x)+1 for x in band_names_src \
+                    if x in band_names]
+                band_count = len(band_idxs)
+
+        # make sure neither band_idxs nor band_names_src is None or empty
+        if band_idxs is None or len(band_idxs) == 0:
+            raise ValueError(
+                'No band indices could be determined'
+            )
+
+        # set band_names_dst to values of band_names_src or default names
+        if band_names_dst is None:
+            if band_names_src is not None:
+                band_names_dst = band_names_src
+            else:
+                band_names_dst = band_names
+
+        # make sure band aliases match the length of bands
+        if band_aliases is not None:
+            if len(band_aliases) != band_count:
+                raise ValueError(
+                    f'Number of band_aliases ({len(band_aliases)}) does ' \
+                    f'not match number of bands to load ({band_count})'
+                )
+        else:
+            band_aliases =['' for _ in range(band_count)]
+
+        # loop over the bands and add them to an empty handler
+        handler = cls()
+        for band_idx in range(band_count):
+            try:
+                handler.add_band(
+                    Band.from_rasterio,
+                    fpath_raster=fpath_raster,
+                    band_idx=band_idxs[band_idx],
+                    band_name_dst=band_names_dst[band_idx],
+                    band_alias=band_aliases[band_idx],
+                    **kwargs
+                )
+            except Exception as e:
+                raise Exception(
+                    f'Could not add band {band_names_src[band_idx]} ' \
+                    f'from {fpath_raster} to handler: {e}'
+                )
+        return handler
 
     def drop_band(self, band_name: str):
         """
-        Deletes a band from the currently handled collection
+        Deletes a band from the current collection
 
         :param band_name:
             name of the band to drop
@@ -364,6 +523,40 @@ class RasterDataHandler(MutableMapping):
 
         return True
 
+    def add_band(
+            self,
+            band_constructor: Callable[..., Band],
+            *args,
+            **kwargs
+        ) -> None:
+        """
+        Adds a band to the collection of raster bands.
+
+        Raises an error if a band with the same name already exists (unique
+        name constraint)
+
+        :param band_constructor:
+            callable returning a `~agrisatpy.core.Band` instance
+        :param args:
+            arguments to pass to `band_constructor` or one of its
+            class methods (`Band.from_rasterio`, `Band.from_vector`)
+        :param kwargs:
+            key-word arguments to pass to `band_constructor`  or one of its
+            class methods (`Band.from_rasterio`, `Band.from_vector`)
+        """
+        try:
+            band = band_constructor.__call__(*args, **kwargs)
+        except Exception as e:
+            raise ValueError(f'Cannot initialize new Band instance: {e}')
+        
+        try:
+            self.__setitem__(band)
+            # forward band alias if any
+            if band.has_alias:
+                self._band_aliases.append(band.band_alias)
+        except Exception as e:
+            raise KeyError(f'Cannot add raster band: {e}')
+
     @check_band_names
     def plot_band(
             self,
@@ -390,35 +583,43 @@ if __name__ == '__main__':
     import pytest
     from agrisatpy.core.band import GeoInfo
 
-    handler = RasterDataHandler()
+    scene_props = SceneProperties()
+
+    handler = RasterCollection()
+    assert handler.empty, 'RasterCollection is not empty'
     assert handler.scene_properties.acquisition_time == datetime.datetime(2999,1,1)
     assert len(handler) == 0, 'there should not be any items so far'
     assert handler.is_bandstack() is None, 'cannot check for bandstack without bands'
 
-    # test with band instance from np.ndarray
+    # add band to empty handler
     epsg = 32633
-    ulx = 300000
-    uly = 5100000
+    ulx, uly = 300000, 5100000
     pixres_x, pixres_y = 10, -10
-    
-    geo_info = GeoInfo(
-        epsg=epsg,
-        ulx=ulx,
-        uly=uly,
-        pixres_x=pixres_x,
-        pixres_y=pixres_y
-    )
-    
-    band_name = 'random'
-    values = np.random.random(size=(100,120))
-    band = Band(band_name=band_name, values=values, geo_info=geo_info)
+    geo_info = GeoInfo(epsg=epsg,ulx=ulx,uly=uly,pixres_x=pixres_x,pixres_y=pixres_y)
+    zeros = np.zeros((100,100))
+    band_name_zeros = 'zeros'
+    handler.add_band(Band, band_name=band_name_zeros, values=zeros, geo_info=geo_info)
+    assert not handler.empty, 'handler is still empty'
+    assert 'zeros' in handler.band_names, 'band not found'
 
-    handler = RasterDataHandler(bands=[band])
+    # test with band instance from np.ndarray
+    band_name = 'random'
+    color_name = 'blue'
+    values = np.random.random(size=(100,120))
+
+    handler = RasterCollection(
+        band_constructor=Band,
+        band_name=band_name,
+        values=values,
+        band_alias=color_name,
+        geo_info=geo_info
+    )
+
     assert len(handler) == 1, 'wrong number of bands in collection'
     assert isinstance(handler[band_name], Band), 'not a proper band in collection'
     assert handler[band_name].band_name == band_name, 'incorrect band name'
     assert handler.band_names == [band_name], 'wrong number of band names'
-    assert handler.band_aliases == [''], 'band aliases were not set'
+    assert handler.band_aliases != [''], 'band aliases were not set'
 
     # make sure the collection is protected properly
     with pytest.raises(TypeError):
@@ -429,35 +630,71 @@ if __name__ == '__main__':
 
     # add a second band
     zeros = np.zeros_like(values)
-    band = Band(band_name=band_name, values=zeros, geo_info=geo_info)
-
-    # first try with the same band name
-    with pytest.raises(KeyError):
-        handler.add_band(band)
-
     band_name_zeros = 'zeros'
-    band = Band(band_name=band_name_zeros, values=zeros, geo_info=geo_info)
-    handler.add_band(band)
-    assert set(handler.band_names) == {band_name, band_name_zeros}, \
+    handler.add_band(Band, band_name=band_name_zeros, values=zeros, geo_info=geo_info)
+
+    # incorrect constructor call
+    # with pytest.raises(ValueError):
+    #     handler.add_band(
+    #         Band,
+    #         band_name=band_name_zeros,
+    #         values=zeros,
+    #         geo_info=geo_info
+    #     )
+
+    # add a band from rasterio
+    fpath_raster = Path('../../../data/20190530_T32TMT_MSIL2A_S2A_pixel_division_10m.tiff')
+    band_idx = 1
+    handler.add_band(Band.from_rasterio, fpath_raster=fpath_raster, band_idx=band_idx)
+
+    assert set(handler.band_names) == {band_name, band_name_zeros, 'B1'}, \
         'band names not set properly in collection'
     assert (handler[band_name_zeros].values == zeros).all(), \
         'values not inserted correctly'
     assert (handler[band_name].values == values).all(), \
         'values not inserted correctly'
 
-    # bands should fulfil the band stack criterion
-    assert handler.is_bandstack(), 'bands must fulfill bandstack criterion'
+    # bands should not fulfill the band stack criterion
+    assert not handler.is_bandstack(), 'bands must not fulfill bandstack criterion'
 
     # drop one of the bands again
     handler.drop_band('random')
     assert 'random' not in handler.band_names, 'band name still exists after dropping it'
-    with pytest.raises(KeyError):
-        handler['random']
+    # with pytest.raises(KeyError):
+    #     handler['random']
 
     # drop non-existing band
-    with pytest.raises(KeyError):
-        handler.drop_band('test')
+    # with pytest.raises(KeyError):
+    #     handler.drop_band('test')
 
+    # read multi-band geoTiff into new handler
+    gTiff_collection = RasterCollection.from_multi_band_raster(
+        fpath_raster=fpath_raster
+    )
+
+    assert gTiff_collection.band_names == \
+        ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12'], \
+        'wrong list of band names in collection'
+    assert gTiff_collection.is_bandstack(), 'collection must be bandstacked'
+    gTiff_collection['B02'].crs == 32632, 'wrong CRS'
+
+    # read multi-band geoTiff into new handler with custom destination names
+    colors = ['blue', 'red', 'green', 'red_edge_1', 'red_edge_2', 'red_edge_3', \
+              'nir_1', 'nir_2', 'swir_1', 'swir_2']
+    gTiff_collection = RasterCollection.from_multi_band_raster(
+        fpath_raster=fpath_raster,
+        band_names_dst=colors
+    )
+    assert gTiff_collection.band_names == colors, 'band names not set properly'
+
+    # with band aliases
+    gTiff_collection = RasterCollection.from_multi_band_raster(
+        fpath_raster=fpath_raster,
+        band_aliases=colors
+    )
+    assert gTiff_collection.has_band_aliases, 'band aliases must exist'
+
+    
 
 
 
