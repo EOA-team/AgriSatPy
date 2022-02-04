@@ -46,7 +46,7 @@ def check_band_names(f):
             # check for band_name and band_names key word argument
             band_names = kwargs.get('band_name', band_names)
             if band_names is None:
-                band_names = kwargs.get('band_names', band_names)
+                band_names = kwargs.get('band_selection', band_names)
 
         # check if band aliases is enabled
         if self.has_band_aliases:
@@ -88,8 +88,8 @@ def check_band_names(f):
                     arg_list = list(args)
                     arg_list[0] = new_band_names
                     args = tuple(arg_list)
-                if kwargs != {} and 'band_names' in kwargs.keys():
-                    kwargs.update({'band_names': new_band_names})
+                if kwargs != {} and 'band_selection' in kwargs.keys():
+                    kwargs.update({'band_selection': new_band_names})
 
         # if no band aliasing is enabled the passed name must be in band names
         else:
