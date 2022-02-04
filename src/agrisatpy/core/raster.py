@@ -593,7 +593,7 @@ class RasterCollection(MutableMapping):
     @check_band_names
     def get_values(
             self,
-            band_selection: Optional[str] = None
+            band_selection: Optional[List[str]] = None
         ):
         """
         Returns raster values in collection.
@@ -607,7 +607,47 @@ class RasterCollection(MutableMapping):
         """
         pass
 
-    
+    @check_band_names
+    def reproject_bands(
+            self,
+            band_selection: Optional[List[str]] = None,
+            inplace: Optional[bool] = False,
+            **kwargs
+        ):
+        """
+        Reprojects band in the collection from one coordinate system
+        into another
+
+        :param band_selection:
+            selection of bands to process. If not provided uses all
+            bands
+        :param inplace:
+            if False returns a new `RasterCollection` (default) otherwise
+            overwrites existing raster band entries
+        :param kwargs:
+            key-word arguments to pass to `~agrisatpy.core.Band.reproject`
+        """
+        if band_selection is None:
+            band_selection = self.band_names
+        # initialize a new raster collection if inplace is False
+        collection = None
+        kwargs.update({'inplace': True})
+        if not inplace:
+            collection = RasterCollection()
+            kwargs.update({'inplace': False})
+
+        # loop over band reproject the selected ones
+        for band_name in band_selection:
+            if inplace:
+                self.collection[band_name].reproject(**kwargs)
+            else:
+                band = self.get_band(band_name)
+                collection.add_band(
+                    band_constructor=band.reproject,
+                    **kwargs
+                )
+
+        return collection
 
 if __name__ == '__main__':
 
@@ -724,6 +764,10 @@ if __name__ == '__main__':
         band_aliases=colors
     )
     assert gTiff_collection.has_band_aliases, 'band aliases must exist'
+
+    # try reprojection of raster bands to geographic coordinates
+    reprojected = gTiff_collection.reproject_bands(target_crs=4326)
+    assert reprojected.band_names == gTiff_collection.band_names, 'band names not the same'
 
 
 class SatDataHandler():
