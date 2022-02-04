@@ -1124,11 +1124,11 @@ class Band(object):
                 interpolation='none'  # important, otherwise img will have speckle!
             )
         else:
-            # clip data for displaying to central 90% percentile
+            # clip data for displaying to central 96% percentile
             if vmin is None:
-                vmin = np.nanquantile(self.values, 0.05)
+                vmin = np.nanquantile(self.values, 0.02)
             if vmax is None:
-                vmax = np.nanquantile(self.values, 0.95)
+                vmax = np.nanquantile(self.values, 0.98)
 
             # actual displaying of the band data
             img = ax.imshow(
@@ -1175,9 +1175,13 @@ class Band(object):
         ax.title.set_text(self.band_name.upper())
         # add axes labels and format ticker
         epsg = self.geo_info.epsg
-        ax.set_xlabel(f'X [m] (EPSG:{epsg})', fontsize=fontsize)
+        if self.crs.is_geographic:
+            unit = 'deg'
+        elif self.crs.is_projected:
+            unit = 'm'
+        ax.set_xlabel(f'X [{unit}] (EPSG:{epsg})', fontsize=fontsize)
         ax.xaxis.set_ticks(np.arange(bounds.left, bounds.right, x_interval))
-        ax.set_ylabel(f'Y [m] (EPSG:{epsg})', fontsize=fontsize)
+        ax.set_ylabel(f'Y [{unit}] (EPSG:{epsg})', fontsize=fontsize)
         ax.yaxis.set_ticks(np.arange(bounds.bottom, bounds.top, y_interval))
         ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.0f'))
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.0f'))
