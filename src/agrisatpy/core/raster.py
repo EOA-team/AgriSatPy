@@ -577,6 +577,37 @@ class RasterCollection(MutableMapping):
         """
         return self[band_name].plot(**kwargs)
 
+    @check_band_names
+    def get_band(self, band_name: str) -> Union[Band, None]:
+        """
+        Returns a single band from the collection or None
+        if the band is not found.
+
+        :param band_name:
+            band name (or its alias) to return
+        :returns:
+            ``Band`` instance from band name
+        """
+        return self.collection.get(band_name, None)
+
+    @check_band_names
+    def get_values(
+            self,
+            band_selection: Optional[str] = None
+        ):
+        """
+        Returns raster values in collection.
+
+        :param band_selection:
+            optional selection of bands to return
+        :returns:
+            raster band values in their underlying storage
+            type (``numpy.ndarray``, ``numpy.ma.MaskedArray``,
+            ``zarr``)
+        """
+        pass
+
+    
 
 if __name__ == '__main__':
 
@@ -693,9 +724,6 @@ if __name__ == '__main__':
         band_aliases=colors
     )
     assert gTiff_collection.has_band_aliases, 'band aliases must exist'
-
-    
-
 
 
 class SatDataHandler():
