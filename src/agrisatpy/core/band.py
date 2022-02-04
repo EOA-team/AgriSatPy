@@ -50,8 +50,6 @@ from agrisatpy.utils.arrays import count_valid, upsample_array
 from agrisatpy.utils.exceptions import BandNotFoundError, \
     DataExtractionError, ResamplingFailedError, ReprojectionError
 from agrisatpy.utils.reprojection import reproject_raster_dataset
-from abc import abstractstaticmethod
-
 
 class GeoInfo(object):
     """
@@ -126,9 +124,6 @@ class GeoInfo(object):
 
     def __delattr__(self, *args, **kwargs):
         raise TypeError('GeoInfo object attributes are immutable')
-
-    def __repr__(self) -> str:
-        return str(self.__dict__)
 
     def as_affine(self) -> Affine:
         """
@@ -224,9 +219,6 @@ class WavelengthInfo(object):
     def __delattr__(self, *args, **kwargs):
         raise TypeError('WavelengthInfo object attributes are immutable')
 
-    def __repr__(self) -> str:
-        return str(self.__dict__) 
-     
 
 class Band(object):
     """
@@ -276,7 +268,7 @@ class Band(object):
             band_name: str,
             values: Union[np.ndarray, np.ma.MaskedArray, zarr.core.Array],
             geo_info: GeoInfo,
-            color_name: Optional[str] = '',
+            band_alias: Optional[str] = '',
             wavelength_info: Optional[WavelengthInfo] = None,
             scale: Optional[Union[int, float]] = 1.,
             offset: Optional[Union[int, float]] = 0.,
@@ -295,6 +287,8 @@ class Band(object):
         :param geo_info:
             `~agrisatpy.core.band.GeoInfo` instance to allow for localizing
             the band data in a spatial reference system
+        :param band_alias:
+            optional alias name of the band
         :param wavelength_info:
             optional `~agrisatpy.core.band.WavelengthInfo` instance denoting
             the spectral wavelength properties of the band. It is recommended
@@ -340,7 +334,7 @@ class Band(object):
         object.__setattr__(self, 'band_name', band_name)
         object.__setattr__(self, 'values', values)
         object.__setattr__(self, 'geo_info', geo_info)
-        object.__setattr__(self, 'color_name', color_name)
+        object.__setattr__(self, 'band_alias', band_alias)
         object.__setattr__(self, 'wavelength_info', wavelength_info)
         object.__setattr__(self, 'scale', scale)
         object.__setattr__(self, 'offset', offset)
@@ -358,7 +352,7 @@ class Band(object):
     def alias(self) -> Union[str, None]:
         """Alias of the band name (if available)"""
         if self.has_alias:
-            return self.color_name
+            return self.band_alias
 
     @property
     def bounds(self) -> box:
@@ -387,7 +381,7 @@ class Band(object):
     @property
     def has_alias(self) -> bool:
         """Checks if a color name can be used for aliasing"""
-        return self.color_name != ''
+        return self.band_alias != ''
 
     @property
     def is_zarr(self) -> bool:
@@ -1733,4 +1727,3 @@ class Band(object):
             dst.set_band_description(1, self.band_name)
             # write band data
             dst.write(self.values, 1)
-    
