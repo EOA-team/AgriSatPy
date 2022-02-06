@@ -55,6 +55,7 @@ from typing import Optional
 from typing import Tuple
 from typing import Union
 from xarray import DataArray
+import zarr
 
 from agrisatpy.core.band import Band
 from agrisatpy.analysis.spectral_indices import SpectralIndices
@@ -356,6 +357,101 @@ class RasterCollection(MutableMapping):
         if not self._frozen:
             self._collection = value
 
+    @check_band_names
+    def get_band_alias(
+            self,
+            band_name: str
+        ) -> Union[Dict[str, str], None]:
+        """
+        Retuns the band_name-alias mapping of a given band
+        in collection if the band has an alias, None instead
+
+        :param band_name:
+            name of the band for which to return the alias or
+            its name if the alias is provided
+        :returns:
+            mapping of band_name:band_alias (band name is always the
+            key and band_alias is the value)
+        """
+        if self[band_name].has_alias:
+            idx = self.band_names.index(band_name)
+            band_alias = self.band_aliases[idx]
+            return {band_name: band_alias}
+
+    @staticmethod
+    def _bands_from_selection(
+            fpath_raster: Path,
+            band_idxs: Optional[List[int]],
+            band_names_src: Optional[List[str]],
+            band_names_dst: Optional[List[str]]
+            ) -> Dict[str, Union[str,int]]:
+        """
+        Selects bands in a multi-band raster dataset based on a custom
+        selection of band indices or band names
+
+        :param fpath_raster:
+            file-path to the raster file (technically spoken, this
+            can also have just a single band)
+        :param band_idxs:
+            optional list of band indices in the raster dataset
+            to read. If not provided (default) all bands are loaded.
+            Ignored if `band_names_src` is provided.
+        :param band_names_src:
+            optional list of band names in the raster dataset to
+            read. If not provided (default) all bands are loaded. If
+            `band_idxs` and `band_names_src` are provided, the former
+            is ignored.
+        :param band_names_dst:
+            optional list of band names in the resulting collection.
+            Must match the length and order of `band_idxs` or
+            `band_names_src`
+        :returns:
+            dictionary with band indices, and names based on the custom
+            selection
+        """
+        # chech band selection
+        if band_idxs is None:
+            try:
+                with rio.open(fpath_raster, 'r') as src:
+                    band_names = list(src.descriptions)
+                    band_count = src.count
+            except Exception as e:
+                raise IOError(f'Could not read {fpath_raster}: {e}')
+            # use default band names if not provided in data set
+            if len(band_names) == 0:
+                band_names_src = [f'B{idx+1}' for idx in range(band_count)]
+            # is a selection of bands provided? If no use all available bands
+            # otherwise check the band indices
+            if band_names_src is None:
+                # get band indices of all bands, add 1 since GDAL starts
+                # counting at 1
+                band_idxs = [x+1 for x in range(band_count)]
+            else:
+                # get band indices of selected bands (+1 because of GDAL)
+                band_idxs = [band_names.index(x)+1 for x in band_names_src \
+                    if x in band_names]
+                band_count = len(band_idxs)
+
+        # make sure neither band_idxs nor band_names_src is None or empty
+        if band_idxs is None or len(band_idxs) == 0:
+            raise ValueError(
+                'No band indices could be determined'
+            )
+
+        # set band_names_dst to values of band_names_src or default names
+        if band_names_dst is None:
+            if band_names_src is not None:
+                band_names_dst = band_names_src
+            else:
+                band_names_dst = band_names
+
+        return {
+            'band_idx': band_idxs,
+            'band_names_src': band_names_src,
+            'band_names_dst': band_names_dst,
+            'band_count': band_count
+        }
+
     @classmethod
     def from_multi_band_raster(
             cls,
@@ -398,61 +494,33 @@ class RasterCollection(MutableMapping):
             `RasterCollection` instance with loaded bands from the
             input raster data set.
         """
-        # chech band selection
-        if band_idxs is None:
-            try:
-                with rio.open(fpath_raster, 'r') as src:
-                    band_names = list(src.descriptions)
-                    band_count = src.count
-            except Exception as e:
-                raise IOError(f'Could not read {fpath_raster}: {e}')
-            # use default band names if not provided in data set
-            if len(band_names) == 0:
-                band_names_src = [f'B{idx+1}' for idx in range(band_count)]
-            # is a selection of bands provided? If no use all available bands
-            # otherwise check the band indices
-            if band_names_src is None:
-                # get band indices of all bands, add 1 since GDAL starts
-                # counting at 1
-                band_idxs = [x+1 for x in range(band_count)]
-            else:
-                # get band indices of selected bands (+1 because of GDAL)
-                band_idxs = [band_names.index(x)+1 for x in band_names_src \
-                    if x in band_names]
-                band_count = len(band_idxs)
-
-        # make sure neither band_idxs nor band_names_src is None or empty
-        if band_idxs is None or len(band_idxs) == 0:
-            raise ValueError(
-                'No band indices could be determined'
-            )
-
-        # set band_names_dst to values of band_names_src or default names
-        if band_names_dst is None:
-            if band_names_src is not None:
-                band_names_dst = band_names_src
-            else:
-                band_names_dst = band_names
+        # check band selection
+        band_props = self._bands_from_selection(
+            fpath_raster=fpath_raster,
+            band_idxs=band_idxs,
+            band_names_src=band_names_src,
+            band_names_dst=band_names_dst
+        )
 
         # make sure band aliases match the length of bands
         if band_aliases is not None:
-            if len(band_aliases) != band_count:
+            if len(band_aliases) != band_props['band_count']:
                 raise ValueError(
                     f'Number of band_aliases ({len(band_aliases)}) does ' \
-                    f'not match number of bands to load ({band_count})'
+                    f'not match number of bands to load ({band_props["band_count"]})'
                 )
         else:
-            band_aliases =['' for _ in range(band_count)]
+            band_aliases =['' for _ in range(band_props['band_count'])]
 
         # loop over the bands and add them to an empty handler
         handler = cls()
-        for band_idx in range(band_count):
+        for band_idx in range(band_props['band_count']):
             try:
                 handler.add_band(
                     Band.from_rasterio,
                     fpath_raster=fpath_raster,
-                    band_idx=band_idxs[band_idx],
-                    band_name_dst=band_names_dst[band_idx],
+                    band_idx=band_props['band_idxs'][band_idx],
+                    band_name_dst=band_props['band_names_dst'][band_idx],
                     band_alias=band_aliases[band_idx],
                     **kwargs
                 )
@@ -462,6 +530,79 @@ class RasterCollection(MutableMapping):
                     f'from {fpath_raster} to handler: {e}'
                 )
         return handler
+
+    @classmethod
+    def read_pixels(
+            cls,
+            fpath_raster: Path,
+            vector_features: Union[Path, gpd.GeoDataFrame],
+            band_idxs: List[Optional[int]] = None,
+            band_names_src: List[Optional[str]] = None,
+            band_names_dst: List[Optional[str]] = None
+        ) -> gpd.GeoDataFrame:
+        """
+        Wrapper around `~agrisatpy.core.band.read_pixels` for raster datasets
+        with multiple bands
+
+        NOTE:
+            The pixels to read are defined by a ``GeoDataFrame`` or file with
+            vector features understood by ``fiona``. If the geometry type is not
+            ``Point`` the centroids will be used for extracting the closest
+            grid cell value.
+
+        :param fpath_raster:
+            file-path to the raster dataset from which to extract pixel values
+        :param vector_features:
+            file-path or ``GeoDataFrame`` to features defining the pixels to read
+            from a raster dataset. The geometries can be of type ``Point``,
+            ``Polygon`` or ``MultiPolygon``. In the latter two cases the centroids
+            are used to extract pixel values, whereas for point features the
+            closest raster grid cell is selected.
+        ::param band_idxs:
+            optional list of band indices in the raster dataset to read. If not
+            provided (default) all bands are loaded. Ignored if `band_names_src` is
+            provided.
+        :param band_names_src:
+            optional list of band names in the raster dataset to read. If not provided
+            (default) all bands are loaded. If `band_idxs` and `band_names_src` are
+            provided, the former is ignored.
+        :param band_names_dst:
+            optional list of band names in the resulting collection.Must match the length
+            and order of `band_idxs` or `band_names_src`.
+        :returns:
+            ``GeoDataFrame`` with extracted pixel values. If the vector features
+            defining the sampling points are not within the spatial extent of the
+            raster dataset the pixel values are set to nodata (inferred from
+            the raster source)
+        """
+        # check band selection
+        band_props = cls._bands_from_selection(
+            fpath_raster=fpath_raster,
+            band_idxs=band_idxs,
+            band_names_src=band_names_src,
+            band_names_dst=band_names_dst
+        )
+
+        # loop over bands and extract values from raster dataset
+        for idx in range(band_props['band_count']):
+            if idx == 0:
+                gdf = Band.read_pixels(
+                    fpath_raster=fpath_raster,
+                    vector_features=vector_features,
+                    band_idx=band_props['band_idxs'][idx],
+                    band_name_src=band_props['band_names_src'][idx],
+                    band_name_dst=band_props['band_names_dst'][idx]
+                )
+            else:
+                gdf = Band.read_pixels(
+                    fpath_raster=fpath_raster,
+                    vector_features=gdf,
+                    band_idx=band_props['band_idxs'][idx],
+                    band_name_src=band_props['band_names_src'][idx],
+                    band_name_dst=band_props['band_names_dst'][idx]
+                )
+
+        return gdf
 
     def drop_band(self, band_name: str):
         """
@@ -677,12 +818,58 @@ class RasterCollection(MutableMapping):
         return self.collection.get(band_name, None)
 
     @check_band_names
+    def get_pixels(
+            self,
+            band_selection: Optional[List[str]] = None,
+            vector_features: Union[Path, gpd.GeoDataFrame]
+        ) -> gpd.GeoDataFrame:
+        """
+        Returns pixel values from bands in the collection as ``GeoDataFrame``.
+
+        Since a pixel is a dimensionless object (``Point``) the extraction
+        method works for raster bands with different pixel sizes, spatial
+        extent and coordinate systems. If a pixel cannot be extracted from a
+        raster band, the band's nodata value is inserted.
+
+        :param band_selection:
+            optional selection of bands to return
+        :param vector_features:
+            file-path or ``GeoDataFrame`` to features defining the pixels to read
+            from the raster bands selected. The geometries can be of type ``Point``,
+            ``Polygon`` or ``MultiPolygon``. In the latter two cases the centroids
+            are used to extract pixel values, whereas for point features the
+            closest raster grid cell is selected.
+        :returns:
+            ``GeoDataFrame`` with extracted raster values per pixel or
+            Polygon centroid.
+        """
+        if band_selection is None:
+            band_selection = self.band_names
+
+        # loop over bands and extract the raster values into a GeoDataFrame
+        for idx, band_name in enumerate(band_selection):
+            # open a new GeoDataFrame for the first band and re-use it for
+            # the other bands. This way we do not have to merge the single
+            # GeoDataFrames afterwards
+            if idx == 0:
+                gdf = self[band_name].get_pixels(vector_features=vector_features)
+            else:
+                gdf = self[band_name].get_pixels(vector_features=gdf)
+
+        return gdf
+
+    @check_band_names
     def get_values(
             self,
             band_selection: Optional[List[str]] = None
-        ):
+        ) -> Union[np.ma.MaskedArray, np.ndarray]:
         """
-        Returns raster values in collection.
+        Returns raster values as stacked array in collection.
+
+        NOTE:
+            The selection of bands to return as stacked array
+            **must** share the same spatial extent, pixel size
+            and coordinate system
 
         :param band_selection:
             optional selection of bands to return
@@ -691,7 +878,28 @@ class RasterCollection(MutableMapping):
             type (``numpy.ndarray``, ``numpy.ma.MaskedArray``,
             ``zarr``)
         """
-        pass
+        if band_selection is None:
+            band_selection = self.band_names
+
+        # check if the selected bands have the same spatial extent, pixel
+        # cell size and spatial coordinate system (if not stacking fails)
+        if not self.is_bandstack(band_selection):
+            raise ValueError(
+                'Cannot stack raster bands - they do not align spatially ' \
+                'to each other.\nConsider reprojection/ resampling first.'
+            )
+
+        stack_bands = [self.get_band(x) for x in band_selection]
+        array_types = [type(x) for x in stack_bands]
+
+        # stack arrays along first axis
+        # we need np.ma in case the array is a masked array
+        if (array_types == np.ma.MaskedArray).all():
+            return np.ma.stack(stack_bands, axis=0)
+        elif (array_types == np.ndarray).all():
+            return np.stack(stack_bands, axis=0)
+        elif (array_types == zarr.core.Array).all():
+            raise NotImplementedError()
 
     @check_band_names
     def reproject(
@@ -883,6 +1091,93 @@ class RasterCollection(MutableMapping):
                 )
 
         return collection
+
+    def calc_si(self, si_name: str):
+        """
+        Calculates a spectral index based on color-names (set as band aliases)
+        """
+        pass
+
+    @check_band_names
+    def to_dataframe(self):
+        """
+        Converts the bands in collection to a ``GeoDataFrame``
+        """
+        pass
+
+    def to_rasterio(
+            self,
+            fpath_raster: Path,
+            band_selection: Optional[List[str]] = None,
+            use_band_aliases: Optional[bool] = False
+        ):
+        """
+        Writes bands in collection to a raster dataset on disk using
+        ``rasterio`` drivers
+        """
+        # check output file naming and driver
+        try:
+            driver = driver_from_extension(fpath_raster)
+        except Exception as e:
+            raise ValueError(
+                f'Could not determine GDAL driver for ' \
+                f'{fpath_raster.name}: {e}'
+            )
+
+        # check band_selection, if not provided use all available bands
+        if band_selection is None:
+            band_selection = self.band_names
+        if len(band_selection) == 0:
+            raise ValueError('No band selected for writing to raster file')
+
+        # make sure all bands share the same extent, pixel size and CRS
+        if not self.is_bandstack(band_selection):
+            raise ValueError(
+                'Cannot write bands with different shapes, pixels sizes ' \
+                'and CRS to raster data set')
+
+        # check meta and update it with the selected driver for writing the result
+        meta = deepcopy(self[band_selection[0]].meta)
+        dtypes = [self[band_selection[x]].values.dtype for x in band_selection]
+        if len(set(dtypes)) != 1:
+            UserWarning(
+                f'Multiple data types found in arrays to write ({set(dtypes)}). ' \
+                f'Casting to highest data type'
+            )
+        # TODO: determine highest dtype
+        dtype_str = ''
+
+        # update driver and the number of bands
+        meta.update(
+            {
+                'driver': driver,
+                'count': len(band_selection),
+                'dtype': dtype_str
+            }
+        )
+
+        # TODO: write attributes if any
+
+        # open the result dataset and try to write the bands
+        with rio.open(out_file, 'w+', **meta) as dst:
+
+            for idx, band_name in enumerate(band_selection):
+
+                # check with band name to set
+                dst.set_band_description(idx+1, band_name)
+
+                # write band data
+                band_data = self.get_band(band_name).astype(dtype)
+                band_data = self._masked_array_to_nan(band_data)
+                dst.write(band_data, idx+1)
+        
+
+    @check_band_names
+    def to_xarray(self):
+        """
+        Converts bands in collection a ``xarray.Dataset``
+        """
+        pass
 
 
 if __name__ == '__main__':
