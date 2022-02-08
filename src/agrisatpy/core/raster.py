@@ -55,6 +55,7 @@ from typing import Optional
 from typing import Tuple
 from typing import Union
 from xarray import DataArray
+import xarray as xarr
 import zarr
 
 from agrisatpy.core.band import Band
@@ -1116,6 +1117,16 @@ class RasterCollection(MutableMapping):
         """
         Writes bands in collection to a raster dataset on disk using
         ``rasterio`` drivers
+
+        :param fpath_raster:
+            file-path to the raster dataset (existing ones will be
+            overwritten!)
+        :param band_selection:
+            selection of bands to process. If not provided uses all
+            bands
+        :param use_band_aliases:
+            use band aliases instead of band names for setting raster
+            band descriptions to the output dataset
         """
         # check output file naming and driver
         try:
@@ -1146,8 +1157,14 @@ class RasterCollection(MutableMapping):
                 f'Multiple data types found in arrays to write ({set(dtypes)}). ' \
                 f'Casting to highest data type'
             )
-        # TODO: determine highest dtype
-        dtype_str = ''
+       
+        dtypes = set([self[x].values.dtype for x in band_selection])
+        if len(dtypes) == 1:
+            dtype_str = list(dtypes)[0]
+        else:
+            # TODO: determine highest dtype
+            dtype_str = 'float'
+            pass
 
         # update driver and the number of bands
         meta.update(
@@ -1158,28 +1175,43 @@ class RasterCollection(MutableMapping):
             }
         )
 
-        # TODO: write attributes if any
-
         # open the result dataset and try to write the bands
-        with rio.open(out_file, 'w+', **meta) as dst:
+        with rio.open(fpath_raster, 'w+', **meta) as dst:
 
             for idx, band_name in enumerate(band_selection):
-
                 # check with band name to set
                 dst.set_band_description(idx+1, band_name)
-
                 # write band data
-                band_data = self.get_band(band_name).astype(dtype)
-                band_data = self._masked_array_to_nan(band_data)
+                band_data = self.get_band(band_name).values.astype(dtype_str)
                 dst.write(band_data, idx+1)
-        
 
     @check_band_names
-    def to_xarray(self):
+    def to_xarray(
+            self,
+            band_selection: Optional[List[str]] = None
+        ) -> xr.DataArray:
         """
-        Converts bands in collection a ``xarray.Dataset``
+        Converts bands in collection a ``xarray.DataArray``
         """
-        pass
+        if band_selection is None:
+            band_selection = self.band_names
+
+        # bands must have same extent, pixel size and CRS
+        if not self.is_bandstack(band_selection):
+            raise ValueError(
+                'Selected bands must share same spatial extent, pixel size ' \
+                'and coordinate system'
+            )
+
+        # loop over bands and convert them to xarray
+        band_xarr_list = []
+        for band_name in band_selection:
+            band_xarr = self[band_name].to_xarray()
+            band_xarr_list.append(band_xarr)
+
+        # merge the single xarrays in the list into a single big one
+        return xr.concat(band_xarr_list, dim='band')
+        
 
 
 if __name__ == '__main__':
