@@ -446,7 +446,7 @@ class RasterCollection(MutableMapping):
                 band_names_dst = band_names
 
         return {
-            'band_idx': band_idxs,
+            'band_idxs': band_idxs,
             'band_names_src': band_names_src,
             'band_names_dst': band_names_dst,
             'band_count': band_count
@@ -495,7 +495,7 @@ class RasterCollection(MutableMapping):
             input raster data set.
         """
         # check band selection
-        band_props = self._bands_from_selection(
+        band_props = cls._bands_from_selection(
             fpath_raster=fpath_raster,
             band_idxs=band_idxs,
             band_names_src=band_names_src,
@@ -817,11 +817,11 @@ class RasterCollection(MutableMapping):
         """
         return self.collection.get(band_name, None)
 
-    @check_band_names
+    # @check_band_names
     def get_pixels(
             self,
-            band_selection: Optional[List[str]] = None,
-            vector_features: Union[Path, gpd.GeoDataFrame]
+            vector_features: Union[Path, gpd.GeoDataFrame],
+            band_selection: Optional[List[str]] = None
         ) -> gpd.GeoDataFrame:
         """
         Returns pixel values from bands in the collection as ``GeoDataFrame``.
@@ -889,17 +889,19 @@ class RasterCollection(MutableMapping):
                 'to each other.\nConsider reprojection/ resampling first.'
             )
 
-        stack_bands = [self.get_band(x) for x in band_selection]
+        stack_bands = [self.get_band(x).values for x in band_selection]
         array_types = [type(x) for x in stack_bands]
 
         # stack arrays along first axis
         # we need np.ma in case the array is a masked array
-        if (array_types == np.ma.MaskedArray).all():
+        if set(array_types) == {np.ma.MaskedArray}:
             return np.ma.stack(stack_bands, axis=0)
-        elif (array_types == np.ndarray).all():
+        elif set(array_types) == {np.ndarray}:
             return np.stack(stack_bands, axis=0)
-        elif (array_types == zarr.core.Array).all():
+        elif set(array_types) == {zarr.core.Array}:
             raise NotImplementedError()
+        else:
+            raise ValueError('Unsupported array type')
 
     @check_band_names
     def reproject(
