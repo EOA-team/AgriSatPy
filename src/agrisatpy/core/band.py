@@ -909,7 +909,7 @@ class Band(object):
         attrs['nodatavals'] = (self.nodata, )
         attrs['scales'] = (self.scale, )
         attrs['offsets'] = (self.offset, )
-        attrs['descriptions'] = (self.color_name, )
+        attrs['descriptions'] = (self.band_alias, )
         attrs['crs'] = self.geo_info.epsg
         attrs['transform'] = tuple(self.transform)
         attrs['units'] = (self.unit, )
@@ -1633,9 +1633,10 @@ class Band(object):
             self,
             attributes: Dict[str, Any] = {},
             **kwargs
-        ):
+        ) -> xr.DataArray:
         """
-        Returns a ``xarray.Dataset`` from the raster band data.
+        Returns a ``xarray.Dataset`` from the raster band data
+        (dime
 
         NOTE:
             To ensure consistency with ``xarray`` pixel coordinates are
@@ -1646,7 +1647,7 @@ class Band(object):
         :param kwargs:
             additional key-word arguments to pass to `~xarray.Dataset`
         :return:
-            ``xarray.DataSet`` with x and y coordinates. Raster attributes
+            ``xarray.DataArray`` with x and y coordinates. Raster attributes
             are preserved.
         """
 
@@ -1670,6 +1671,7 @@ class Band(object):
         shift_y = 0.5 * self.geo_info.pixres_y
         coords = self.coordinates
         coords.update({
+            'band': np.array([self.band_name], dtype=object),
             'x': [val + shift_x for val in coords['x']],
             'y': [val + shift_y for val in coords['y']]
         })
@@ -1677,17 +1679,17 @@ class Band(object):
         # define attributes
         attrs = self.get_attributes(**attributes)
 
-        # call Dataset constructor
-        band_tuple = tuple([('y','x'), band_data])
-        band_dict = {self.band_name: band_tuple}
-        xds = xr.Dataset(
-            band_dict,
+        # call DataArray constructor
+        new_shape = (1, band_data.shape[0], band_data.shape[1])
+        xarr = xr.DataArray(
+            data=band_data.reshape(new_shape),
+            dims=('band','y','x'),
             coords=coords,
             attrs=attrs,
             **kwargs
         )
 
-        return xds
+        return xarr
 
     def to_rasterio(
             self,
