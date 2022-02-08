@@ -1,10 +1,9 @@
 '''
-This module contains the ``Sentinel2Handler`` class that inherits from
-AgriSatPy's ``SatDataHandler`` class.
+This module contains the ``Sentinel2`` class that inherits from
+AgriSatPy's core ``RasterCollection`` class.
 
 The ``Sentinel2Handler`` enables reading one or more spectral bands from Sentinel-2
-data. The data can be either band-stacked (i.e., AgriSatPy derived format) or in .SAFE
-format which is ESA's standard format for distributing Sentinel-2 data.
+data in .SAFE format which is ESA's standard format for distributing Sentinel-2 data.
 
 The class handles data in L1C and L2A processing level.
 '''
@@ -33,9 +32,10 @@ from agrisatpy.utils.sentinel2 import get_S2_platform_from_safe
 from agrisatpy.utils.sentinel2 import get_S2_sclfile
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.utils.sentinel2 import get_S2_acquistion_time_from_safe
+from agrisatpy.core.raster import RasterCollection
 
 
-class Sentinel2Handler(SatDataHandler):
+class Sentinel2(RasterCollection):
     """
     Class for storing Sentinel-2 band data read from bandstacks or
     .SAFE archives (L1C and L2A level) overwriting methods inherited
@@ -43,9 +43,18 @@ class Sentinel2Handler(SatDataHandler):
     """
 
     def __init__(self, *args, **kwargs):
-        SatDataHandler.__init__(self, *args, **kwargs)
-        self._is_l2a = True
+        RasterCollection.__init__(self, *args, **kwargs)
 
+    @classmethod
+    def from_safe(cls):
+        """
+        Loads Sentinel-2 data from a .SAFE archive
+        """
+        pass
+        
+
+
+class OldStuff:
 
     @staticmethod
     def _check_band_selection(

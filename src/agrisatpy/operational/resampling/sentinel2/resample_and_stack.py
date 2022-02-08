@@ -240,7 +240,7 @@ def resample_and_stack_s2(
       spatial resolution
 
     IMPORTANT: If only a small area of interest shall be processed, also consider
-    ``agrisatpy.core.sentinel2.Sat_Data_Reader.resample`` since this function works
+    ``agrisatpy.core.sensors.sentinel2.Sat_Data_Reader.resample`` since this function works
     on the **full** scene extent, only.
 
     :param in_dir:
