@@ -36,9 +36,6 @@ def check_band_names(f):
     def wrapper(self, *args, **kwargs):
 
         band_names = None
-        # RGB and False-Color are white-listed
-        white_list = ['RGB', 'False-Color']
-
         if len(args) > 0:
             # band name(s) are always provided as first argument
             band_names = args[0]
@@ -53,33 +50,33 @@ def check_band_names(f):
             # check if passed band names are actual band names or their alias
             if isinstance(band_names, str):
                 band_name = band_names
-                # passed band name is alias
-                if band_name in self.band_aliases:
-                    band_idx = self.band_aliases.index(band_name)
-                    band_name = self.band_names[band_idx]
-                    if len(args) > 0:
-                        arg_list = list(args)
-                        arg_list[0] = band_name
-                        args = tuple(arg_list)
-                    if kwargs != {} and 'band_name' in kwargs.keys():
-                        kwargs.update({'band_name': band_name})
-                else:
-                    if band_name not in self.band_names and \
-                    band_name not in white_list:
-                        raise BandNotFoundError(
-                            f'{band_names} not found in collection'
-                    )
-            elif isinstance(band_names, list):
-                # check if passed band names are aliases
-                new_band_names = []
-                for band_name in band_names:
-                    if self.has_band_aliases:
+                if band_name not in self.band_names:
+                    # passed band name is alias
+                    if band_name in self.band_aliases:
                         band_idx = self.band_aliases.index(band_name)
                         band_name = self.band_names[band_idx]
-                    # band name must be in band names if not an alias
+                        if len(args) > 0:
+                            arg_list = list(args)
+                            arg_list[0] = band_name
+                            args = tuple(arg_list)
+                        if kwargs != {} and 'band_name' in kwargs.keys():
+                            kwargs.update({'band_name': band_name})
                     else:
-                        if band_name not in self.band_names and \
-                        band_name not in white_list:
+                        raise BandNotFoundError(
+                            f'{band_names} not found in collection'
+                        )
+            elif isinstance(band_names, list):
+                # check if passed band names are aliases
+                if set(band_names).issubset(self.band_names):
+                    new_band_names = band_names
+                else:
+                    new_band_names = []
+                    for band_name in band_names:
+                        if self.has_band_aliases:
+                            band_idx = self.band_aliases.index(band_name)
+                            band_name = self.band_names[band_idx]
+                        # band name must be in band names if not an alias
+                        else:
                             raise BandNotFoundError(
                                 f'{band_name} not found in collection'
                             )
@@ -94,8 +91,12 @@ def check_band_names(f):
         # if no band aliasing is enabled the passed name must be in band names
         else:
             if isinstance(band_names, str):
-                if not band_names in self.band_names and \
-                band_names not in white_list:
+                if not band_names in self.band_names:
+                    raise BandNotFoundError(
+                        f'{band_names} not found in collection'
+                    )
+            elif isinstance(band_names, list):
+                if not set(band_names).issubset(self.band_names):
                     raise BandNotFoundError(
                         f'{band_names} not found in collection'
                     )
@@ -135,28 +136,3 @@ def check_metadata(f):
         return f(self, *args, **kwargs)
 
     return wrapper
-
-
-def check_chunksize(f):
-    """validates the raster chunk size provided"""
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        
-        chunksize = kwargs.get('chunksize', None)
-        if chunksize is None:
-            chunksize = args[0]
-
-        if not isinstance(chunksize, int):
-            raise TypeError(
-                f'Expected type integer got {type(chunksize)}'
-            )
-        if chunksize <= 0:
-            raise ValueError(
-                f'Chunksize must be >= 0. Got {chunksize} instead'
-            )
-        return f(*args, **kwargs)
-
-    return wrapper
-
-    
-
