@@ -100,11 +100,11 @@ def test_band(datadir, get_polygons, get_bandstack, get_points3):
         'pixel coordinate not shifted to center of pixel in xarray'
     assert xarr.y.values[0] == band.geo_info.uly + 0.5*band.geo_info.pixres_y, \
         'pixel coordinate not shifted to center of pixel in xarray'
-    assert (xarr.B02.values == band.values.astype(float)).all(), \
+    assert (xarr.values == band.values.astype(float)).all(), \
         'array values changed after conversion to xarray'
-    assert np.count_nonzero(~np.isnan(xarr.B02)) == band.values.compressed().shape[0], \
+    assert np.count_nonzero(~np.isnan(xarr.values)) == band.values.compressed().shape[0], \
         'masked values were not set to nan correctly'
-    assert xarr.dims['y'] == band.nrows and xarr.dims['x'] == band.ncols, \
+    assert xarr.shape[1] == band.nrows and xarr.shape[2] == band.ncols, \
         'wrong number of rows and columns in xarray'
 
     # resample to 20m spatial resolution using bi-cubic interpolation
