@@ -12,72 +12,33 @@ Besides that, ``RasterDataHandler`` is a super class from which sensor-specific 
 (satellite) raster image data inherit.
 '''
 
-import sys
-
-import cv2
 import datetime
 import geopandas as gpd
-import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import numpy as np
-import pandas as pd
 import rasterio as rio
-import rasterio.mask
 import xarray as xr
+import zarr
 
 from collections.abc import MutableMapping
 from copy import deepcopy
-from collections import namedtuple
-from matplotlib.colors import ListedColormap
-from matplotlib.figure import figaspect
 from matplotlib.pyplot import Figure
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from numbers import Number
 from pathlib import Path
-from PIL import Image
-from rasterio import Affine, band
-from rasterio import features
-from rasterio.crs import CRS
-from rasterio.coords import BoundingBox
+from rasterio import band
 from rasterio.drivers import driver_from_extension
-from rasterio.enums import Resampling
-from rasterio.warp import transform_bounds
-from shapely.geometry import box
-from shapely.geometry import Point
-from shapely.geometry import Polygon
 from typing import Any
 from typing import Callable
 from typing import Dict
 from typing import List
-from typing import NamedTuple
 from typing import Optional
-from typing import Tuple
 from typing import Union
-from xarray import DataArray
-import xarray as xarr
-import zarr
 
 from agrisatpy.core.band import Band
 from agrisatpy.core.spectral_indices import SpectralIndices
 from agrisatpy.config import get_settings
-from agrisatpy.core.utils.raster import get_raster_attributes
-from agrisatpy.core.utils.geometry import check_geometry_types
-from agrisatpy.core.utils.geometry import convert_3D_2D
-from agrisatpy.utils.arrays import upsample_array
-from agrisatpy.utils.exceptions import NotProjectedError, DataExtractionError
-from agrisatpy.utils.exceptions import InputError
-from agrisatpy.utils.exceptions import ReprojectionError
-from agrisatpy.utils.exceptions import ResamplingFailedError
-from agrisatpy.utils.exceptions import BandNotFoundError
-from agrisatpy.utils.exceptions import BlackFillOnlyError
-from agrisatpy.utils.reprojection import check_aoi_geoms
-from agrisatpy.utils.arrays import count_valid
-from agrisatpy.utils.reprojection import reproject_raster_dataset
-from agrisatpy.utils.decorators import check_band_names
-from agrisatpy.utils.decorators import check_chunksize
-from agrisatpy.utils.decorators import check_metadata
 from agrisatpy.utils.constants import ProcessingLevels
+from agrisatpy.utils.decorators import check_band_names
+from agrisatpy.utils.exceptions import BandNotFoundError
 
 
 logger = get_settings().logger
