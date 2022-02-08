@@ -36,7 +36,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from numbers import Number
 from pathlib import Path
 from PIL import Image
-from rasterio import Affine
+from rasterio import Affine, band
 from rasterio import features
 from rasterio.crs import CRS
 from rasterio.coords import BoundingBox
@@ -59,7 +59,7 @@ import xarray as xarr
 import zarr
 
 from agrisatpy.core.band import Band
-from agrisatpy.analysis.spectral_indices import SpectralIndices
+from agrisatpy.core.spectral_indices import SpectralIndices
 from agrisatpy.config import get_settings
 from agrisatpy.core.utils.raster import get_raster_attributes
 from agrisatpy.core.utils.geometry import check_geometry_types
@@ -1099,14 +1099,52 @@ class RasterCollection(MutableMapping):
         """
         Calculates a spectral index based on color-names (set as band aliases)
         """
-        pass
+        vi_values = SpectralIndices.calc_si(si_name, self.collection)
+        # look for spectral band with same shape to take geo-info from
+        geo_info = [
+            self[x].geo_info for x in self.band_names if \
+            self[x].values.shape == vi_values.shape
+        ][0]
+        self.add_band(
+            band_constructor=Band,
+            band_name=si_name.upper(),
+            geo_info=geo_info,
+            band_alias=si_name.lower(),
+            values=vi_values
+        )
 
     @check_band_names
-    def to_dataframe(self):
+    def to_dataframe(
+            self,
+            band_selection: Optional[List[str]] = None
+        ) -> gpd.GeoDataFrame:
         """
         Converts the bands in collection to a ``GeoDataFrame``
+
+        :param band_selection:
+            selection of bands to process. If not provided uses all
+            bands
+        :returns:
+            ``GeoDataFrame`` with point-like features denoting single
+            pixel values across bands in the collection
         """
-        pass
+        if band_selection is None:
+            band_selection = self.band_names
+        # loop over bands and convert each band to a GeoDataFrame
+        for idx, band_name in enumerate(band_selection):
+            gdf_band = self[band_name].to_dataframe()
+            if idx == 0:
+                gdf = gdf_band
+            else:
+                # if the bands have the same extent, pixel size and
+                # CRS we cam simply append the extracted band data
+                if self.is_bandstack(band_selection):
+                    gdf[band_name] = gdf_band[band_name]
+                # otherwise we can try to merge the pixels passed on
+                # their geometries
+                else:
+                    gdf = gdf.join(gdf_band[band_name, 'geometry'], on='geometry')
+        return gdf
 
     def to_rasterio(
             self,
@@ -1149,35 +1187,37 @@ class RasterCollection(MutableMapping):
                 'Cannot write bands with different shapes, pixels sizes ' \
                 'and CRS to raster data set')
 
+        # check for band aliases if they shall be used
+        if use_band_aliases:
+            if not self.has_band_aliases:
+                raise ValueError('No band aliases available')
+            band_idxs = [self.band_names.index(x) for x in band_selection]
+            band_selection = [self.band_aliases[x] for x in band_idxs]
+
         # check meta and update it with the selected driver for writing the result
         meta = deepcopy(self[band_selection[0]].meta)
-        dtypes = [self[band_selection[x]].values.dtype for x in band_selection]
+        dtypes = [self[x].values.dtype for x in band_selection]
         if len(set(dtypes)) != 1:
             UserWarning(
                 f'Multiple data types found in arrays to write ({set(dtypes)}). ' \
                 f'Casting to highest data type'
             )
-       
-        dtypes = set([self[x].values.dtype for x in band_selection])
-        if len(dtypes) == 1:
-            dtype_str = list(dtypes)[0]
+
+        if len(set(dtypes)) == 1:
+            dtype_str = str(dtypes[0])
         else:
             # TODO: determine highest dtype
-            dtype_str = 'float'
-            pass
+            dtype_str = 'float32'
 
         # update driver and the number of bands
-        meta.update(
-            {
-                'driver': driver,
-                'count': len(band_selection),
-                'dtype': dtype_str
-            }
-        )
+        meta.update({
+            'driver': driver,
+            'count': len(band_selection),
+            'dtype': dtype_str
+        })
 
         # open the result dataset and try to write the bands
         with rio.open(fpath_raster, 'w+', **meta) as dst:
-
             for idx, band_name in enumerate(band_selection):
                 # check with band name to set
                 dst.set_band_description(idx+1, band_name)
@@ -1211,8 +1251,7 @@ class RasterCollection(MutableMapping):
 
         # merge the single xarrays in the list into a single big one
         return xr.concat(band_xarr_list, dim='band')
-        
-
+  
 
 if __name__ == '__main__':
 
@@ -1322,6 +1361,15 @@ if __name__ == '__main__':
         band_names_dst=colors
     )
     assert gTiff_collection.band_names == colors, 'band names not set properly'
+    gTiff_collection.calc_si('NDVI')
+    assert 'NDVI' in gTiff_collection.band_names, 'SI not added to collection'
+    assert gTiff_collection['NDVI'].ncols == gTiff_collection['red'].ncols, \
+        'wrong number of columns in SI'
+    assert gTiff_collection['NDVI'].nrows == gTiff_collection['red'].nrows, \
+        'wrong number of rows in SI'
+
+    gdf = gTiff_collection.to_dataframe(['NDVI', 'swir_2'])
+    assert set(['NDVI', 'swir_2']).issubset(gdf.columns), 'bands not added as GeoDataFrame columns'
 
     # with band aliases
     gTiff_collection = RasterCollection.from_multi_band_raster(
@@ -1331,11 +1379,11 @@ if __name__ == '__main__':
     assert gTiff_collection.has_band_aliases, 'band aliases must exist'
 
     # try reprojection of raster bands to geographic coordinates
-    reprojected = gTiff_collection.reproject_bands(target_crs=4326)
+    reprojected = gTiff_collection.reproject(target_crs=4326)
     assert reprojected.band_names == gTiff_collection.band_names, 'band names not the same'
 
     # reproject inplace
-    gTiff_collection.reproject_bands(target_crs=4326, inplace=True)
+    gTiff_collection.reproject(target_crs=4326, inplace=True)
     assert gTiff_collection.get_band('blue').crs == reprojected.get_band('blue').crs, \
         'CRS not updated properly'
 
@@ -1348,12 +1396,15 @@ if __name__ == '__main__':
         fpath_raster=fpath_raster,
         band_aliases=colors
     )
-    resampled = gTiff_collection.resample_bands(
+    resampled = gTiff_collection.resample(
         target_resolution=5
     )
     assert resampled['green'].geo_info.pixres_x == 5, 'resolution was not changed'
     assert resampled['green'].ncols == 2206, 'wrong number of columns'
     assert resampled['green'].nrows == 2200, 'wrong number of rows'
+
+    fpath_out = Path('/tmp/test.jp2')
+    resampled.to_rasterio(fpath_out)
 
 
 class SatDataHandler():
