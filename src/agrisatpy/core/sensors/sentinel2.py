@@ -2,7 +2,7 @@
 This module contains the ``Sentinel2`` class that inherits from
 AgriSatPy's core ``RasterCollection`` class.
 
-The ``Sentinel2Handler`` enables reading one or more spectral bands from Sentinel-2
+The ``Sentinel2`` class enables reading one or more spectral bands from Sentinel-2
 data in .SAFE format which is ESA's standard format for distributing Sentinel-2 data.
 
 The class handles data in L1C and L2A processing level.
@@ -20,7 +20,8 @@ from typing import List
 from typing import Tuple
 from typing import Union
 
-from agrisatpy.io import SatDataHandler
+from agrisatpy.core.band import Band
+from agrisatpy.core.raster import RasterCollection
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
 from agrisatpy.utils.constants.sentinel2 import s2_gain_factor
@@ -32,7 +33,6 @@ from agrisatpy.utils.sentinel2 import get_S2_platform_from_safe
 from agrisatpy.utils.sentinel2 import get_S2_sclfile
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.utils.sentinel2 import get_S2_acquistion_time_from_safe
-from agrisatpy.core.raster import RasterCollection
 
 
 class Sentinel2(RasterCollection):
@@ -42,15 +42,60 @@ class Sentinel2(RasterCollection):
     from `~agrisatpy.utils.io.SatDataHandler`.
     """
 
-    def __init__(self, *args, **kwargs):
-        RasterCollection.__init__(self, *args, **kwargs)
-
     @classmethod
-    def from_safe(cls):
+    def from_safe(
+            cls,
+            in_dir: Path,
+            band_selection: Optional[List[str]] = None,
+            read_scl: Optional[bool] = True,
+            **kwargs
+        ):
         """
-        Loads Sentinel-2 data from a .SAFE archive
+        Loads Sentinel-2 data from a .SAFE archive which is ESA's
+        standard format for distributing Sentinel-2 data (L1C and L2A
+        processing levels).
+
+        
         """
-        pass
+        # load 10 and 20 bands by default
+        if band_selection is None:
+            band_selection = list(s2_band_mapping.keys())
+            bands_to_exclude = ['B01', 'B09', 'B10']
+            for band in bands_to_exclude:
+                band_selection.remove(band)
+
+        # determine which spatial resolutions are selected and check processing level
+        band_df_safe = self._get_band_files(
+            in_dir=in_dir,
+            band_selection=band_selection,
+            read_scl=read_scl
+        )
+
+        # loop over bands and add them to the collection of bands
+        sentinel2 = cls.__init__()
+        for idx, band_name in enumerate(band_selection):
+
+            # get entry from dataframe with file-path of band
+            band_safe = band_df_safe[band_df_safe.band_name == band_name]
+            band_fpath = band_safe.band_path.values[0]
+
+            # get color name and set it as alias
+            color_name = s2_band_mapping[band_name]
+
+            # read band
+            try:
+                sentinel2.add_band(
+                    Band.from_rasterio,
+                    fpath_raster=band_fpath,
+                    band_idx=1,
+                    band_name_dst=band_name,
+                    band_alias=color_name,
+                    **kwargs
+                )
+            except Exception as e:
+                raise Exception(
+                    f'Could not add band {band_name} from .SAFE: {e}'
+                )
         
 
 
