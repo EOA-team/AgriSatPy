@@ -1,5 +1,5 @@
 '''
-Raster utilities
+Raster utilities to extract raster band attributes
 '''
 
 import numpy as np
@@ -14,14 +14,14 @@ def get_raster_attributes(
     ) -> Dict[str,Any]:
     """
     extracts immutable raster attributes (not changed by reprojections,
-    resampling) and returns them as a dict.
+    resampling) and returns them as a dictionary.
 
     Code taken from
     https://github.com/pydata/xarray/blob/960010b00119367ff6b82e548f2b54ca25c7a59c/xarray/backends/rasterio_.py#L359
 
     :param riods:
-        opened dataset reader
-    :return:
+        opened ``rasterio`` data set reader
+    :returns:
         dictionary with extracted raster attributes (attrs)
     """
 
