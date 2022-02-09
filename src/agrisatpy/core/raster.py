@@ -12,7 +12,6 @@ Besides that, ``RasterCollection`` is a super class from which sensor-specific c
 (satellite) raster image data inherit.
 '''
 
-import datetime
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,136 +33,10 @@ from typing import Optional
 from typing import Union
 
 from agrisatpy.core.band import Band
+from agrisatpy.core.scene import SceneProperties
 from agrisatpy.core.spectral_indices import SpectralIndices
-from agrisatpy.config import get_settings
-from agrisatpy.utils.constants import ProcessingLevels
 from agrisatpy.utils.decorators import check_band_names
 from agrisatpy.utils.exceptions import BandNotFoundError
-
-
-logger = get_settings().logger
-
-class SceneProperties(object):
-    """
-    A class for storing scene-relevant properties
-
-    :attribute acquisition_time:
-        image acquisition time
-    :attribute platform:
-        name of the imaging platform
-    :attribute sensor:
-        name of the imaging sensor
-    :attribute processing_level:
-        processing level of the remotely sensed data (if
-        known and applicable)
-    :attribute scene_id:
-        unique scene identifier
-    """
-
-    def __init__(
-            self, 
-            acquisition_time: datetime.datetime = datetime.datetime(2999,1,1),
-            platform: str = '',
-            sensor: str = '',
-            processing_level: ProcessingLevels = ProcessingLevels.UNKNOWN,
-            scene_id: str = ''
-        ):
-        """
-        Class constructor
-
-        :param acquisition_time:
-            image acquisition time
-        :param platform:
-            name of the imaging platform
-        :param sensor:
-            name of the imaging sensor
-        :param processing_level:
-            processing level of the remotely sensed data (if
-            known and applicable)
-        :param scene_id:
-            unique scene identifier
-        """
-        # type checking first
-        if not isinstance(acquisition_time, datetime.datetime):
-            raise TypeError(
-                f'A datetime.datetime object is required: {acquisition_time}'
-            )
-        if not isinstance(platform, str):
-            raise TypeError(f'A str object is required: {platform}')
-        if not isinstance(sensor, str):
-            raise TypeError(f'A str object is required: {sensor}')
-        if not isinstance(processing_level, ProcessingLevels):
-            raise TypeError(
-                f'A ProcessingLevels object is required: {processing_level}'
-            )
-        if not isinstance(scene_id, str):
-            raise TypeError(f'A str object is required: {scene_id}')
-
-        self.acquisition_time = acquisition_time
-        self.platform = platform
-        self.sensor = sensor
-        self.processing_level = processing_level
-        self.scene_id = scene_id
-
-    @property
-    def acquisition_time(self) -> datetime.datetime:
-        """acquisition time of the scene"""
-        return self._acquisition_time
-
-    @acquisition_time.setter
-    def acquisition_time(self, time: datetime.datetime) -> None:
-        """acquisition time of the scene"""
-        if not isinstance(time, datetime.datetime):
-            raise TypeError('Expected a datetime.datetime object')
-        self._acquisition_time = time
-
-    @property
-    def platform(self) -> str:
-        """name of the imaging platform"""
-        return self._platform
-
-    @platform.setter
-    def platform(self, value: str) -> None:
-        """name of the imaging plaform"""
-        if not isinstance(value, str):
-            raise TypeError('Expected a str object')
-        self._platform = value
-
-    @property
-    def sensor(self) -> str:
-        """name of the sensor"""
-        return self._sensor
-
-    @sensor.setter
-    def sensor(self, value: str) -> None:
-        """name of the sensor"""
-        if not isinstance(value, str):
-            raise TypeError('Expected a str object')
-        self._sensor = value
-
-    @property
-    def processing_level(self) -> ProcessingLevels:
-        """current processing level"""
-        return self._processsing_level
-
-    @processing_level.setter
-    def processing_level(self, value: ProcessingLevels):
-        """current processing level"""
-        if not isinstance(value, ProcessingLevels):
-            raise TypeError(f'Expected {ProcessingLevels}')
-        self._processing_level = value
-
-    @property
-    def scene_id(self) -> str:
-        """unique scene identifier"""
-        return self._scene_id
-
-    @scene_id.setter
-    def scene_id(self, value: str) -> None:
-        """unique scene identifier"""
-        if not isinstance(value, str):
-            raise TypeError('Expected a str object')
-        self._scene_id = value
 
 
 class RasterCollection(MutableMapping):
@@ -178,6 +51,18 @@ class RasterCollection(MutableMapping):
     :attrib scene_properties:
         instance of `SceneProperties` for storing scene (i.e., dataset-wide)
         metadata. Designed for the usage with remote sensing data.
+    :attrib band_names:
+        names of the bands currently loaded into the collection
+    :attrib band_aliases:
+        optional aliases of the band names. Thus, a band can be accessed either
+        by its name or its alias.
+    :attrib empty:
+        True if no bands are loaded into the collection, False if bands
+        are available
+    :attrib has_band_aliases:
+        True if the band aliases are provided, False otherwise
+    :attrib collection:
+        dictionary-like collection of loaded raster ``Band`` instances
     """
 
     def __init__(
@@ -217,7 +102,6 @@ class RasterCollection(MutableMapping):
         >>>         color_name=color_name,
         >>>         geo_info=geo_info
         >>> )
-
 
         :param band_constructor:
             optional callable returning an `~agrisatpy.core.Band`
@@ -1056,23 +940,36 @@ class RasterCollection(MutableMapping):
 
         return collection
 
-    def calc_si(self, si_name: str):
+    def calc_si(
+            self,
+            si_name: str,
+            inplace: Optional[bool] = False
+        ) -> Union[None, np.ndarray, np.ma.MaskedArray]:
         """
         Calculates a spectral index based on color-names (set as band aliases)
+
+        :param si_name:
+            name of the spectral index to calculate (e.g., 'NDVI')
+        :returns:
+            ``np.ndarray`` or ``np.ma.MaskedArray`` if inplace is False, None
+            otherwise (is added as band to the collection)
         """
-        vi_values = SpectralIndices.calc_si(si_name, self.collection)
-        # look for spectral band with same shape to take geo-info from
-        geo_info = [
-            self[x].geo_info for x in self.band_names if \
-            self[x].values.shape == vi_values.shape
-        ][0]
-        self.add_band(
-            band_constructor=Band,
-            band_name=si_name.upper(),
-            geo_info=geo_info,
-            band_alias=si_name.lower(),
-            values=vi_values
-        )
+        si_values = SpectralIndices.calc_si(si_name, self.collection)
+        if inplace:
+            # look for spectral band with same shape to take geo-info from
+            geo_info = [
+                self[x].geo_info for x in self.band_names if \
+                self[x].values.shape == si_values.shape
+            ][0]
+            self.add_band(
+                band_constructor=Band,
+                band_name=si_name.upper(),
+                geo_info=geo_info,
+                band_alias=si_name.lower(),
+                values=si_values
+            )
+        else:
+            return si_values
 
     @check_band_names
     def to_dataframe(
@@ -1112,7 +1009,7 @@ class RasterCollection(MutableMapping):
             fpath_raster: Path,
             band_selection: Optional[List[str]] = None,
             use_band_aliases: Optional[bool] = False
-        ):
+        ) -> None:
         """
         Writes bands in collection to a raster dataset on disk using
         ``rasterio`` drivers

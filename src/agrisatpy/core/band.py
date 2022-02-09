@@ -1424,6 +1424,25 @@ class Band(object):
         ):
         """
         Projects the raster data into a different spatial coordinate system
+
+        :param target_crs:
+            EPSG code of the target spatial coordinate system the raster data
+            should be projected to
+        :param dst_transfrom:
+            optional ``Affine`` transformation of the raster data in the target
+            spatial coordinate system
+        :param interpolation_method:
+            interpolation method to use for interpolating grid cells after
+            reprojection. Default is neares neighbor interpolation.
+        :param num_threads:
+            number of threads to use for the operation. Uses a single thread by
+            default.
+        :param inplace:
+            if False (default) returns a copy of the ``Band`` instance
+            with the changes applied. If True overwrites the values
+            in the current instance.
+        :returns:
+            ``Band`` instance if `inplace` is False, None instead.
         """
 
         # collect options for reprojection
