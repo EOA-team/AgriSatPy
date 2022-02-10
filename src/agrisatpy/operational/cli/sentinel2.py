@@ -7,29 +7,30 @@ NOTE:
     scenes ingested into the database can be accessed!
 '''
 
-import shutil
 import matplotlib.pyplot as plt
 import numpy as np
+import shutil
 
-from pathlib import Path
 from datetime import date
 from datetime import datetime
-from typing import Optional
+from pathlib import Path
+from typing import Any
 from typing import Dict
+from typing import Optional
 from typing import Union
 
-from agrisatpy.operational.resampling.sentinel2 import exec_pipeline
-from agrisatpy.operational.archive.sentinel2 import pull_from_creodias
-from agrisatpy.metadata.sentinel2.database import meta_df_to_database
-from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
-from agrisatpy.downloader.sentinel2.utils import unzip_datasets
-from agrisatpy.metadata.sentinel2.parsing import parse_s2_scene_metadata
-from agrisatpy.metadata.sentinel2.database.ingestion import metadata_dict_to_database
 from agrisatpy.config import get_settings
+from agrisatpy.metadata.sentinel2.database import meta_df_to_database
+from agrisatpy.metadata.sentinel2.database.ingestion import metadata_dict_to_database
 from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_tile
+from agrisatpy.metadata.sentinel2.database.querying import get_scene_metadata
+from agrisatpy.metadata.sentinel2.parsing import parse_s2_scene_metadata
+from agrisatpy.operational.archive.sentinel2 import pull_from_creodias
+from agrisatpy.operational.resampling.sentinel2 import exec_pipeline
+from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
+
 
 logger = get_settings().logger
-
 
 def cli_s2_pipeline_fun(
         processed_data_archive: Path,
@@ -119,7 +120,6 @@ def cli_s2_pipeline_fun(
 
     # write failed datasets to disk
     failed_datasets.to_csv(processed_data_archive.joinpath('failed_datasets.csv'))
-
 
 def cli_s2_creodias_update(
         s2_raw_data_archive: Path,
@@ -216,7 +216,6 @@ def cli_s2_creodias_update(
     )
 
     """
-
     # since the data is stored by year (each year is a single sub-directory) we
     # can simple loop over the sub-directories and do the check
     for path in Path(s2_raw_data_archive).iterdir():
@@ -303,6 +302,52 @@ def cli_s2_creodias_update(
                         line = processing_date + ',' + error[0] + ',' + str(error[1])
                         src.writelines(line + '\n')
 
+def cli_s2_sen2cor_update(
+        s2_raw_data_archive: Path,
+        path_options: Optional[Dict[str, Any]] = {},
+    ) -> None:
+    """
+    Loops over the Sentinel-2 raw data archive and checks for each
+    scene (*.SAFE) if it exists already in the AgriSatPy metadata DB. If not
+    the entry is added. To speed-up the procedure single years can be
+    considered only.
+
+    :param s2_raw_data_archive:
+        Sentinel-2 raw data archive (containing *.SAFE datasets) to monitor.
+    :param path_options:
+        optional dictionary specifying storage_device_ip, storage_device_ip_alias
+        (if applicable) and mount point in case the data is stored on a NAS
+        and should be accessible from different operating systems or file systems
+        with different mount points of the NAS share. If not provided, the absolute
+        path of the dataset is used in the database.
+    """
+    # if yes loop over all scenes (S2*.SAFE)
+    for scene_dir in s2_raw_data_archive.rglob('S2*.SAFE'):
+        
+        try:
+            # check if the scene exists already in the DB (using its product_uri
+            # which is the same as the scene directory name)
+            product_uri = scene_dir.name
+            # query database
+            scene_df = get_scene_metadata(product_uri)
+            if scene_df.empty:
+                scene_metadata, _ = parse_s2_scene_metadata(scene_dir)
+                # some path handling if required
+                if path_options != {}:
+                    scene_metadata['storage_device_ip'] = path_options.get('storage_device_ip','')
+                    scene_metadata['storage_device_ip_alias'] = path_options.get('storage_device_ip_alias','')
+                    mount_point = path_options.get('mount_point', '')
+                    mount_point_replacement = path_options.get('mount_point_replacement', '')
+                    scene_metadata['storage_share'] = scene_metadata['storage_share'].replace(
+                        mount_point, mount_point_replacement)
+                # ingest it into the database
+                metadata_dict_to_database(scene_metadata)
+                logger.info(
+                    f'Ingested scene metadata for {product_uri} into DB')
+            else:
+                logger.info(f'{product_uri} already in database')
+        except Exception as e:
+            logger.error(f'{product_uri} produced an error: {e}')
 
 def cli_s2_scene_selection(
         tile: str,
