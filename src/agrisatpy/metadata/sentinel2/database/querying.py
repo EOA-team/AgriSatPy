@@ -112,7 +112,6 @@ def find_raw_data_by_bbox(
             f'Could not find Sentinel-2 data by bounding box: {e}'
         )
 
-
 def find_raw_data_by_tile(
         date_start: date,
         date_end: date,
@@ -175,4 +174,30 @@ def find_raw_data_by_tile(
     except Exception as e:
         raise DataNotFoundError(
             f'Could not find Sentinel-2 data by tile: {e}'
+        )
+
+def get_scene_metadata(
+        product_uri: str
+    ) -> pd.DataFrame:
+    """
+    Returns the complete metadata record of a Sentinel-2 scene
+
+    :param product_uri:
+        unique product identifier. This corresponds to the .SAFE
+        name of a Sentinel-2 dataset
+    :returns:
+        ``DataFrame`` with complete scene metadata
+    """
+    query_statement = session.query(
+        S2_Raw_Metadata
+    ).filter(
+        S2_Raw_Metadata.product_uri == product_uri
+    ).statement
+
+    try:
+        return pd.read_sql(query_statement, session.bind)
+    except Exception as e:
+        raise DataNotFoundError(
+            'Could not find Sentinel-2 scene with product_uri '\
+            f'{product_uri}: {e}'
         )
