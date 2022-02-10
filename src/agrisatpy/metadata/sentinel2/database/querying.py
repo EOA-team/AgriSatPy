@@ -63,7 +63,7 @@ def find_raw_data_by_bbox(
     :param cloud_cover_threshold:
         optional cloud cover threshold to filter datasets by scene cloud coverage.
         Must be provided as number between 0 and 100%.
-    :return:
+    :returns:
         dataframe with references to found Sentinel-2 scenes
     """
 
@@ -134,7 +134,7 @@ def find_raw_data_by_tile(
     :param cloud_cover_threshold:
         optional cloud cover threshold to filter datasets by scene cloud coverage.
         Must be provided as number between 0 and 100%.
-    :return:
+    :returns:
         dataframe with references to found Sentinel-2 scenes
     """
 
