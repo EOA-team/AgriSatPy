@@ -298,6 +298,12 @@ class RasterCollection(MutableMapping):
             'band_count': band_count
         }
 
+    def copy(self):
+        """
+        Returns a copy of the current ``RasterCollection``
+        """
+        return deepcopy(self)
+
     @classmethod
     def from_multi_band_raster(
             cls,
@@ -481,12 +487,9 @@ class RasterCollection(MutableMapping):
         """
         if band_selection is None:
             band_selection = self.band_names
-        else:
-            if not all(elem in self.band_names for elem in band_selection):
-                raise BandNotFoundError(f'Invalid selection of bands')
 
         # return None if no bands are in collection
-        if len(band_selection) == 0:
+        if self.empty:
             return None
 
         # otherwise use the first band (that will then always exist)
@@ -777,7 +780,8 @@ class RasterCollection(MutableMapping):
         collection = None
         kwargs.update({'inplace': True})
         if not inplace:
-            collection = RasterCollection()
+            scene_props = self.scene_properties
+            collection = RasterCollection(scene_properties=scene_props)
             kwargs.update({'inplace': False})
 
         # loop over band reproject the selected ones
@@ -820,7 +824,8 @@ class RasterCollection(MutableMapping):
         collection = None
         kwargs.update({'inplace': True})
         if not inplace:
-            collection = RasterCollection()
+            scene_props = self.scene_properties
+            collection = RasterCollection(scene_properties=scene_props)
             kwargs.update({'inplace': False})
 
         # loop over band reproject the selected ones
@@ -921,7 +926,8 @@ class RasterCollection(MutableMapping):
         # initialize a new raster collection if inplace is False
         collection = None
         if not inplace:
-            collection = RasterCollection()
+            scene_props = self.scene_properties
+            collection = RasterCollection(scene_properties=scene_props)
 
         # loop over band reproject the selected ones
         for band_name in bands_to_mask:
@@ -940,6 +946,20 @@ class RasterCollection(MutableMapping):
 
         return collection
 
+    # TODO: implement this!!!
+    def scale(self):
+        """
+        Applies gain and offset factors to bands in collection
+        """
+        pass
+
+    # TODO: implement this!!!
+    def join(self, other):
+        """
+        Spatial join of one ``RasterCollection`` instance with another
+        instance
+        """
+
     def calc_si(
             self,
             si_name: str,
@@ -954,7 +974,9 @@ class RasterCollection(MutableMapping):
             ``np.ndarray`` or ``np.ma.MaskedArray`` if inplace is False, None
             otherwise (is added as band to the collection)
         """
-        si_values = SpectralIndices.calc_si(si_name, self.collection)
+        si_values = SpectralIndices.calc_si(si_name, self)
+        # since SIs are floats by nature set the nodata value to np.nan
+        nodata = np.nan
         if inplace:
             # look for spectral band with same shape to take geo-info from
             geo_info = [
@@ -966,7 +988,8 @@ class RasterCollection(MutableMapping):
                 band_name=si_name.upper(),
                 geo_info=geo_info,
                 band_alias=si_name.lower(),
-                values=si_values
+                values=si_values,
+                nodata=nodata
             )
         else:
             return si_values
@@ -1067,11 +1090,12 @@ class RasterCollection(MutableMapping):
             # TODO: determine highest dtype
             dtype_str = 'float32'
 
-        # update driver and the number of bands
+        # update driver, the number of bands and the metadata value
         meta.update({
             'driver': driver,
             'count': len(band_selection),
-            'dtype': dtype_str
+            'dtype': dtype_str,
+            'nodata': self[band_selection[0]].nodata
         })
 
         # open the result dataset and try to write the bands
@@ -1081,6 +1105,11 @@ class RasterCollection(MutableMapping):
                 dst.set_band_description(idx+1, band_name)
                 # write band data
                 band_data = self.get_band(band_name).values.astype(dtype_str)
+                # set masked pixels to nodata
+                if self[band_name].is_masked_array:
+                    vals = band_data.data
+                    mask = band_data.mask
+                    vals[mask] = self[band_name].nodata
                 dst.write(band_data, idx+1)
 
     @check_band_names
