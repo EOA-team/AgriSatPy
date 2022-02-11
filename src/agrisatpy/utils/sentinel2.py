@@ -17,8 +17,7 @@ from typing import Union
 
 from agrisatpy.config import get_settings
 from agrisatpy.config import Sentinel2
-from agrisatpy.utils.exceptions import ArchiveNotFoundError, BandNotFoundError
-from agrisatpy.utils.exceptions import MetadataNotFoundError
+from agrisatpy.utils.exceptions import BandNotFoundError, MetadataNotFoundError
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 
 # global definition of spectral bands and their spatial resolution
@@ -223,7 +222,7 @@ def get_S2_bandfiles_with_res(
         # search expression for the file depends on the processing level
         if is_l2a:
             search_expr = in_dir.joinpath(
-                f'GRANULE/*/IMG_DATA/R{int(band_res)}m/T*_{band_name.upper()}_{int(band_res)}m.jp2'
+                f'GRANULE/*/IMG_DATA/R{int(band_res)}m/*_{band_name.upper()}_{int(band_res)}m.jp2'
             )
         else:
             search_expr = in_dir.joinpath(
