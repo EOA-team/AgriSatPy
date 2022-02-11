@@ -16,7 +16,7 @@ from typing import List
 from typing import Optional
 from typing import Union
 
-from agrisatpy.io.sentinel2 import Sentinel2Handler
+from agrisatpy.core.sensors import Sentinel2
 from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_bbox
 from agrisatpy.operational.mapping.mapper import Mapper, Feature
 from agrisatpy.operational.resampling.utils import identify_split_scenes
@@ -265,7 +265,7 @@ class Sentinel2Mapper(Mapper):
             self,
             scenes_date: pd.DataFrame,
             feature_gdf: gpd.GeoDataFrame
-        ) -> Union[gpd.GeoDataFrame, Sentinel2Handler]:
+        ) -> Union[gpd.GeoDataFrame, Sentinel2]:
         """
         Backend method for processing and reading scene data if more than one scene
         is available for a given sensing date and area of interest
@@ -282,7 +282,7 @@ class Sentinel2Mapper(Mapper):
         if feature_gdf['geometry'].iloc[0].type == 'Point':
             for _, candidate_scene in scenes_date.iterrows():
 
-                feature_gdf = Sentinel2Handler.read_pixels_from_safe(
+                feature_gdf = Sentinel2.read_pixels_from_safe(
                     point_features=feature_gdf,
                     in_dir=candidate_scene.real_path,
                     band_selection=self.mapper_configs.band_names
@@ -313,12 +313,11 @@ class Sentinel2Mapper(Mapper):
 
         return res
 
-
     def get_observation(
             self,
             feature_id: Any,
             sensing_date: date
-        ) -> Union[gpd.GeoDataFrame, Sentinel2Handler, None]:
+        ) -> Union[gpd.GeoDataFrame, Sentinel2, None]:
         """
         Returns the scene data (observations) for a selected feature and date.
         
@@ -377,7 +376,7 @@ class Sentinel2Mapper(Mapper):
             # if there is only one scene all we have to do is to read
             # read pixels in case the feature's dtype is point
             if feature_dict['features'][0]['geometry']['type'] == 'Point':
-                res = Sentinel2Handler.read_pixels_from_safe(
+                res = Sentinel2.read_pixels_from_safe(
                     point_features=feature_gdf,
                     in_dir=scenes_date['real_path'].iloc[0],
                     band_selection=self.mapper_configs.band_names
