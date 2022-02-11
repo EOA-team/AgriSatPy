@@ -15,7 +15,8 @@ from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Union
-from agrisatpy.io.sat_data_handler import SatDataHandler
+
+from agrisatpy.core.raster import RasterCollection
 
 
 class Feature(object):
@@ -23,7 +24,7 @@ class Feature(object):
     Class representing a feature, e.g., an area of interest.
 
     :attrib identifier:
-        identifier of the feature
+        unique identifier of the feature
     :attrib geom:
         geometry of the feature
     :attrib epsg:
@@ -33,7 +34,6 @@ class Feature(object):
         (e.g., its name or other attributes spoken in terms of an
         ESRI shapefile's table of attributes)
     """
-
     def __init__(
             self,
             identifier: Any,
@@ -41,12 +41,27 @@ class Feature(object):
             epsg: int,
             properties: Optional[Dict[str, Any]]
         ):
+        """
+        Initializes a new ``Feature`` instance.
 
+        :param identifier:
+            unique identifier of the feature
+        :param geom:
+            geometry of the feature
+        :param epsg:
+            epsg code of the feature's geometry
+        :param properties:
+            any key-value dictionary like mapping of feature properties
+            (e.g., its name or other attributes spoken in terms of an
+            ESRI shapefile's table of attributes)
+        """
         # some checks
         if epsg <= 0:
             raise TypeError('EPSG codes must be >= 0')
         if not hasattr(geom, '__geo_interface__'):
-            raise TypeError('Geometries must implement the __geo_interface__')
+            raise TypeError(
+                'Geometries must implement the __geo_interface__'
+            )
         if not isinstance(properties, dict):
             raise TypeError('Only dictionary are accepted')
 
@@ -65,7 +80,12 @@ class Feature(object):
         return str(self.__dict__)
 
     def to_gdf(self) -> GeoDataFrame:
-        """Returns the feature as GeoDataFrame"""
+        """
+        Returns the feature as ``GeoDataFrame``
+
+        :returns:
+            ``Feature`` instance as ``GeoDataFrame``
+        """
         self.properties.update({'epsg': self.epsg})
         return GeoDataFrame(
             self.properties,
@@ -99,7 +119,21 @@ class MapperConfigs(object):
             spatial_resolution: Optional[Union[int, float]] = None,
             reducers: Optional[List[str]] = None
         ):
+        """
+        Constructs a new ``MapperConfig`` instance.
 
+        :param band_names:
+            names of raster bands to process from each dataset found during the
+            mapping process
+        :param resampling_method:
+            resampling might become necessary when the spatial resolution
+            changes. Nearest neighbor by default.
+        :param spatial_resolution:
+            if provided brings all raster bands into the same spatial resolution
+        :param reducers:
+            optional list of spatial reducers (e.g., 'mean') converting all
+            raster observations from 2d arrays to scalars.
+        """
         object.__setattr__(self, 'band_names', band_names)
         object.__setattr__(self, 'resampling_method', resampling_method)
         object.__setattr__(self, 'spatial_resolution', spatial_resolution)
@@ -149,7 +183,27 @@ class Mapper(object):
             unique_id_attribute: Optional[str] = None,
             mapper_configs: MapperConfigs = MapperConfigs()
         ):
+        """
+        Constructs a new ``Mapper`` instance.
 
+        :param date_start:
+            start date of the time period to consider (inclusive)
+        :param date_end:
+            end date of the time period to consider (inclusive)
+        :param feature_collection:
+            ``GeoDataFrame`` or any vector file understood by ``fiona`` with
+            geometries of type ``Point``, ``Polygon`` or ``MultiPolygon``
+            defining the Areas Of Interest (AOIs) to extract (e.g., agricultural
+            field parcels). Each feature in the collection will be processed
+            separately
+        :param unique_id_attribute:
+            attribute in the `polygon_features`'s attribute table making each
+            feature (AOI) uniquely identifiable. If None (default) the features
+            are labelled by a unique-identifier created on the fly.
+        :param mapping_configs:
+            Mapping configurations specified by `~agrisatpy.operational.mapping.MapperConfigs`.
+            Uses default configurations if not provided.
+        """
         object.__setattr__(self, 'date_start', date_start)
         object.__setattr__(self, 'date_end', date_end)
         object.__setattr__(self, 'feature_collection', feature_collection)
@@ -207,6 +261,13 @@ class Mapper(object):
             if len(res) == 0:
                 raise KeyError(f'No feature found with ID "{feature_id}"')
             return {'type': 'FeatureCollection', 'features': res}
+
+    def get_scenes(self):
+        """
+        Method to query available scenes. To be implemented by sensor-specific
+        classes inheriting from the generic mapper class.
+        """
+        pass
 
     def get_feature_scenes(
             self,
