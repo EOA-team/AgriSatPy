@@ -20,8 +20,8 @@ class SceneProperties(object):
     :attribute processing_level:
         processing level of the remotely sensed data (if
         known and applicable)
-    :attribute scene_id:
-        unique scene identifier
+    :attribute product_uri:
+        unique product (scene) identifier
     """
 
     def __init__(
@@ -30,7 +30,7 @@ class SceneProperties(object):
             platform: str = '',
             sensor: str = '',
             processing_level: ProcessingLevels = ProcessingLevels.UNKNOWN,
-            scene_id: str = ''
+            product_uri: str = ''
         ):
         """
         Class constructor
@@ -44,8 +44,8 @@ class SceneProperties(object):
         :param processing_level:
             processing level of the remotely sensed data (if
             known and applicable)
-        :param scene_id:
-            unique scene identifier
+        :param product_uri:
+            unique product (scene) identifier
         """
         # type checking first
         if not isinstance(acquisition_time, datetime.datetime):
@@ -60,14 +60,14 @@ class SceneProperties(object):
             raise TypeError(
                 f'A ProcessingLevels object is required: {processing_level}'
             )
-        if not isinstance(scene_id, str):
-            raise TypeError(f'A str object is required: {scene_id}')
+        if not isinstance(product_uri, str):
+            raise TypeError(f'A str object is required: {product_uri}')
 
         self.acquisition_time = acquisition_time
         self.platform = platform
         self.sensor = sensor
         self.processing_level = processing_level
-        self.scene_id = scene_id
+        self.product_uri = product_uri
 
     @property
     def acquisition_time(self) -> datetime.datetime:
@@ -118,13 +118,13 @@ class SceneProperties(object):
         self._processing_level = value
 
     @property
-    def scene_id(self) -> str:
-        """unique scene identifier"""
-        return self._scene_id
+    def product_uri(self) -> str:
+        """unique product (scene) identifier"""
+        return self._product_uri
 
-    @scene_id.setter
-    def scene_id(self, value: str) -> None:
-        """unique scene identifier"""
+    @product_uri.setter
+    def product_uri(self, value: str) -> None:
+        """unique product (scene) identifier"""
         if not isinstance(value, str):
             raise TypeError('Expected a str object')
-        self._scene_id = value
+        self._product_uri = value
