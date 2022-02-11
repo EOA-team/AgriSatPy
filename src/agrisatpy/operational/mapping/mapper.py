@@ -15,12 +15,12 @@ from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Union
-from agrisatpy.core.sat_data_handler import SatDataHandler
+from agrisatpy.io.sat_data_handler import SatDataHandler
 
 
 class Feature(object):
     """
-    Class representing a feature, e.g., an area of interest
+    Class representing a feature, e.g., an area of interest.
 
     :attrib identifier:
         identifier of the feature
@@ -28,18 +28,32 @@ class Feature(object):
         geometry of the feature
     :attrib epsg:
         epsg code of the feature's geometry
+    :attrib properties:
+        any key-value dictionary like mapping of feature properties
+        (e.g., its name or other attributes spoken in terms of an
+        ESRI shapefile's table of attributes)
     """
 
     def __init__(
             self,
             identifier: Any,
             geom: Union[Point, Polygon, MultiPolygon],
-            epsg: int
+            epsg: int,
+            properties: Optional[Dict[str, Any]]
         ):
+
+        # some checks
+        if epsg <= 0:
+            raise TypeError('EPSG codes must be >= 0')
+        if not hasattr(geom, '__geo_interface__'):
+            raise TypeError('Geometries must implement the __geo_interface__')
+        if not isinstance(properties, dict):
+            raise TypeError('Only dictionary are accepted')
 
         object.__setattr__(self, 'identifier', identifier)
         object.__setattr__(self, 'geom', geom)
         object.__setattr__(self, 'epsg', epsg)
+        object.__setattr__(self, 'properties', properties)
 
     def __setattr__(self, *args):
         raise TypeError('Feature attributes are immutable')
@@ -52,10 +66,12 @@ class Feature(object):
 
     def to_gdf(self) -> GeoDataFrame:
         """Returns the feature as GeoDataFrame"""
+        self.properties.update({'epsg': self.epsg})
         return GeoDataFrame(
+            self.properties,
             index=[self.identifier],
             crs=f'epsg:{self.epsg}',
-            geometry=[self.geom]
+            geometry=[self.geom],
         )
 
 
@@ -108,11 +124,12 @@ class Mapper(object):
         start date of the time period to consider (inclusive)
     :attrib date_end:
         end date of the time period to consider (inclusive)
-    :attrib aoi_features:
+    :attrib feature_collection:
         ``GeoDataFrame`` or any vector file understood by ``fiona`` with
         geometries of type ``Point``, ``Polygon`` or ``MultiPolygon``
         defining the Areas Of Interest (AOIs) to extract (e.g., agricultural
-        field parcels). Each feature will be returned separately
+        field parcels). Each feature in the collection will be processed
+        separately
     :attrib unique_id_attribute:
         attribute in the `polygon_features`'s attribute table making each
         feature (AOI) uniquely identifiable. If None (default) the features
@@ -128,14 +145,14 @@ class Mapper(object):
             self,
             date_start: date,
             date_end: date,
-            aoi_features: Union[Path, GeoDataFrame],
+            feature_collection: Union[Path, GeoDataFrame],
             unique_id_attribute: Optional[str] = None,
             mapper_configs: MapperConfigs = MapperConfigs()
         ):
 
         object.__setattr__(self, 'date_start', date_start)
         object.__setattr__(self, 'date_end', date_end)
-        object.__setattr__(self, 'aoi_features', aoi_features)
+        object.__setattr__(self, 'feature_collection', feature_collection)
         object.__setattr__(self, 'unique_id_attribute', unique_id_attribute)
         object.__setattr__(self, 'mapper_configs', mapper_configs)
 
@@ -151,20 +168,60 @@ class Mapper(object):
     def __delattr__(self, *args):
         raise TypeError('Mapper attributes are immutable')
 
-    def get_aoi_scenes(
+    def get_feature_ids(self) -> List:
+        """
+        Lists feature identifiers in feature collection
+
+        :returns:
+            list of feature identifiers
+        """
+        if isinstance(self.feature_collection, Path):
+            return []
+        return [x['id'] for x in self.feature_collection['features']]
+
+    def get_feature(
             self,
-            aoi_identifier: Any
+            feature_id: Any
+        ) -> Dict[str, Any]:
+        """
+        Returns a feature in its ``__geo_interface__`` representation
+        out of the feature collection
+
+        :param feature_id:
+            feature identifier to use for extraction
+        :param as_gdf:
+            return feature as dictionary (default) or ``GeoDataFrame``?
+        :returns:
+            the feature with its properties and geometry
+        """
+        if isinstance(self.feature_collection, Path):
+            return {}
+        if isinstance(self.feature_collection, GeoDataFrame):
+            gdf = self.feature_collection[
+                self.feature_collection[self.unique_id_attribute] == feature_id
+            ]
+            return {} if gdf.empty else gdf.__geo_interface__
+        else:
+            res = [x for x in self.feature_collection['features'] \
+                   if x['id'] == feature_id]
+            if len(res) == 0:
+                raise KeyError(f'No feature found with ID "{feature_id}"')
+            return {'type': 'FeatureCollection', 'features': res}
+
+    def get_feature_scenes(
+            self,
+            feature_identifier: Any
         ) -> DataFrame:
         """
         Returns a ``DataFrame`` with all scenes found for a
-        area of interest.
+        feature in the feature collection
 
         NOTE:
             The scene count is termed ``raw_scene_count``. This
             highlights that the final scene count might be
             different due to orbit and spatial design pattern.
 
-        :param aoi_identifier:
+        :param feature_identifier:
             unique identifier of the aoi. Must be the same identifier
             used during the database query
         :return:
@@ -173,8 +230,8 @@ class Mapper(object):
         """
 
         try:
-            return self.observations[aoi_identifier].copy()
+            return self.observations[feature_identifier].copy()
         except Exception as e:
             raise KeyError(
-                f'{aoi_identifier} did not return any results: {e}'
+                f'{feature_identifier} did not return any results: {e}'
             )
