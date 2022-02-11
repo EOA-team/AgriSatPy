@@ -16,17 +16,18 @@ from typing import List
 from typing import Optional
 from typing import Union
 
+from agrisatpy.config import get_settings
 from agrisatpy.core.sensors import Sentinel2
 from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_bbox
 from agrisatpy.operational.mapping.mapper import Mapper, Feature
 from agrisatpy.operational.resampling.utils import identify_split_scenes
-from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
+from agrisatpy.utils.constants.sentinel2 import ProcessingLevels, s2_gain_factor
 from agrisatpy.utils.exceptions import InputError, BlackFillOnlyError,\
     DataNotFoundError
 from agrisatpy.metadata.sentinel2.utils import identify_updated_scenes
 from agrisatpy.metadata.utils import reconstruct_path
 
-
+logger = get_settings().logger
 return_types = ['xarray', 'GeoDataFrame']
 
 
@@ -261,10 +262,12 @@ class Sentinel2Mapper(Mapper):
         object.__setattr__(self, 'observations', s2_scenes)
         object.__setattr__(self, 'feature_collection', features)
 
+    # TODO: develop this function further
     def _read_multiple_scenes(
             self,
             scenes_date: pd.DataFrame,
-            feature_gdf: gpd.GeoDataFrame
+            feature_gdf: gpd.GeoDataFrame,
+            **kwargs
         ) -> Union[gpd.GeoDataFrame, Sentinel2]:
         """
         Backend method for processing and reading scene data if more than one scene
@@ -302,7 +305,12 @@ class Sentinel2Mapper(Mapper):
         # re-reprojection might be required. The result is then saved to disk in a temporary
         # directory.
         else:
-            pass
+            for _, candidate_scene in scenes_date.iterrows():
+                # TODO: continue here with merge logic
+                s2_scene = Sentinel2.from_safe(
+                    in_dir=candidate_scene.real_path,
+                    band_selection=self.mapper_configs.band_names
+                )
 
         # delete those scenes in the observations dataframe that were not used
         candidate_scene_ids.remove(selected_scene_id)
@@ -316,7 +324,8 @@ class Sentinel2Mapper(Mapper):
     def get_observation(
             self,
             feature_id: Any,
-            sensing_date: date
+            sensing_date: date,
+            **kwargs
         ) -> Union[gpd.GeoDataFrame, Sentinel2, None]:
         """
         Returns the scene data (observations) for a selected feature and date.
@@ -348,7 +357,7 @@ class Sentinel2Mapper(Mapper):
         # get scene(s) closest to the sensing_date provided
         scenes_date = scenes_df.iloc[[
             abs((scenes_df.sensing_date - sensing_date)).argmin()
-        ]]
+        ]].copy()
 
         # map the dataset path(s)
         try:
@@ -363,41 +372,39 @@ class Sentinel2Mapper(Mapper):
         feature_dict = self.get_feature(feature_id)
         feature_gdf = gpd.GeoDataFrame.from_features(feature_dict)
         feature_gdf.crs = feature_dict['features'][0]['properties']['epsg']
+        # parse feature geometry in kwargs so that only a spatial subset is read
+        # in addition parse the S2 gain factor as "scale" argument
+        kwargs.update({
+            'vector_features': feature_gdf
+        })
 
         # multiple scenes for a single date
         # check what to do (re-projection, merging)
         if scenes_date.shape[0] > 1:
             res = self._read_multiple_scenes(
                 scenes_date=scenes_date,
-                feature_dict=feature_dict
+                feature_dict=feature_dict,
+                **kwargs
             )
 
         else:
             # if there is only one scene all we have to do is to read
             # read pixels in case the feature's dtype is point
             if feature_dict['features'][0]['geometry']['type'] == 'Point':
-                res = Sentinel2.read_pixels_from_safe(
-                    point_features=feature_gdf,
-                    in_dir=scenes_date['real_path'].iloc[0],
-                    band_selection=self.mapper_configs.band_names
-                )
+                res = Sentinel2.read_pixels_from_safe()
             # or the feature
             else:
-                handler = Sentinel2Handler()
                 try:
-                    handler.read_from_safe(
-                        in_dir=scenes_date['realpath'].iloc[0],
-                        aoi_features=feature_gdf,
+                    res = Sentinel2.from_safe(
+                        in_dir=scenes_date['real_path'].iloc[0],
                         band_selection=self.mapper_configs.band_names,
-                        full_bounding_box_only=True,
-                        int16_to_float=False
+                        **kwargs
                     )
                 except BlackFillOnlyError:
                     return res
                 except Exception as e:
                     raise Exception from e
-                res = handler
-
+            
         # append date to GeoDataFrame
         if isinstance(res, gpd.GeoDataFrame):
             res['sensing_date'] = scenes_date['sensing_date']
@@ -407,8 +414,9 @@ class Sentinel2Mapper(Mapper):
 
     def get_complete_timeseries(
             self,
-            feature_selection: Optional[List[Any]] = None
-        ) -> None:
+            feature_selection: Optional[List[Any]] = None,
+            **kwargs
+        ) -> Dict[Any,Union[gpd.GeoDataFrame,List[Sentinel2]]]:
         """
         Extracts all observation with a time period for a feature collection.
 
@@ -417,8 +425,10 @@ class Sentinel2Mapper(Mapper):
         original .SAFE archives for all available scenes.
     
         :param feature_selection:
-            optional subset of features (you can only select features included
+            optional subset of features ids (you can only select features included
             in the current feature collection)
+        :param kwargs:
+            optional key-word arguments to pass to `~agrisatpy.core.band.Band.from_rasterio`
         """
 
         assets = {}
@@ -435,16 +445,33 @@ class Sentinel2Mapper(Mapper):
             # and check for each date which scenes are relevant and require
             # potential reprojection or merging
             sensing_dates = scenes_df.sensing_date.unique()
+            n_sensing_dates = len(sensing_dates)
             feature_res = []
-            for sensing_date in sensing_dates:
-                res = self.get_observation(
-                    feature,
-                    sensing_date
-                )
-                feature_res.append(res)
+            for idx, sensing_date in enumerate(sensing_dates):
+                try:
+                    res = self.get_observation(
+                        feature,
+                        sensing_date,
+                        **kwargs
+                    )
+                    feature_res.append(res)
+                    logger.info(
+                        f'Feature {feature}: '\
+                        f'Extracted data from {sensing_date} ' \
+                        f'({idx+1}/{n_sensing_dates})'
+                    )
+                except Exception as e:
+                    logger.error(
+                        f'Feature {feature}: '\
+                        f'Extracting data from {sensing_date} ' \
+                        f'({idx+1}/{n_sensing_dates}) failed: {e}'
+                    )
+                    continue
 
             # if res is a GeoDataFrame the list can be concated
             if isinstance(res, gpd.GeoDataFrame):
                 assets[feature] = pd.concat(feature_res)
+            else:
+                assets[feature] = feature_res
 
         return assets
