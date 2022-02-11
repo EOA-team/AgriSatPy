@@ -33,7 +33,6 @@ class SpectralIndices(object):
         :returns:
             list of SIs currently implemented
         """
-
         return [x for x in dir(cls) if not x.startswith('__') and not x.endswith('__') \
                 and not x.islower()]
 
