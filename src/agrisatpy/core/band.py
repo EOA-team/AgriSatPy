@@ -261,6 +261,11 @@ class Band(object):
     :attrib values:
         the actual raster data as ``numpy.ndarray``, ``numpy.ma.MaskedArray`` or
         ``zarr``. The type depends on how the constructor is called.
+    :attrib area_or_point:
+        Following ``GDAL`` standards, might be either `Area` (GDAL default) or
+        `Point`. When `Area` pixel coordinates refer to the upper left corner of the
+        pixel, whereas `Point` indicates that pixel coordinates are from the center
+        of the pixel.
     """
 
     def __init__(
@@ -274,7 +279,8 @@ class Band(object):
             offset: Optional[Union[int, float]] = 0.,
             unit: Optional[str] = '',
             nodata: Optional[Union[int,float]] = None,
-            is_tiled: Optional[Union[int, bool]] = 0
+            is_tiled: Optional[Union[int, bool]] = 0,
+            area_or_point: Optional[str] = 'Area'
         ):
         """
         Constructor to instantiate a new band object.
@@ -316,6 +322,11 @@ class Band(object):
         :param is_tiled:
             boolean flag indicating if the raster data is sub-divided into
             tiles. False (zero) by default.
+        :param area_or_point:
+            Following ``GDAL`` standards, might be either `Area` (GDAL default) or
+            `Point`. When `Area` pixel coordinates refer to the upper left corner of the
+            pixel, whereas `Point` indicates that pixel coordinates are from the center
+            of the pixel.
         """
 
         # make sure the passed values are 2-dimensional
@@ -341,6 +352,7 @@ class Band(object):
         object.__setattr__(self, 'unit', unit)
         object.__setattr__(self, 'nodata', nodata)
         object.__setattr__(self, 'is_tiled', is_tiled)
+        object.__setattr__(self, 'area_or_point', area_or_point)
 
     def __setattr__(self, *args, **kwargs):
         raise TypeError('Band object attributes are immutable')
@@ -553,6 +565,12 @@ class Band(object):
             attrs = get_raster_attributes(riods=src)
             transform = src.meta['transform']
             epsg = src.meta['crs'].to_epsg()
+            # check for area or point pixel coordinate definition
+            if 'area_or_point' not in kwargs.keys():
+                area_or_point = src.tags().get('AREA_OR_POINT', 'Area')
+            else:
+                area_or_point = kwargs['area_or_point']
+                kwargs.pop('area_or_point')
 
             # overwrite band_idx if band_name_src is provided
             band_names = list(src.descriptions)
@@ -591,19 +609,43 @@ class Band(object):
                 if np.count_nonzero(band_data.mask) == 0:
                     band_data = band_data.data
 
-        # get scale, offset and unit (if available) from the raster attributes
-        scale, scales = 1, attrs.get('scales', None)
-        if scales is not None:
-            scale = scales[band_idx-1]
-        offset, offsets = 0, attrs.get('offsets', None)
-        if offsets is not None:
-            offset = offsets[band_idx-1]
-        unit, units = '', attrs.get('unit', None)
-        if units is not None:
-            unit = units[band_idx-1]
-        nodata, nodata_vals = None, attrs.get('nodatavals', None)
-        if nodata_vals is not None:
-            nodata = nodata_vals[band_idx-1]
+        # get scale, offset and unit (if available) from kwargs or the raster
+        # attributes. If scale, etc. are provided in kwargs, the raster attributes
+        # are ignored. If neither kwargs nor raster attributes provide information
+        # about scale etc. use the defaults
+        if 'scale' in kwargs.keys():
+            scale = kwargs['scale']
+            kwargs.pop('scale')
+        else:
+            scale, scales = 1, attrs.get('scales', None)
+            if scales is not None:
+                scale = scales[band_idx-1]
+
+        if 'offset' in kwargs.keys():
+            offset = kwargs['offset']
+            kwargs.pop('offset')
+        else:
+            offset, offsets = 0, attrs.get('offsets', None)
+            if offsets is not None:
+                offset = offsets[band_idx-1]
+
+        if 'unit' in kwargs.keys():
+            unit = kwargs['unit']
+            kwargs.pop('unit')
+        else:
+            unit, units = '', attrs.get('unit', None)
+            if units is not None:
+                unit = units[band_idx-1]
+
+        if 'nodata' in kwargs.keys():
+            nodata = kwargs['nodata']
+            kwargs.pop('nodata')
+        else:
+            nodata, nodata_vals = None, attrs.get('nodatavals', None)
+            if nodata_vals is not None:
+                nodata = nodata_vals[band_idx-1]
+
+        # is_tiled can only be retrived from the raster attribs
         is_tiled = attrs.get('is_tiled', 0)
 
         # reconstruct geo-info
@@ -625,6 +667,7 @@ class Band(object):
             unit=unit,
             nodata=nodata,
             is_tiled=is_tiled,
+            area_or_point=area_or_point,
             **kwargs
         )
 
@@ -1281,7 +1324,6 @@ class Band(object):
         :returns:
             ``Band`` instance if `inplace` is False, None instead.
         """
-
         # resampling currently works on grids with identitical x and y
         # grid cell size only
         if abs(self.geo_info.pixres_x) != abs(self.geo_info.pixres_y):
@@ -1290,6 +1332,14 @@ class Band(object):
                 'where the grid cell size is the same in x and y ' \
                 'direction'
             )
+
+        # if band has already the target resolution there's nothing to do
+        if abs(self.geo_info.pixres_x) == target_resolution and \
+            abs(self.geo_info.pixres_y) == target_resolution:
+                if inplace:
+                    return
+                else:
+                    return self.copy()
 
         # check if a target shape is provided
         if target_shape is not None:
@@ -1393,15 +1443,21 @@ class Band(object):
             # save as masked array
             res = np.ma.masked_array(data=res, mask=out_mask)
 
-        # update the geo_info
+        # update the geo_info with new pixel resolution. The upper left x and y
+        # coordinate must be changed if the pixel coordinates refer to the center
+        # of the pixel (AREA_OR_POINT == Point)
         geo_info = deepcopy(self.geo_info.__dict__)
         geo_info.update({
             'pixres_x': np.sign(self.geo_info.pixres_x) * target_resolution,
             'pixres_y': np.sign(self.geo_info.pixres_y) * target_resolution
         })
+        if self.area_or_point == 'Point':
+            center_shift = (target_resolution - abs(self.geo_info.pixres_x)) * 0.5
+            ulx_new = self.geo_info.ulx + center_shift * np.sign(self.geo_info.pixres_x)
+            uly_new = self.geo_info.uly + center_shift * np.sign(self.geo_info.pixres_y)
+            geo_info.update({'ulx': ulx_new, 'uly': uly_new})
         new_geo_info = GeoInfo(**geo_info)
 
-        # TODO: think about ulx and uly if the target_shape is passed!!!
         if inplace:
             object.__setattr__(self, 'values', res)
             object.__setattr__(self, 'geo_info', new_geo_info)
@@ -1685,15 +1741,18 @@ class Band(object):
                     f'Cannot set masked pixels to nodata: {e}'
                 )
 
-        # get coordinates and shift them half a pixel size
-        shift_x = 0.5 * self.geo_info.pixres_x
-        shift_y = 0.5 * self.geo_info.pixres_y
+        # get coordinates and shift them half a pixel size if the current
+        # pixel coordinate model is Area (GDAL default) since xarray follows
+        # the convention for NETCDF and expects Point coordinates
         coords = self.coordinates
-        coords.update({
-            'band': np.array([self.band_name], dtype=object),
-            'x': [val + shift_x for val in coords['x']],
-            'y': [val + shift_y for val in coords['y']]
-        })
+        coords.update({'band': np.array([self.band_name], dtype=object)})
+        if self.area_or_point == 'Area':
+            shift_x = 0.5 * self.geo_info.pixres_x
+            shift_y = 0.5 * self.geo_info.pixres_y
+            coords.update({
+                'x': [val + shift_x for val in coords['x']],
+                'y': [val + shift_y for val in coords['y']]
+            })
 
         # define attributes
         attrs = self.get_attributes(**attributes)
@@ -1751,4 +1810,10 @@ class Band(object):
             # set band name
             dst.set_band_description(1, self.band_name)
             # write band data
-            dst.write(self.values, 1)
+            if self.is_masked_array:
+                vals = self.values.data
+                mask = self.values.mask
+                vals[mask] = self.nodata
+                dst.write(self.values, 1)
+            elif self.is_ndarray:
+                dst.write(self.values, 1)
