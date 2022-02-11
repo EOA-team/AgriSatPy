@@ -56,10 +56,6 @@ class SceneProperties(object):
             raise TypeError(f'A str object is required: {platform}')
         if not isinstance(sensor, str):
             raise TypeError(f'A str object is required: {sensor}')
-        if not isinstance(processing_level, ProcessingLevels):
-            raise TypeError(
-                f'A ProcessingLevels object is required: {processing_level}'
-            )
         if not isinstance(product_uri, str):
             raise TypeError(f'A str object is required: {product_uri}')
 
@@ -108,13 +104,11 @@ class SceneProperties(object):
     @property
     def processing_level(self) -> ProcessingLevels:
         """current processing level"""
-        return self._processsing_level
+        return self._processing_level
 
     @processing_level.setter
     def processing_level(self, value: ProcessingLevels):
         """current processing level"""
-        if not isinstance(value, ProcessingLevels):
-            raise TypeError(f'Expected {ProcessingLevels}')
         self._processing_level = value
 
     @property
