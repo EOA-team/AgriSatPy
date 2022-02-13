@@ -214,6 +214,7 @@ class Sentinel2Mapper(Mapper):
     
             # check if the data comes from different PDGS baseline versions
             # by default, we always aim for the highest baseline version
+            # TODO: this is not working properly yet -> too many scenes are deleted
             if check_baseline:
                 if not scenes_df_split.empty:
                     scenes_df_updated_baseline = identify_updated_scenes(
