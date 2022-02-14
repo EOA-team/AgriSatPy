@@ -80,6 +80,9 @@ def test_ndarray(datadir, get_bandstack):
             geo_info=geo_info
         )
 
+    # mask the second band based on the first one
+    masked = handler.mask(mask='random', mask_values=[0.15988288, 0.38599023])
+
     # add a band from rasterio
     fpath_raster = get_bandstack()
     band_idx = 1
