@@ -50,6 +50,7 @@ from agrisatpy.utils.arrays import count_valid, upsample_array
 from agrisatpy.utils.exceptions import BandNotFoundError, \
     DataExtractionError, ResamplingFailedError, ReprojectionError
 from agrisatpy.utils.reprojection import reproject_raster_dataset
+import uuid
 
 class GeoInfo(object):
     """
@@ -675,9 +676,8 @@ class Band(object):
     def from_vector(
             cls,
             vector_features: Union[Path, gpd.GeoDataFrame],
-            pixres_x: Union[int, float],
-            pixres_y: Union[int, float],
-            band_name_src: Optional[str] = '',
+            geo_info: GeoInfo,
+            band_name_src: Optional[str] = None,
             band_name_dst: Optional[str] = 'B1',
             nodata_dst: Optional[Union[int, float]] = 0,
             snap_bounds: Optional[Polygon] = None,
@@ -695,15 +695,14 @@ class Band(object):
             file-path to a vector file or ``GeoDataFrame`` from which to convert
             a column to raster. Please note that the column must have a numerical
             data type.
-        :param pixres_x:
-            pixel grid cell size in x-directorion in the unit given by the spatial
-            reference system of the vector features.
-        :param pixres_y:
-            pixel grid cell size in y-directorion in the unit given by the spatial
-            reference system of the vector features.
+        :param GeoInfo:
+            `~agrisatpy.core.band.GeoInfo` instance to allow for localizing
+            the band data in a spatial reference system
         :param band_name_src:
             name of the attribute in the vector features' attribute table to
-            convert to a new ``Band`` instance
+            convert to a new ``Band`` instance. If left empty generates a binary
+            raster with 1 for cells overlapping the vector geometries and zero
+            elsewhere.
         :param band_name_dst:
             name of the resulting ``Band`` instance. "B1" by default.
         :param nodata_dst:
@@ -730,11 +729,15 @@ class Band(object):
             allowed_geometry_types=allowed_geometry_types
         )
 
-        # check passed attribute selection
-        if not band_name_src in in_gdf.columns:
-            raise AttributeError(
-                f'{band_name_src} not found in input vector dataset'
-            )
+        # check passed attribute selection. If the band_name_src attribute does
+        # not exist fill it with 1 so that a binary raster can be created
+        if band_name_src is None:
+            band_name_src = str(uuid.uuid4())
+            in_gdf[band_name_src] = 1
+        # otherwise check if the passed attribute exists
+        else:
+            if not band_name_src in in_gdf.columns:
+                raise AttributeError(f'{band_name_src} not found')
 
         # infer the datatype (i.e., try if it is possible to cast the
         # attribute to float32, otherwise do not process the feature)
@@ -765,7 +768,7 @@ class Band(object):
 
         # infer shape and affine of the resulting raster grid if not provided
         if snap_bounds is None:
-            if set(in_gdf.geometry.type.unique()) == set(['Polygon', 'MultiPolygon']):
+            if set(in_gdf.geometry.type.unique()).issubset({'Polygon', 'MultiPolygon'}):
                 minx = in_gdf.geometry.bounds.minx.min()
                 maxx = in_gdf.geometry.bounds.maxx.max()
                 miny = in_gdf.geometry.bounds.miny.min()
@@ -782,17 +785,17 @@ class Band(object):
         # calculate number of columns from bounding box of all features
         # always round to the next bigger integer value to make sure no
         # value gets lost
-        rows = int(np.ceil(abs((maxy - miny) / pixres_y)))
-        cols = int(np.ceil(abs((maxx - minx) / pixres_x)))
+        rows = int(np.ceil(abs((maxy - miny) / geo_info.pixres_y)))
+        cols = int(np.ceil(abs((maxx - minx) / geo_info.pixres_x)))
         snap_shape = (rows, cols)
 
-        # initialize new GeoInfo instance
+        # update and create new GeoInfo instance
         geo_info = GeoInfo(
             epsg=in_gdf.crs.to_epsg(),
             ulx=minx,
             uly=maxy,
-            pixres_x=pixres_x,
-            pixres_y=pixres_y
+            pixres_x=geo_info.pixres_x,
+            pixres_y=geo_info.pixres_y
         )
 
         # rasterize the vector features
