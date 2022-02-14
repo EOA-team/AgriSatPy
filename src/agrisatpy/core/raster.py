@@ -302,7 +302,8 @@ class RasterCollection(MutableMapping):
         """
         Returns a copy of the current ``RasterCollection``
         """
-        return deepcopy(self)
+        attrs = deepcopy(self.__dict__)
+        return RasterCollection(**attrs)
 
     @classmethod
     def from_multi_band_raster(
@@ -778,7 +779,9 @@ class RasterCollection(MutableMapping):
             band_selection = self.band_names
         # initialize a new raster collection if inplace is False
         collection = None
-        if not inplace:
+        if inplace:
+            kwargs.update({'inplace': True})
+        else:
             attrs = deepcopy(self.__dict__)
             attrs.pop('_collection')
             collection = RasterCollection(**attrs)
@@ -821,11 +824,12 @@ class RasterCollection(MutableMapping):
             band_selection = self.band_names
         # initialize a new raster collection if inplace is False
         collection = None
-        if not inplace:
+        if inplace:
+            kwargs.update({'inplace': True})
+        else:
             attrs = deepcopy(self.__dict__)
             attrs.pop('_collection')
             collection = RasterCollection(**attrs)
-            kwargs.update({'inplace': False})
 
         # loop over band reproject the selected ones
         for band_name in band_selection:
