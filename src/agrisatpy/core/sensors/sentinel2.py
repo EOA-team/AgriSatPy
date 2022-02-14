@@ -8,13 +8,17 @@ data in .SAFE format which is ESA's standard format for distributing Sentinel-2 
 The class handles data in L1C and L2A processing level.
 '''
 
+import cv2
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+import rasterio as rio
 
 from matplotlib.pyplot import Figure
 from matplotlib import colors
 from pathlib import Path
+from rasterio.mask import raster_geometry_mask
+from shapely.geometry import box
 from typing import (
     Optional,
     List,
@@ -24,9 +28,11 @@ from typing import (
 
 from agrisatpy.core.band import (
     Band,
-    WavelengthInfo
+    WavelengthInfo,
+    GeoInfo
 )
 from agrisatpy.core.raster import RasterCollection
+from agrisatpy.core.scene import SceneProperties
 from agrisatpy.utils.constants.sentinel2 import (
     band_resolution,
     band_widths,
@@ -37,11 +43,15 @@ from agrisatpy.utils.constants.sentinel2 import (
     SCL_Classes
 )
 from agrisatpy.utils.exceptions import BandNotFoundError
-from agrisatpy.utils.sentinel2 import get_S2_bandfiles_with_res
-from agrisatpy.utils.sentinel2 import get_S2_platform_from_safe
-from agrisatpy.utils.sentinel2 import get_S2_processing_level
-from agrisatpy.utils.sentinel2 import get_S2_acquistion_time_from_safe
-from agrisatpy.core.scene import SceneProperties
+from agrisatpy.utils.sentinel2 import (
+    get_S2_bandfiles_with_res,
+    get_S2_platform_from_safe,
+    get_S2_processing_level,
+    get_S2_acquistion_time_from_safe
+)
+from agrisatpy.utils.reprojection import check_aoi_geoms
+from agrisatpy.metadata.sentinel2.parsing import parse_s2_scene_metadata
+from copy import deepcopy
 
 
 class Sentinel2(RasterCollection):
@@ -162,6 +172,63 @@ class Sentinel2(RasterCollection):
             band_selection=band_selection,
             read_scl=read_scl
         )
+
+        # check the clipping extent of the raster with the lowest (coarsest) spatial
+        # resolution and remember it for all other bands with higher spatial resolutions.
+        # By doing so, it is ensured that all bands will be clipped to the same spatial
+        # extent regardless of their pixel size. This works since all S2 bands share the
+        # same coordinate origin.
+        # get lowest spatial resolution (maximum pixel size) band
+        lowest_resolution = band_df_safe['band_resolution'].max()
+        masking_after_read_required = False
+        align_shapes = False
+        if band_df_safe['band_resolution'].unique().shape[0] > 1:
+            align_shapes = True
+            if kwargs.get('vector_features') is not None:
+                low_res_band = band_df_safe[
+                    band_df_safe['band_resolution'] == lowest_resolution
+                ].iloc[0]
+                # get vector feature(s) for spatial subsetting
+                vector_features = kwargs.get('vector_features')
+                if isinstance(vector_features, Path):
+                    vector_features_df = gpd.read_file(vector_features)
+                elif isinstance(vector_features, gpd.GeoDataFrame):
+                    vector_features_df = vector_features.copy()
+
+                with rio.open(low_res_band.band_path, 'r') as src:
+                    # convert to raster CRS
+                    raster_crs = src.crs
+                    vector_features_df.to_crs(crs=raster_crs, inplace=True)
+                    shape_mask, transform, window = raster_geometry_mask(
+                        dataset=src,
+                        shapes=vector_features_df.geometry,
+                        all_touched=True,
+                        crop=True,
+                    )
+                # get upper left coordinates rasterio takes for the band
+                # with the coarsest spatial resolution
+                ulx_low_res, uly_low_res = transform.c, transform.f
+                # reconstruct the lower right corner
+                llx_low_res = ulx_low_res + window.width * transform.a
+                lly_low_res = uly_low_res + window.height * transform.e
+
+                # overwrite original vector features' bounds in the S2 scene
+                # geometry of the lowest spatial resolution
+                low_res_feature_bounds_s2_grid = box(
+                    minx=ulx_low_res,
+                    miny=lly_low_res,
+                    maxx=llx_low_res,
+                    maxy=uly_low_res
+                )
+                # update bounds and pass them on to the kwargs
+                bounds_df = gpd.GeoDataFrame(
+                    geometry=[low_res_feature_bounds_s2_grid],
+                )
+                bounds_df.set_crs(crs=raster_crs, inplace=True)
+                # remember to mask the feature after clipping the data
+                if not kwargs.get('full_bounding_box_only', False):
+                    masking_after_read_required = True
+
         # determine platform (S2A or S2B)
         platform = get_S2_platform_from_safe(dot_safe_name=in_dir)
         # set scene properties (platform, sensor, acquisition date)
@@ -186,11 +253,13 @@ class Sentinel2(RasterCollection):
 
         # loop over bands and add them to the collection of bands
         sentinel2 = cls(scene_properties=scene_properties)
+        kwargs_orig = deepcopy(kwargs)
         for band_name in band_selection:
 
             # get entry from dataframe with file-path of band
             band_safe = band_df_safe[band_df_safe.band_name == band_name]
             band_fpath = band_safe.band_path.values[0]
+            
 
             # get color name and set it as alias
             color_name = s2_band_mapping[band_name]
@@ -208,6 +277,17 @@ class Sentinel2(RasterCollection):
                 kwargs.update({'wavelength_info': wvl_info})
             # read band
             try:
+                if align_shapes:
+                    # if the current band already has the lowest resolution
+                    # reading the mask directly is possible. Otherwise we use
+                    # the bounding of the coarsest resolution and apply the masking
+                    # later
+                    if band_safe.band_resolution.values != lowest_resolution:
+                        kwargs.update({'vector_features': bounds_df})
+                    else:
+                        kwargs.update({
+                            'vector_features': kwargs_orig.get('vector_features')
+                        })
                 sentinel2.add_band(
                     Band.from_rasterio,
                     fpath_raster=band_fpath,
@@ -219,6 +299,27 @@ class Sentinel2(RasterCollection):
             except Exception as e:
                 raise Exception(
                     f'Could not add band {band_name} from {in_dir.name}: {e}'
+                )
+            # apply actual vector features if masking is required
+            if masking_after_read_required:
+                # nothing to do when the lowest resolution is passed
+                if band_safe.band_resolution.values == lowest_resolution:
+                    continue
+                # otherwise resample the mask of the lowest resolution to the
+                # current resolution using nearest neighbor interpolation
+                tmp = shape_mask.astype('uint8')
+                dim_resampled = (sentinel2[band_name].ncols, sentinel2[band_name].nrows)
+                res = cv2.resize(
+                    tmp,
+                    dim_resampled,
+                    interpolation=cv2.INTER_NEAREST_EXACT
+                )
+                # cast back to boolean
+                mask = res.astype('bool')
+                sentinel2.mask(
+                    mask=mask,
+                    bands_to_mask=[band_name],
+                    inplace=True
                 )
 
         return sentinel2
@@ -512,3 +613,36 @@ class Sentinel2(RasterCollection):
         cloudy_pixel_percentage = num_cloudy_pixels / \
             (all_pixels - nodata_pixels) * 100
         return cloudy_pixel_percentage
+
+
+if __name__ == '__main__':
+
+    in_dir = Path('/mnt/ides/Lukas/03_Debug/Sentinel2/S2A_MSIL2A_20171213T102431_N0206_R065_T32TMT_20171213T140708.SAFE')
+    vector_features = Path(
+        '/mnt/ides/Lukas/02_Research/PhenomEn/01_Data/01_ReferenceData/Strickhof/WW_2022/Bramenwies.shp'
+    )
+    full_bounding_box_only = True
+    s2 = Sentinel2.from_safe(
+        in_dir=in_dir,
+        vector_features=vector_features,
+        full_bounding_box_only=full_bounding_box_only
+    )
+    resampled = s2.resample(target_resolution=10)
+    assert resampled.is_bandstack(), 'raster extents still differ'
+    assert not s2.is_bandstack(), 'original data must still differ in spatial resolution'
+
+    fpath_raster = in_dir.parent.joinpath('test_10m_full_bbox.jp2')
+    resampled.to_rasterio(fpath_raster, band_selection=['B03','B12'])
+    
+
+    full_bounding_box_only = False
+    s2 = Sentinel2.from_safe(
+        in_dir=in_dir,
+        vector_features=vector_features,
+        full_bounding_box_only=full_bounding_box_only
+    )
+    resampled = s2.resample(target_resolution=10)
+    assert resampled.is_bandstack(), 'raster extents still differ'
+    fpath_raster = in_dir.parent.joinpath('test_10m_mask.jp2')
+    resampled.to_rasterio(fpath_raster, band_selection=['B03','B12'])
+
