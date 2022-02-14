@@ -249,10 +249,13 @@ class Sentinel2Mapper(Mapper):
         candidate_scene_ids = scenes_date.scene_id.astype(list)
         feature_id = feature_gdf['identifier'].iloc[0].values
 
+        # check which baseline should be used
+        return_highest_baseline = kwargs.get('return_highest_baseline', True)
+
         res = None
 
-        # if the feature is a point we take the data set that is not blackfilled
-        # if more than one data set is not blackfilled  we simply take the
+        # if the feature is a point we take the data set that is not blackfilled.
+        # If more than one data set is not blackfilled  we simply take the
         # first data set
         if feature_gdf['geometry'].iloc[0].type == 'Point':
             for _, candidate_scene in scenes_date.iterrows():
@@ -277,8 +280,28 @@ class Sentinel2Mapper(Mapper):
         # re-reprojection might be required. The result is then saved to disk in a temporary
         # directory.
         else:
+            # check processing baseline first (one dataset can appear in different processing
+            # baselines)
+            updated_scenes = identify_updated_scenes(
+                metadata_df=scenes_date,
+                return_highest_baseline=return_highest_baseline
+            )
+            # only one scene left -> read the scene and return
+            if updated_scenes.shape[0] == 1:
+                res = Sentinel2.from_safe(
+                        in_dir=candidate_scene.real_path,
+                        band_selection=self.mapper_configs.band_names
+                    )
+            # if updated scenes is not empty overwrite the scenes_date DataFrame
+            if not updated_scenes.empty:
+                scenes_date = updated_scenes.copy()
+
+            # apply merge logic
             for _, candidate_scene in scenes_date.iterrows():
                 # TODO: continue here with merge logic
+                # 2. check if the scenes have all the same CRS
+                # 2.1    if they have the same CRS merge the scenes based on the maximum value method
+                # 2.2    
                 s2_scene = Sentinel2.from_safe(
                     in_dir=candidate_scene.real_path,
                     band_selection=self.mapper_configs.band_names
