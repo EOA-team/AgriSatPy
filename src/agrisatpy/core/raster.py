@@ -847,7 +847,7 @@ class RasterCollection(MutableMapping):
     def mask(
             self,
             mask: Union[str, np.ndarray],
-            mask_values: Optional[List[Any]],
+            mask_values: Optional[List[Any]] = None,
             keep_mask_values: Optional[bool] = False,
             bands_to_mask: Optional[List[str]] = None,
             inplace: Optional[bool] = False
