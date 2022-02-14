@@ -778,7 +778,6 @@ class RasterCollection(MutableMapping):
             band_selection = self.band_names
         # initialize a new raster collection if inplace is False
         collection = None
-        kwargs.update({'inplace': True})
         if not inplace:
             attrs = deepcopy(self.__dict__)
             attrs.pop('_collection')
@@ -822,7 +821,6 @@ class RasterCollection(MutableMapping):
             band_selection = self.band_names
         # initialize a new raster collection if inplace is False
         collection = None
-        kwargs.update({'inplace': True})
         if not inplace:
             attrs = deepcopy(self.__dict__)
             attrs.pop('_collection')
