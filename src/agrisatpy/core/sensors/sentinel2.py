@@ -145,6 +145,14 @@ class Sentinel2(RasterCollection):
         standard format for distributing Sentinel-2 data (L1C and L2A
         processing levels).
 
+        NOTE:
+            If a spatial subset is read (`vector_features` in kwargs) the
+            single S2 bands are clipped to the spatial extent of the S2 in the
+            band selection with the coarsest (lowest) spatial resolution. This
+            way it is ensured that all bands share the same spatial extent
+            regardless of their spatial resolution (10, 20, or 60m). This is
+            possible because all bands share the same origin (upper left corner).
+
         :param in_dir:
             file-path to the .SAFE directory containing Sentinel-2 data in
             L1C or L2A processing level
@@ -345,7 +353,7 @@ class Sentinel2(RasterCollection):
         IMPORTANT:
             This function works for Sentinel-2 data organized in .SAFE format!
             If the Sentinel-2 data has been converted to multi-band tiffs, use
-            `~Sentinel2Handler.read_pixels()` instead!
+            `~Sentinel2Handler.read_pixels()` instead!resampled.is_bandstack()
 
         NOTE:
             A point is dimension-less, therefore, the raster grid cell (pixel) closest
