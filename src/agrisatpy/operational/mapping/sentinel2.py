@@ -85,8 +85,7 @@ class Sentinel2Mapper(Mapper):
 
     def get_scenes(
             self,
-            tile_ids: Optional[List[str]] = None,
-            check_baseline: Optional[bool] = True
+            tile_ids: Optional[List[str]] = None
         ) -> None:
         """
         Queries the Sentinel-2 metadata DB for a selected time period and
@@ -110,12 +109,7 @@ class Sentinel2Mapper(Mapper):
             design. If yes flag these scenes as potential merge candidates. A
             second reason for multiple scenes are differences in PDGS baseline,
             i.e., the dataset builds upon the **same** Sentinel-2 data but
-            was processed by different base-line version. In this case the
-            `use_latest_pdgs_baseline` flag becomes relevant. By default we keep
-            those scenes with the latest processing baseline and discard the
-            other scenes with older baseline version. NOTE: By setting
-            ``check_baseline=False`` you can force AgriSatPy to ignore baseline
-            checks (in this case all baselines available will be returned)
+            was processed by different base-line version.
         4.  If the scenes found have different spatial coordinate systems (CRS)
             (usually different UTM zones) flag the data accordingly. The target
             CRS is defined as that CRS the majority of scenes shares.
@@ -123,9 +117,6 @@ class Sentinel2Mapper(Mapper):
         :param tile_id:
             optional list of Sentinel-2 tils (e.g., ['T32TMT','T32TGM']) to use for
             filtering. Only scenes belonging to these tiles are returned then
-        :param check_baseline:
-            if True (default) checks if a scene is available in different PDGS
-            baseline versions
         """
         # read features and loop over them to process each feature separately
         is_file = isinstance(self.feature_collection, Path) or \
@@ -181,7 +172,6 @@ class Sentinel2Mapper(Mapper):
             bbox = box(*feature.geometry_wgs84.bounds)
 
             # use the resulting bbox to query the bounding box
-            # TODO: if only a tile is passed query by tile, only!
             try:
                 scenes_df = find_raw_data_by_bbox(
                     date_start=self.date_start,
@@ -211,26 +201,7 @@ class Sentinel2Mapper(Mapper):
             # in this case merging of different datasets might be necessary
             scenes_df_split = identify_split_scenes(scenes_df)
             scenes_df['is_split'] = False
-    
-            # check if the data comes from different PDGS baseline versions
-            # by default, we always aim for the highest baseline version
-            # TODO: this is not working properly yet -> too many scenes are deleted
-            if check_baseline:
-                if not scenes_df_split.empty:
-                    scenes_df_updated_baseline = identify_updated_scenes(
-                        metadata_df=scenes_df_split,
-                        return_highest_baseline=self.use_latest_pdgs_baseline
-                    )
-                    # drop those scenes that were dis-selected because of the PDGS baseline
-                    drop_idx = scenes_df[
-                        scenes_df.product_uri.isin(scenes_df_split.product_uri) &
-                        ~scenes_df.product_uri.isin(scenes_df_updated_baseline.product_uri)
-                    ].index
-                    if not drop_idx.empty:
-                        scenes_df.drop(drop_idx, inplace=True)
 
-            # check again for split scenes; these scenes are then "really" split
-            scenes_df_split = identify_split_scenes(scenes_df)
             if not scenes_df_split.empty:
                 scenes_df.loc[
                     scenes_df.product_uri.isin(scenes_df_split.product_uri),
@@ -250,7 +221,7 @@ class Sentinel2Mapper(Mapper):
                 ] = most_common_epsg[0]
 
             # add the scenes_df DataFrame to the dictionary that contains the data for
-            # all AOIs (features)
+            # all features
             s2_scenes[feature_uuid] = scenes_df
 
         # create feature collection
@@ -272,7 +243,7 @@ class Sentinel2Mapper(Mapper):
         ) -> Union[gpd.GeoDataFrame, Sentinel2]:
         """
         Backend method for processing and reading scene data if more than one scene
-        is available for a given sensing date and area of interest
+        is available for a given sensing date and feature (area of interest)
         """
         
         candidate_scene_ids = scenes_date.scene_id.astype(list)
