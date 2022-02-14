@@ -780,9 +780,9 @@ class RasterCollection(MutableMapping):
         collection = None
         kwargs.update({'inplace': True})
         if not inplace:
-            scene_props = self.scene_properties
-            collection = RasterCollection(scene_properties=scene_props)
-            kwargs.update({'inplace': False})
+            attrs = deepcopy(self.__dict__)
+            attrs.pop('_collection')
+            collection = RasterCollection(**attrs)
 
         # loop over band reproject the selected ones
         for band_name in band_selection:
@@ -824,8 +824,9 @@ class RasterCollection(MutableMapping):
         collection = None
         kwargs.update({'inplace': True})
         if not inplace:
-            scene_props = self.scene_properties
-            collection = RasterCollection(scene_properties=scene_props)
+            attrs = deepcopy(self.__dict__)
+            attrs.pop('_collection')
+            collection = RasterCollection(**attrs)
             kwargs.update({'inplace': False})
 
         # loop over band reproject the selected ones
@@ -884,7 +885,7 @@ class RasterCollection(MutableMapping):
                 raise ValueError('When providing an array it must be 2-dimensional')
         elif isinstance(mask, str):
             try:
-                mask = self.get_band(mask)
+                mask = self.get_values(band_selection=[mask])[0,:,:]
             except Exception as e:
                 raise ValueError(f'Invalid mask band: {e}')
             # translate mask band into boolean array
@@ -907,6 +908,10 @@ class RasterCollection(MutableMapping):
                 f'Mask must be either band_name or np.ndarray not {type(mask)}'
             )
 
+        # check bands to mask
+        if bands_to_mask is None:
+            bands_to_mask = self.band_names
+
         # check shapes of bands and mask before applying the mask
         if not self.is_bandstack(band_selection=bands_to_mask):
             raise ValueError(
@@ -926,8 +931,9 @@ class RasterCollection(MutableMapping):
         # initialize a new raster collection if inplace is False
         collection = None
         if not inplace:
-            scene_props = self.scene_properties
-            collection = RasterCollection(scene_properties=scene_props)
+            attrs = deepcopy(self.__dict__)
+            attrs.pop('_collection')
+            collection = RasterCollection(**attrs)
 
         # loop over band reproject the selected ones
         for band_name in bands_to_mask:
