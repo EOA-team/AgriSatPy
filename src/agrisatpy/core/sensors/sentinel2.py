@@ -392,9 +392,10 @@ class Sentinel2(RasterCollection):
             plus snow.
         """
         mask_band = 'SCL'
+        
         try:
             self.mask(
-                name_mask_band=mask_band,
+                mask=mask_band,
                 mask_values=cloud_classes,
                 bands_to_mask=bands_to_mask,
                 inplace=True
