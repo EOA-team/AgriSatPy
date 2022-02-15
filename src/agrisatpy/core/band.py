@@ -1653,13 +1653,19 @@ class Band(object):
             scale, offset = self.scale, self.offset
 
         if self.is_masked_array:
-            scaled_array = scale * self.values.data + offset
+            if inverse:
+                scaled_array = scale * (self.values.data + offset)
+            else:
+                scaled_array = scale * self.values.data + offset
             scaled_array = np.ma.MaskedArray(
                 data=scaled_array,
                 mask=self.values.mask
             )
         elif self.is_ndarray:
-            scaled_array = scale * self.values + offset
+            if inverse:
+                scaled_array = scale * (self.values + offset)
+            else:
+                scaled_array = scale * self.values + offset
         elif self.is_zarr:
             raise NotImplemented()
 

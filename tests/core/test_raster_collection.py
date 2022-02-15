@@ -16,12 +16,10 @@ from agrisatpy.core.raster import SceneProperties
 from agrisatpy.core.raster import RasterCollection
 
 
-def test_ndarray(datadir, get_bandstack):
+def test_ndarray_constructor():
     """
     basic test with ``np.ndarray`` backend in raster collection
     """
-
-    scene_props = SceneProperties()
 
     handler = RasterCollection()
     assert handler.empty, 'RasterCollection is not empty'
@@ -87,21 +85,6 @@ def test_ndarray(datadir, get_bandstack):
     assert masked.scene_properties.acquisition_time == \
         handler.scene_properties.acquisition_time, 'scene properties got lost'
 
-    # add a band from rasterio
-    fpath_raster = get_bandstack()
-    band_idx = 1
-    handler.add_band(Band.from_rasterio, fpath_raster=fpath_raster, band_idx=band_idx)
-
-    assert set(handler.band_names) == {band_name, band_name_zeros, 'B1'}, \
-        'band names not set properly in collection'
-    assert (handler[band_name_zeros].values == zeros).all(), \
-        'values not inserted correctly'
-    assert (handler[band_name].values == values).all(), \
-        'values not inserted correctly'
-
-    # bands should not fulfill the band stack criterion
-    assert not handler.is_bandstack(), 'bands must not fulfill bandstack criterion'
-
     # drop one of the bands again
     handler.drop_band('random')
     assert 'random' not in handler.band_names, 'band name still exists after dropping it'
@@ -112,7 +95,68 @@ def test_ndarray(datadir, get_bandstack):
     with pytest.raises(KeyError):
         handler.drop_band('test')
 
+def test_rasterio_constructor_single_band(get_bandstack):
+    """
+    RasterCollection from rasterio dataset (single band)
+    """
+
+    handler = RasterCollection()
+
+    # add a band from rasterio
+    fpath_raster = get_bandstack()
+    band_idx = 1
+    handler.add_band(Band.from_rasterio, fpath_raster=fpath_raster, band_idx=band_idx)
+
+    assert set(handler.band_names) == {'B1'}, \
+        'band names not set properly in collection'
+    assert len(handler.band_names) == 1, 'wrong number of bands in collection'
+
+    # bands should fulfill the band stack criterion
+    assert handler.is_bandstack(), 'single band not fulfill bandstack criterion'
+    assert handler['B1'].geo_info.epsg == 32632, 'wrong EPSG code inserted'
+    assert handler['B1'].geo_info.pixres_x == 10, 'wrong pixel size in x direction'
+    assert handler['B1'].geo_info.pixres_y == -10, 'wrong pixel size in y direction'
+
+def test_scale():
+    """scaling of raster band"""
+    handler = RasterCollection()
+
+    # add band to empty handler
+    epsg = 32633
+    ulx, uly = 300000, 5100000
+    pixres_x, pixres_y = 10, -10
+    geo_info = GeoInfo(epsg=epsg,ulx=ulx,uly=uly,pixres_x=pixres_x,pixres_y=pixres_y)
+    ones = np.ones((100,100), dtype='uint16')
+    band_name_ones = 'ones'
+    scale = 100
+    offset = 2
+    handler.add_band(
+        Band,
+        band_name=band_name_ones,
+        values=ones,
+        geo_info=geo_info,
+        scale=scale,
+        offset=offset
+    )
+
+    before_scaling = handler.get_values()
+    handler.scale(inplace=True)
+    after_scaling = handler.get_values()
+    assert (after_scaling == (scale * before_scaling + offset)).all(), 'values not scaled correctly'
+    assert (after_scaling == 102).all(), 'wrong value after scaling'
+
+    # inverse scaling -> should return the original values again
+    handler.scale(inverse=True, inplace=True)
+    after_scaling = handler.get_values()
+    assert (after_scaling == before_scaling).all(), 'after undoing scaling values differ from original'
+    assert (after_scaling == 1).all(), 'wrong values after undoing scaling operation'
+
+def test_rasterio_constructor_multi_band(get_bandstack):    
+    """
+    RasterCollection from rasterio dataset (multiple bands)
+    """
     # read multi-band geoTiff into new handler
+    fpath_raster = get_bandstack()
     gTiff_collection = RasterCollection.from_multi_band_raster(
         fpath_raster=fpath_raster
     )
@@ -151,6 +195,16 @@ def test_ndarray(datadir, get_bandstack):
     )
     assert gTiff_collection.has_band_aliases, 'band aliases must exist'
 
+def test_reprojection(get_bandstack):
+    """Reprojecting data in raster collection into a different CRS"""
+    # read multi-band geoTiff into new handler with custom destination names
+    colors = ['blue', 'green', 'red', 'red_edge_1', 'red_edge_2', 'red_edge_3', \
+              'nir_1', 'nir_2', 'swir_1', 'swir_2']
+    fpath_raster = get_bandstack()
+    gTiff_collection = RasterCollection.from_multi_band_raster(
+        fpath_raster=fpath_raster,
+        band_names_dst=colors
+    )
     # try reprojection of raster bands to geographic coordinates
     reprojected = gTiff_collection.reproject(target_crs=4326)
     assert reprojected.band_names == gTiff_collection.band_names, 'band names not the same'
@@ -164,6 +218,12 @@ def test_ndarray(datadir, get_bandstack):
     fig_rgb = reprojected.plot_multiple_bands(band_selection=['red', 'green', 'blue'])
     assert isinstance(fig_rgb, plt.Figure), 'not a matplotlib figure'
 
+def test_resampling(datadir,get_bandstack):
+    """Resampling into a different pixel size"""
+    # read multi-band geoTiff into new handler with custom destination names
+    colors = ['blue', 'green', 'red', 'red_edge_1', 'red_edge_2', 'red_edge_3', \
+              'nir_1', 'nir_2', 'swir_1', 'swir_2']
+    fpath_raster = get_bandstack()
     # resample all bands to 5m
     gTiff_collection = RasterCollection.from_multi_band_raster(
         fpath_raster=fpath_raster,

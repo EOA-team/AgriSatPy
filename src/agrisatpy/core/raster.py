@@ -954,12 +954,51 @@ class RasterCollection(MutableMapping):
 
         return collection
 
-    # TODO: implement this!!!
-    def scale(self):
+    @check_band_names
+    def scale(
+            self,
+            band_selection: Optional[List[str]] = None,
+            inverse: Optional[bool] = False,
+            inplace: Optional[bool] = False
+        ):
         """
         Applies gain and offset factors to bands in collection
+
+        :param band_selection:
+            selection of bands to process. If not provided uses all
+            bands
+        :param inverse:
+            if True reverse the scaling (i.e., takes the inverse
+            of the scale factor and changes the sign of the offset)
+        :param inplace:
+            if False returns a new `RasterCollection` (default) otherwise
+            overwrites existing raster band entries
         """
-        pass
+        if band_selection is None:
+            band_selection = self.band_names
+
+        # initialize a new raster collection if inplace is False
+        collection = None
+        if not inplace:
+            attrs = deepcopy(self.__dict__)
+            attrs.pop('_collection')
+            collection = RasterCollection(**attrs)
+
+        # loop over band reproject the selected ones
+        for band_name in band_selection:
+            if inplace:
+                self.collection[band_name].scale_data(
+                    inverse=inverse,
+                    inplace=inplace
+                )
+            else:
+                band = self.get_band(band_name)
+                collection.add_band(
+                    band_constructor=band.scale_data,
+                    inverse=inverse,
+                    inplace=True  # within the band instance `inplace` must be True
+                )
+        return collection
 
     # TODO: implement this!!!
     def join(self, other):
