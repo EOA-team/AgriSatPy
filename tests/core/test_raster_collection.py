@@ -80,6 +80,13 @@ def test_ndarray(datadir, get_bandstack):
             geo_info=geo_info
         )
 
+    # mask the second band based on the first one
+    masked = handler.mask(mask='random', mask_values=[0.15988288, 0.38599023])
+    assert masked.band_names == handler.band_names, 'band names not passed on correctly'
+    assert masked['zeros'].is_masked_array, 'array should have mask now'
+    assert masked.scene_properties.acquisition_time == \
+        handler.scene_properties.acquisition_time, 'scene properties got lost'
+
     # add a band from rasterio
     fpath_raster = get_bandstack()
     band_idx = 1
@@ -124,7 +131,7 @@ def test_ndarray(datadir, get_bandstack):
         band_names_dst=colors
     )
     assert gTiff_collection.band_names == colors, 'band names not set properly'
-    gTiff_collection.calc_si('NDVI')
+    gTiff_collection.calc_si('NDVI', inplace=True)
     assert 'NDVI' in gTiff_collection.band_names, 'SI not added to collection'
     assert gTiff_collection['NDVI'].ncols == gTiff_collection['red'].ncols, \
         'wrong number of columns in SI'
