@@ -385,14 +385,16 @@ class Sentinel2Mapper(Mapper):
             # if there is only one scene all we have to do is to read
             # read pixels in case the feature's dtype is point
             if feature_dict['features'][0]['geometry']['type'] == 'Point':
-                res = Sentinel2.read_pixels_from_safe()
+                res = Sentinel2.read_pixels_from_safe(
+                    in_dir=scenes_date['realpath'].iloc[0],
+                    band_selection=self.mapper_configs.band_names
+                )
             # or the feature
             else:
                 try:
                     res = Sentinel2.from_safe(
                         in_dir=scenes_date['real_path'].iloc[0],
                         band_selection=self.mapper_configs.band_names,
-                        **kwargs
                     )
                 except BlackFillOnlyError:
                     return res
