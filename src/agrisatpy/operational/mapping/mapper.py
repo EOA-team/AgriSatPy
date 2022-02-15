@@ -110,6 +110,9 @@ class MapperConfigs(object):
     :attrib reducers:
         optional list of spatial reducers (e.g., 'mean') converting all
         raster observations from 2d arrays to scalars.
+    :atrrib tile_selection:
+        optional selection of tile ids for sensors following a tiling scheme
+        (e.g., S2 tiles, or Landsat PathRows).
     """
 
     def __init__(
@@ -117,7 +120,8 @@ class MapperConfigs(object):
             band_names: Optional[List[str]] = None,
             resampling_method: Optional[int] = cv2.INTER_NEAREST_EXACT,
             spatial_resolution: Optional[Union[int, float]] = None,
-            reducers: Optional[List[str]] = None
+            reducers: Optional[List[str]] = None,
+            tile_selection: Optional[List[str]] = None
         ):
         """
         Constructs a new ``MapperConfig`` instance.
@@ -138,6 +142,7 @@ class MapperConfigs(object):
         object.__setattr__(self, 'resampling_method', resampling_method)
         object.__setattr__(self, 'spatial_resolution', spatial_resolution)
         object.__setattr__(self, 'reducers', reducers)
+        object.__setattr__(self, 'tile_selection', tile_selection)
 
     def __setattr__(self, *args):
         raise TypeError('MapperConfigs attributes are immutable')

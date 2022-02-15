@@ -70,6 +70,9 @@ class Sentinel2Mapper(Mapper):
         :param use_latest_pdgs_baseline:
             if True (default) forces *AgriSatPy* to use the latest processing
             baseline in case a scene is available in different processing levels
+        :param tile_selection:
+            optional list of Sentinel-2 tiles (e.g., ['T32TMT','T32TGM']) to use for
+            filtering. Only scenes belonging to these tiles are returned then
         :param args:
             arguments to pass to the constructor of the ``Mapper`` super class
         :param kwargs:
@@ -84,8 +87,7 @@ class Sentinel2Mapper(Mapper):
         object.__setattr__(self, 'use_latest_pdgs_baseline', use_latest_pdgs_baseline)
 
     def get_scenes(
-            self,
-            tile_ids: Optional[List[str]] = None
+            self
         ) -> None:
         """
         Queries the Sentinel-2 metadata DB for a selected time period and
@@ -113,10 +115,6 @@ class Sentinel2Mapper(Mapper):
         4.  If the scenes found have different spatial coordinate systems (CRS)
             (usually different UTM zones) flag the data accordingly. The target
             CRS is defined as that CRS the majority of scenes shares.
-
-        :param tile_id:
-            optional list of Sentinel-2 tils (e.g., ['T32TMT','T32TGM']) to use for
-            filtering. Only scenes belonging to these tiles are returned then
         """
         # read features and loop over them to process each feature separately
         is_file = isinstance(self.feature_collection, Path) or \
@@ -184,6 +182,7 @@ class Sentinel2Mapper(Mapper):
                 raise DatabaseError(f'Querying metadata DB failed: {e}')
 
             # filter by tile if required
+            tile_ids = self.mapper.configs.tile_selection
             if tile_ids is not None:
                 other_tile_idx = scenes_df[~scenes_df.tile_id.isin(tile_ids)].index
                 scenes_df.drop(other_tile_idx, inplace=True)
