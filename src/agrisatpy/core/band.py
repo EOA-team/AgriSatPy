@@ -1224,7 +1224,10 @@ class Band(object):
                     y=0.5
                 )
 
-        ax.title.set_text(self.band_name.upper())
+        title_str = self.band_name
+        if self.has_alias:
+            title_str += f' ({self.alias})'
+        ax.title.set_text(title_str, fontdict={'fontsize': fontsize})
         # add axes labels and format ticker
         epsg = self.geo_info.epsg
         if self.crs.is_geographic:
