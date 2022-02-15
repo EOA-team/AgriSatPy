@@ -15,6 +15,24 @@ from agrisatpy.core.band import Band
 from agrisatpy.core.band import GeoInfo
 from agrisatpy.core.band import WavelengthInfo
 
+@pytest.fixture
+def get_test_band(get_bandstack, get_polygons):
+    """Fixture returning Band object from rasterio"""
+    def _get_test_band():
+        fpath_raster = get_bandstack()
+        vector_features = get_polygons()
+    
+        band = Band.from_rasterio(
+            fpath_raster=fpath_raster,
+            band_idx=1,
+            band_name_dst='B02',
+            vector_features=vector_features,
+            full_bounding_box_only=False,
+            nodata=0
+        )
+        return band
+    return _get_test_band
+
 def test_base_constructors():
     """
     test base constructor calls
@@ -64,24 +82,12 @@ def test_base_constructors():
     band = Band(band_name=band_name, values=zarr_values, geo_info=geo_info)
     assert band.is_zarr
 
-def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
+def test_band_from_rasterio(get_test_band, get_bandstack):
     """
     Tests instance and class methods of the `Band` class
     """
-
-    # define test data sources
-    fpath_raster = get_bandstack()
-    vector_features = get_polygons()
-    vector_features_2 = get_points3()
-
-    band = Band.from_rasterio(
-        fpath_raster=fpath_raster,
-        band_idx=1,
-        band_name_dst='B02',
-        vector_features=vector_features,
-        full_bounding_box_only=False
-    )
-
+    band = get_test_band()
+    
     assert band.geo_info.epsg == 32632, 'wrong EPSG code'
     assert band.band_name == 'B02', 'wrong band name'
     assert band.is_masked_array, 'array has not been masked'
@@ -110,6 +116,25 @@ def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
     fig = band.plot(colorbar_label='Surface Reflectance')
     assert fig is not None, 'no figure returned'
 
+    # try some cases that must fail
+    # reading from non-existing file
+    with pytest.raises(rio.errors.RasterioIOError):
+        Band.from_rasterio(
+            fpath_raster='not_existing_file.tif'
+        )
+    # existing file but reading wrong band index
+    fpath_raster = get_bandstack()
+    with pytest.raises(IndexError):
+        Band.from_rasterio(
+            fpath_raster=fpath_raster,
+            band_idx=22,
+        )
+
+def test_reprojection(datadir, get_test_band):
+    """reprojection into another CRS"""
+    # define test data sources
+    
+    band = get_test_band()
     # reproject to Swiss Coordinate System (EPSG:2056)
     reprojected = band.reproject(target_crs=2056)
 
@@ -127,6 +152,9 @@ def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
     assert meta['width'] == reprojected.ncols
     assert meta['transform'] == reprojected.transform
 
+def test_bandstatistics(get_test_band):
+
+    band = get_test_band()
     # get band statistics
     stats = band.reduce(method=['mean', 'min', 'max'])
     mean_stats = band.reduce(method='mean')
@@ -143,6 +171,8 @@ def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
     assert gdf.B02.min() == stats['min'], 'band statistics not the same after conversion'
     assert gdf.B02.mean() == stats['mean'], 'band statistics not the same after conversion'
 
+def test_to_xarray(get_test_band):
+    band = get_test_band()
     # convert to xarray
     xarr = band.to_xarray()
     assert xarr.x.values[0] == band.geo_info.ulx + 0.5*band.geo_info.pixres_x, \
@@ -156,6 +186,8 @@ def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
     assert xarr.shape[1] == band.nrows and xarr.shape[2] == band.ncols, \
         'wrong number of rows and columns in xarray'
 
+def test_resampling(get_test_band):
+    band = get_test_band()
     # resample to 20m spatial resolution using bi-cubic interpolation
     resampled = band.resample(
         target_resolution=20,
@@ -188,7 +220,9 @@ def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
 
     assert (band.nrows, band.ncols) == old_shape, 'resampling to target shape did not work'
 
-    # test masking with boolean mask (should mask everything)
+def test_masking(datadir, get_test_band, get_bandstack, get_points3):
+    """masking of band data"""
+    band = get_test_band()
     mask = np.ndarray(band.values.shape, dtype='bool')
     mask.fill(True)
 
@@ -209,6 +243,8 @@ def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
     assert (values_before_scaling.data == band.values.data).all(), 'scaling must not have an effect'
 
     # read data with AOI outside of the raster bounds -> should raise a ValueError
+    fpath_raster = get_bandstack()
+    vector_features_2 = get_points3()
     with pytest.raises(ValueError):
         band = Band.from_rasterio(
             fpath_raster=fpath_raster,
@@ -227,7 +263,11 @@ def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
     assert (band_read_again.values == band.values.data).all(), \
         'band data not the same after writing'
 
+def test_read_pixels(get_bandstack, get_test_band, get_polygons, get_points3):
     # read single pixels from raster dataset
+    fpath_raster = get_bandstack()
+    vector_features = get_polygons()
+
     pixels = Band.read_pixels(
         fpath_raster=fpath_raster,
         vector_features=vector_features
@@ -239,12 +279,14 @@ def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
     assert pixels.geometry.type.unique()[0] == 'Point', 'wrong geometry type'
 
     # compare against results from instance method
+    band = get_test_band()
     pixels_inst = band.get_pixels(vector_features)
     assert (pixels.geometry == pixels_inst.geometry).all(), \
         'pixel geometry must be always the same'
     assert band.band_name in pixels_inst.columns, 'extracted band data not found'
 
     # try features outside of the extent of the raster
+    vector_features_2 = get_points3()
     pixels = Band.read_pixels(
         fpath_raster=fpath_raster,
         vector_features=vector_features_2
@@ -262,27 +304,14 @@ def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
 
     assert not band.is_masked_array, 'data should not be masked'
     assert band.is_ndarray, 'band data should be ndarray'
-    assert band.bounds == band_bounds_mask, 'bounds should remain the same regardless of masking'
 
+    mask = np.ndarray(band.values.shape, dtype='bool')
+    mask.fill(True)
     mask[100:120,100:200] = False
     band.mask(mask=mask, inplace=True)
     assert band.is_masked_array, 'band must now be a masked array'
     assert not band.values.mask.all(), 'not all pixel should be masked'
     assert band.values.mask.any(), 'some pixels should be masked'
-
-    # try some cases that must fail
-    # reading from non-existing file
-    with pytest.raises(rio.errors.RasterioIOError):
-        Band.from_rasterio(
-            fpath_raster='not_existing_file.tif'
-        )
-
-    # reading wrong band index
-    with pytest.raises(IndexError):
-        Band.from_rasterio(
-            fpath_raster=fpath_raster,
-            band_idx=22,
-        )
 
     resampled = band.resample(target_resolution=5)
     assert band.geo_info.pixres_x == 10, 'resolution of original band should not change'
@@ -291,42 +320,42 @@ def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
     assert resampled.geo_info.pixres_y == -5, 'wrong y pixel resolution'
     assert resampled.bounds == band.bounds, 'band bounds should be the same after resampling'
 
-    snap_bounds = band.bounds
+def test_from_vector(get_polygons):
+    vector_features = get_polygons()
 
     # read data from vector source
+    epsg = 32633
+    gdf = gpd.read_file(vector_features)
+    ulx = gdf.geometry.total_bounds[0]
+    uly = gdf.geometry.total_bounds[-1]
+    pixres_x, pixres_y = 10, -10
+    
+    geo_info = GeoInfo(
+        epsg=epsg,
+        ulx=ulx,
+        uly=uly,
+        pixres_x=pixres_x,
+        pixres_y=pixres_y
+    )
     band = Band.from_vector(
         vector_features=vector_features,
-        pixres_x=10,
-        pixres_y=-10,
+        geo_info=geo_info,
         band_name_src='GIS_ID',
         band_name_dst='gis_id',
-        snap_bounds=snap_bounds
     )
 
     assert band.band_name == 'gis_id', 'wrong band name inserted'
     assert band.values.dtype == 'float32', 'wrong data type for values'
     assert band.geo_info.pixres_x == 10, 'wrong pixel size in x direction'
     assert band.geo_info.pixres_y == -10, 'wrong pixel size in y direction'
-    assert band.geo_info.epsg == 32632, 'wrong EPSG code'
-    assert band.bounds == snap_bounds, 'bounds do not match'
-
-    # without snap bounds
-    band = Band.from_vector(
-        vector_features=vector_features,
-        pixres_x=10,
-        pixres_y=-10,
-        band_name_src='GIS_ID',
-        band_name_dst='gis_id'
-    )
-    assert band.geo_info.pixres_x == 10, 'wrong pixel size in x direction'
-    assert band.geo_info.pixres_y == -10, 'wrong pixel size in y direction'
+    assert band.geo_info.ulx == ulx, 'wrong ulx coordinate'
+    assert band.geo_info.uly == uly, 'wrong uly coordinate'
     assert band.geo_info.epsg == 32632, 'wrong EPSG code'
 
     # with custom datatype
     band = Band.from_vector(
         vector_features=vector_features,
-        pixres_x=10,
-        pixres_y=-10,
+        geo_info=geo_info,
         band_name_src='GIS_ID',
         band_name_dst='gis_id',
         dtype_src='uint16'
@@ -339,11 +368,9 @@ def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
 
     band_from_points = Band.from_vector(
         vector_features=point_gdf,
-        pixres_x=10,
-        pixres_y=-10,
+        geo_info=geo_info,
         band_name_src='GIS_ID',
         band_name_dst='gis_id',
-        snap_bounds=snap_bounds,
         dtype_src='uint32'
     )
     assert band_from_points.values.dtype == 'uint32', 'wrong data type'

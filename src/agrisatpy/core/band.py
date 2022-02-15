@@ -1070,7 +1070,7 @@ class Band(object):
                 continue
             # ignore masked pixels
             if self.is_masked_array:
-                if array_value.mask:
+                if self.values.mask[record.row, record.col]:
                     array_value = self.nodata
             gdf.loc[
                 (gdf.row == record.row) & (gdf.col == record.col),
@@ -1227,7 +1227,7 @@ class Band(object):
         title_str = self.band_name
         if self.has_alias:
             title_str += f' ({self.alias})'
-        ax.title.set_text(title_str, fontdict={'fontsize': fontsize})
+        ax.title.set_text(title_str)
         # add axes labels and format ticker
         epsg = self.geo_info.epsg
         if self.crs.is_geographic:
