@@ -15,7 +15,56 @@ from agrisatpy.core.band import Band
 from agrisatpy.core.band import GeoInfo
 from agrisatpy.core.band import WavelengthInfo
 
-def test_band(datadir, get_polygons, get_bandstack, get_points3):
+def test_base_constructors():
+    """
+    test base constructor calls
+    """
+
+    epsg = 32633
+    ulx = 300000
+    uly = 5100000
+    pixres_x, pixres_y = 10, -10
+    
+    geo_info = GeoInfo(
+        epsg=epsg,
+        ulx=ulx,
+        uly=uly,
+        pixres_x=pixres_x,
+        pixres_y=pixres_y
+    )
+    assert isinstance(geo_info.as_affine(), rio.Affine), 'wrong Affine type'
+
+    # invalid EPSG code
+    epsg = 0
+    with pytest.raises(ValueError):
+        geo_info = GeoInfo(
+        epsg=epsg,
+        ulx=ulx,
+        uly=uly,
+        pixres_x=pixres_x,
+        pixres_y=pixres_y
+    )
+
+    band_name = 'test'
+    values = np.zeros(shape=(2,4))
+
+    band = Band(band_name=band_name, values=values, geo_info=geo_info)
+    assert type(band.bounds) == Polygon, 'band bounds must be a Polygon'
+    assert not band.has_alias, 'when color name is not set, the band has no alias'
+    assert band.band_name == band_name, 'wrong name for band'
+
+    assert band.values[0,0] == 0., 'wrong value for band data'
+
+    assert band.meta['height'] == band.nrows, 'wrong raster height in meta'
+    assert band.meta['width'] == band.ncols, 'wrong raster width in meta'
+    assert band.is_ndarray, 'must be of type ndarray'
+    assert band.crs.is_epsg_code, 'EPSG code not valid' 
+
+    zarr_values = zarr.zeros((10,10), chunks=(5,5), dtype='float32')
+    band = Band(band_name=band_name, values=zarr_values, geo_info=geo_info)
+    assert band.is_zarr
+
+def test_band_from_rasterio(datadir, get_polygons, get_bandstack, get_points3):
     """
     Tests instance and class methods of the `Band` class
     """
@@ -300,52 +349,3 @@ def test_band(datadir, get_polygons, get_bandstack, get_points3):
     assert band_from_points.values.dtype == 'uint32', 'wrong data type'
     assert band_from_points.reduce(method='max')['max'] == \
         point_gdf.GIS_ID.values.astype(int).max(), 'miss-match in band statistics'
-
-def test_base_constructors():
-    """
-    test base constructor calls
-    """
-
-    epsg = 32633
-    ulx = 300000
-    uly = 5100000
-    pixres_x, pixres_y = 10, -10
-    
-    geo_info = GeoInfo(
-        epsg=epsg,
-        ulx=ulx,
-        uly=uly,
-        pixres_x=pixres_x,
-        pixres_y=pixres_y
-    )
-    assert isinstance(geo_info.as_affine(), rio.Affine), 'wrong Affine type'
-
-    # invalid EPSG code
-    epsg = 0
-    with pytest.raises(ValueError):
-        geo_info = GeoInfo(
-        epsg=epsg,
-        ulx=ulx,
-        uly=uly,
-        pixres_x=pixres_x,
-        pixres_y=pixres_y
-    )
-
-    band_name = 'test'
-    values = np.zeros(shape=(2,4))
-
-    band = Band(band_name=band_name, values=values, geo_info=geo_info)
-    assert type(band.bounds) == Polygon, 'band bounds must be a Polygon'
-    assert not band.has_alias, 'when color name is not set, the band has no alias'
-    assert band.band_name == band_name, 'wrong name for band'
-
-    assert band.values[0,0] == 0., 'wrong value for band data'
-
-    assert band.meta['height'] == band.nrows, 'wrong raster height in meta'
-    assert band.meta['width'] == band.ncols, 'wrong raster width in meta'
-    assert band.is_ndarray, 'must be of type ndarray'
-    assert band.crs.is_epsg_code, 'EPSG code not valid' 
-
-    zarr_values = zarr.zeros((10,10), chunks=(5,5), dtype='float32')
-    band = Band(band_name=band_name, values=zarr_values, geo_info=geo_info)
-    assert band.is_zarr
