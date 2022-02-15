@@ -126,6 +126,9 @@ class GeoInfo(object):
     def __delattr__(self, *args, **kwargs):
         raise TypeError('GeoInfo object attributes are immutable')
 
+    def __repr__(self) -> str:
+        return str(self.__dict__)
+
     def as_affine(self) -> Affine:
         """
         Returns an ``rasterio.Affine`` compatible affine transformation
@@ -213,6 +216,9 @@ class WavelengthInfo(object):
         object.__setattr__(self, 'central_wavelength', central_wavelength)
         object.__setattr__(self, 'wavelength_unit', wavelength_unit)
         object.__setattr__(self, 'band_width', band_width)
+
+    def __repr__(self) -> str:
+        return str(self.__dict__)
 
     def __setattr__(self, *args, **kwargs):
         raise TypeError('WavelengthInfo object attributes are immutable')
