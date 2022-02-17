@@ -7,6 +7,7 @@ selection.
 
 import numpy as np
 
+from numpy import inf
 from typing import List, Union
 
 
@@ -57,6 +58,8 @@ class SpectralIndices(object):
         try:
             si_fun = eval(f'cls.{si.upper()}')
             si_data = si_fun.__call__(collection)
+            # replace infinity values with nan
+            si_data[si_data == inf] = np.nan
         except Exception as e:
             raise NotImplementedError(e)
         return si_data
@@ -97,7 +100,12 @@ class SpectralIndices(object):
         blue = collection.get(cls.blue).values
         nir = collection.get(cls.nir_1).values
         red = collection.get(cls.red).values
-        return 2.5 * (nir - red) / (nir + 6*red - 7.5*blue + 1)
+        numerator = 2.5 * (nir - red)
+        denominator = (nir + 6*red - 7.5*blue + 1)
+        # avoid divide by zero
+        if (denominator == 0).any():
+            denominator[denominator == 0] = 1e-6
+        return numerator / denominator 
 
     @classmethod
     def MSAVI(
