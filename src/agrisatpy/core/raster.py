@@ -227,9 +227,9 @@ class RasterCollection(MutableMapping):
     @staticmethod
     def _bands_from_selection(
             fpath_raster: Path,
-            band_idxs: Optional[List[int]],
-            band_names_src: Optional[List[str]],
-            band_names_dst: Optional[List[str]]
+            band_idxs: Optional[List[int]] = None,
+            band_names_src: Optional[List[str]] = None,
+            band_names_dst: Optional[List[str]] = None
             ) -> Dict[str, Union[str,int]]:
         """
         Selects bands in a multi-band raster dataset based on a custom
@@ -256,6 +256,7 @@ class RasterCollection(MutableMapping):
             selection
         """
         # chech band selection
+        band_names, band_count = None, None
         if band_idxs is None:
             try:
                 with rio.open(fpath_raster, 'r') as src:
@@ -276,20 +277,21 @@ class RasterCollection(MutableMapping):
                 # get band indices of selected bands (+1 because of GDAL)
                 band_idxs = [band_names.index(x)+1 for x in band_names_src \
                     if x in band_names]
-                band_count = len(band_idxs)
 
+        band_count = len(band_idxs)
         # make sure neither band_idxs nor band_names_src is None or empty
         if band_idxs is None or len(band_idxs) == 0:
             raise ValueError(
                 'No band indices could be determined'
             )
 
+        # make sure band_names_src are set
+        if band_names_src is None:
+            band_names_src = [f'B{idx+1}' for idx in range(band_count)]
+
         # set band_names_dst to values of band_names_src or default names
         if band_names_dst is None:
-            if band_names_src is not None:
-                band_names_dst = band_names_src
-            else:
-                band_names_dst = band_names
+            band_names_dst = band_names_src
 
         return {
             'band_idxs': band_idxs,
