@@ -27,7 +27,6 @@ from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
 Settings = get_settings()
 logger = Settings.logger
 
-
 def merge_split_scenes(
         scene_1: Path,
         scene_2: Path,
@@ -99,7 +98,7 @@ def merge_split_scenes(
     # merged file has some name as the first scene and is directly written to target directory
     out_file = out_dir.joinpath(scene_out_1['bandstack'].name)
     # we create a temporary file first
-    out_file_temp = working_dir.joinpath(out_file.name.split('.')[0] + '_temp.tif')
+    out_file_temp = working_dir.joinpath(out_file.name.split('.')[0] + '_temp.jp2')
     datasets = [scene_out_1['bandstack'], scene_out_2['bandstack']]
 
     logger.info(f'Starting merging files {datasets[0]} and {datasets[1]}')
@@ -116,9 +115,16 @@ def merge_split_scenes(
 
     out_band_names = list(s2_band_mapping.keys())
     out_band_names.remove('SCL')
+    if kwargs.get('skip_60m_bands', True):
+        out_band_names.remove('B01')
+        out_band_names.remove('B09')
 
     # set correct band descriptions and write final image to target directory
     meta = rio.open(out_file_temp, 'r').meta
+    meta.update({
+        'QUALITY': '100',
+        'REVERSIBLE': 'YES'
+    })
 
     with rio.open(out_file, 'w', **meta) as dst:
 
@@ -216,9 +222,6 @@ if __name__ == '__main__':
     scene_2 = sat_dir.joinpath('S2A_MSIL2A_20180518T104021_N0207_R008_T32TLT_20180518T125548')
 
     out_dir = Path('/mnt/ides/Lukas/debug/Processed')
-
-    pixel_division = False
-    options = {'pixel_division': pixel_division}
 
     fnames_out = merge_split_scenes(scene_1, scene_2, out_dir)
     

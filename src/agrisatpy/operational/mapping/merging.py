@@ -4,9 +4,8 @@ Module for merging raster datasets.
 
 
 from pathlib import Path
-from typing import List
-from typing import Optional
-from typing import Union
+from shapely.geometry import Polygon
+from typing import List, Optional, Tuple, Union
 from rasterio.merge import merge
 from rasterio.crs import CRS
 
@@ -18,7 +17,7 @@ from agrisatpy.utils.reprojection import reproject_raster_dataset
 def _get_CRS_and_bounds(
         in_file: Path,
         **kwargs
-    ) -> GeoInfo:
+    ) -> Tuple[GeoInfo,Polygon]:
     """
     Returns the ``GeoInfo`` from a multi-band raster dataset
 
@@ -36,8 +35,8 @@ def _get_CRS_and_bounds(
         **kwargs
     )
     geo_info = ds[ds.band_names[0]].geo_info
-
-    return geo_info
+    bounds = ds[ds.band_names[0]].bounds
+    return geo_info, bounds
 
 def merge_datasets(
         datasets: List[Path],
@@ -75,14 +74,14 @@ def merge_datasets(
 
     # check the CRS and bounds of the datasets first
     crs_list = []
-    bounds_list = []
-    meta_list = []
+    # bounds_list = []
+    # meta_list = []
 
     for dataset in datasets:
-        geo_info = _get_CRS_and_bounds(in_file=dataset)
-        crs_list.append(geo_info.CRS)
-        bounds_list.append(geo_info.bounds)
-        meta_list.append(geo_info.meta)
+        geo_info, bounds = _get_CRS_and_bounds(in_file=dataset)
+        crs_list.append(geo_info.epsg)
+        # bounds_list.append(geo_info.bounds)
+        # meta_list.append(geo_info.meta)
 
     # coordinate systems are not the same -> re-projection of raster datasets
     if len(set(crs_list)) > 1:
@@ -101,10 +100,15 @@ def merge_datasets(
                 pass
 
     # use rasterio merge to get a new raster dataset
+    dst_kwds = {
+        'QUALITY': '100',
+        'REVERSIBLE': 'YES'
+    }
     try:
         out_file, _ = merge(
             datasets=datasets,
             dst_path=out_file,
+            dst_kwds, dst_kwds,
             **kwargs
         )
     except Exception as e:
