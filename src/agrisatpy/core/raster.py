@@ -748,6 +748,8 @@ class RasterCollection(MutableMapping):
             return np.ma.stack(stack_bands, axis=0)
         elif set(array_types) == {np.ndarray}:
             return np.stack(stack_bands, axis=0)
+        elif set(array_types) == {np.ma.MaskedArray, np.ndarray}:
+            return np.ma.stack(stack_bands, axis=0)
         elif set(array_types) == {zarr.core.Array}:
             raise NotImplementedError()
         else:
