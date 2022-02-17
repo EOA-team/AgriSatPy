@@ -49,8 +49,6 @@ from agrisatpy.utils.sentinel2 import (
     get_S2_processing_level,
     get_S2_acquistion_time_from_safe
 )
-from agrisatpy.utils.reprojection import check_aoi_geoms
-from agrisatpy.metadata.sentinel2.parsing import parse_s2_scene_metadata
 from copy import deepcopy
 
 
@@ -118,6 +116,11 @@ class Sentinel2(RasterCollection):
             scl_in_selection = 'scl' in band_selection or 'SCL' in band_selection
             if not scl_in_selection:
                 band_selection.append('SCL')
+        if not read_scl:
+            if 'scl' in band_selection:
+                band_selection.remove('scl')
+            if 'SCL' in band_selection:
+                band_selection.remove('SCL')
 
         # determine native spatial resolution of Sentinel-2 bands
         band_res = band_resolution[processing_level]
@@ -463,7 +466,7 @@ class Sentinel2(RasterCollection):
             # get only those colors required (classes in the layer)
             scl_colors = SCL_Classes.colors()
             scl_dict = SCL_Classes.values()
-            scl_classes = list(np.unique(self.get_band('SCL')))
+            scl_classes = list(np.unique(self.get_values(['SCL'])))
             selected_colors = [x for idx,x in enumerate(scl_colors) if idx in scl_classes]
             scl_cmap = colors.ListedColormap(selected_colors)
             scl_ticks = [x[1] for x in scl_dict.items() if x[0] in scl_classes]
