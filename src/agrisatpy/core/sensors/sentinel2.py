@@ -270,7 +270,6 @@ class Sentinel2(RasterCollection):
             # get entry from dataframe with file-path of band
             band_safe = band_df_safe[band_df_safe.band_name == band_name]
             band_fpath = band_safe.band_path.values[0]
-            
 
             # get color name and set it as alias
             color_name = s2_band_mapping[band_name]

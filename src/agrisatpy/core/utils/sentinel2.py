@@ -32,18 +32,13 @@ def read_s2_sclfile(
     :return:
         ``RasterCollection`` with SCL band data
     """
-
     # read SCL file and return
-    # TODO: update
-    reader = Sentinel2()
-    reader.read_from_safe(
+    scl = Sentinel2().from_safe(
         in_dir=in_dir,
-        polygon_features=in_file_aoi,
-        band_selection=['B05']
+        vector_features=in_file_aoi,
+        band_selection=['SCL']
     )
-    reader.drop_band(band_name='B05')
-
-    return reader
+    return scl
 
 
 def read_s2_tcifile(
@@ -83,7 +78,7 @@ def read_s2_tcifile(
             fpath_raster=tci_file,
             band_idxs=[1,2,3],
             band_aliases=['red', 'green', 'blue'],
-            polygon_features=in_file_aoi
+            vector_features=in_file_aoi
         )
     except Exception as e:
         raise Exception from e
