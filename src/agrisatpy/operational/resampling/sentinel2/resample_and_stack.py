@@ -23,10 +23,10 @@ from typing import Union
 
 from agrisatpy.config import get_settings
 from agrisatpy.config.sentinel2 import Sentinel2
-from agrisatpy.io import SatDataHandler
-from agrisatpy.io.sentinel2 import Sentinel2Handler
-from agrisatpy.io.utils.sentinel2 import read_s2_tcifile
-from agrisatpy.io.utils.sentinel2 import read_s2_sclfile
+from agrisatpy.core.raster import RasterCollection
+from agrisatpy.core.sensors.sentinel2 import Sentinel2
+from agrisatpy.core.utils.sentinel2 import read_s2_tcifile
+from agrisatpy.core.utils.sentinel2 import read_s2_sclfile
 from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
@@ -113,7 +113,7 @@ def _get_resampling_name(
 
 def create_rgb_preview(
         out_dir: Path,
-        reader: SatDataHandler,
+        reader: RasterCollection,
         out_filename: str
     ) -> Path:
     """
@@ -134,7 +134,7 @@ def create_rgb_preview(
 
     out_file = rgb_subdir.joinpath(out_filename)
 
-    fig_rgb = reader.plot_rgb()
+    fig_rgb = reader.plot_multiple_bands(['red', 'green', 'blue'])
     fig_rgb.savefig(
         fname=out_file,
         bbox_inches='tight',
@@ -147,7 +147,7 @@ def create_rgb_preview(
 
 def create_scl_preview(
         out_dir: Path,
-        reader: SatDataHandler,
+        reader: Sentinel2,
         out_filename: str
     ) -> Path:
     """
@@ -182,7 +182,7 @@ def create_scl_preview(
 
 def create_scl(
         out_dir: Path,
-        reader: Sentinel2Handler,
+        reader: Sentinel2,
         out_filename: str
     ) -> Path:
     """
@@ -203,8 +203,8 @@ def create_scl(
         scl_subdir.mkdir()
 
     out_file = scl_subdir.joinpath(out_filename)
-    reader.write_bands(
-        out_file=out_file,
+    reader.to_rasterio(
+        fpath_raster=out_file,
         band_names=['scl']
     )
 
@@ -330,7 +330,7 @@ def resample_and_stack_s2(
         try:
             scl.resample(
                 target_resolution=target_resolution,
-                pixel_division=True
+                inplace=True
             )
         except Exception as e:
             logger.error(f'Resampling of SCL file from {in_dir} failed: {e}')
@@ -383,13 +383,12 @@ def resample_and_stack_s2(
         # loop over S2 bands: read from .SAFE, resample if required and write to output
         for idx, s2_band in enumerate(s2_bands):
 
-            src = Sentinel2Handler()
+            src = Sentinel2()
 
             try:
-                src.read_from_safe(
+                src.from_safe(
                     in_dir=in_dir,
                     band_selection=[s2_band],
-                    int16_to_float=False,
                     read_scl=False
                 )
             except Exception as e:
@@ -408,8 +407,8 @@ def resample_and_stack_s2(
                     src.resample(
                         target_resolution=target_resolution,
                         resampling_method=resampling_method,
-                        pixel_division=pixel_division,
-                        band_selection=[band_alias]
+                        band_selection=[band_alias],
+                        inplace=True
                     )
                 except Exception as e:
                     logger.error(
