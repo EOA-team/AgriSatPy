@@ -36,6 +36,9 @@ def check_band_names(f):
     def wrapper(self, *args, **kwargs):
 
         band_names = None
+        if len(args) == 0 and len(kwargs) == 0:
+            return f(self, *args, **kwargs)
+        
         if len(args) > 0:
             # band name(s) are always provided as first argument
             band_names = args[0]
