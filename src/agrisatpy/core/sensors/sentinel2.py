@@ -206,6 +206,10 @@ class Sentinel2(RasterCollection):
                 elif isinstance(vector_features, gpd.GeoDataFrame):
                     vector_features_df = vector_features.copy()
 
+                # drop Nones in geometry column
+                none_idx = vector_features_df[vector_features_df.geometry == None].index
+                vector_features_df.drop(index=none_idx, inplace=True)
+
                 with rio.open(low_res_band.band_path, 'r') as src:
                     # convert to raster CRS
                     raster_crs = src.crs
