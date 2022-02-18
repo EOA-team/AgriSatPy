@@ -102,9 +102,6 @@ class SpectralIndices(object):
         red = collection.get(cls.red).values
         numerator = 2.5 * (nir - red)
         denominator = (nir + 6*red - 7.5*blue + 1)
-        # avoid divide by zero
-        if (denominator == 0).any():
-            denominator[denominator == 0] = 1e-6
         return numerator / denominator 
 
     @classmethod
