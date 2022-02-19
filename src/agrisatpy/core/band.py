@@ -866,7 +866,9 @@ class Band(object):
             `band_name_src` is provided.
         :param band_name_src:
             instead of providing a band index to read (`band_idx`) a band name
-            can be passed. If provided `band_idx` is ignored.
+            can be passed. If provided `band_idx` is ignored. NOTE: This works
+            *only* if the raster dataset has band names set in its descriptions
+            (often not the case)!
         :param band_name_dst:
             name of the raster band in the resulting ``GeoDataFrame`` (i.e.,
             column name)
@@ -876,7 +878,6 @@ class Band(object):
             raster dataset the pixel values are set to nodata (inferred from
             the raster source)
         """
-
         # check input point features
         gdf = cls._get_pixel_geometries(
             vector_features=vector_features,
@@ -887,15 +888,17 @@ class Band(object):
         # to do so, we need a list of coordinate tuples
         coord_list = [(x,y) for x,y in zip(gdf.geometry.x , gdf['geometry'].y)]
         with rio.open(fpath_raster, 'r') as src:
-            # overwrite band_idx if band_name_src is provided
+            # overwrite band_idx if band_name_src is provided and band names
+            # is not None (otherwise the band index cannot be determined)
             band_names = list(src.descriptions)
-            if band_name_src != '':
-                if band_name_src not in band_names:
-                    raise BandNotFoundError(
-                        f'Could not find band "{band_name_src}" ' \
-                        f'in {fpath_raster}'
-                    )
-                band_idx = band_names.index(band_name_src)
+            if not set(band_names) == {None}:
+                if band_name_src != '':
+                    if band_name_src not in band_names:
+                        raise BandNotFoundError(
+                            f'Could not find band "{band_name_src}" ' \
+                            f'in {fpath_raster}'
+                        )
+                    band_idx = band_names.index(band_name_src)
             try:
                 # yield all values from the generator
                 def _sample(src, coord_list, band_idx):

@@ -37,6 +37,7 @@ from agrisatpy.core.scene import SceneProperties
 from agrisatpy.core.spectral_indices import SpectralIndices
 from agrisatpy.utils.decorators import check_band_names
 from agrisatpy.utils.exceptions import BandNotFoundError
+from scipy.signal.filter_design import band_dict
 
 
 class RasterCollection(MutableMapping):
@@ -459,6 +460,7 @@ class RasterCollection(MutableMapping):
 
         return gdf
 
+    @check_band_names
     def drop_band(self, band_name: str):
         """
         Deletes a band from the current collection
@@ -466,6 +468,9 @@ class RasterCollection(MutableMapping):
         :param band_name:
             name of the band to drop
         """
+        # ensure band aliases get deleted as well
+        if self.has_band_aliases:
+            self._band_aliases.remove(self[band_name].alias)
         self.__delitem__(band_name)
 
     def is_bandstack(
@@ -1180,12 +1185,32 @@ class RasterCollection(MutableMapping):
                 'Selected bands must share same spatial extent, pixel size ' \
                 'and coordinate system'
             )
-
         # loop over bands and convert them to xarray
         band_xarr_list = []
+        band_attrs_list = []
         for band_name in band_selection:
             band_xarr = self[band_name].to_xarray()
             band_xarr_list.append(band_xarr)
+            # extract attributes to avoid loosing them on concat
+            band_attrs_list.append(band_xarr.attrs)
 
         # merge the single xarrays in the list into a single big one
-        return xr.concat(band_xarr_list, dim='band')
+        xarr = xr.concat(band_xarr_list, dim='band', combine_attrs='drop')
+        # add the attributes from the concated objects
+        xarr_attrs = deepcopy(band_attrs_list[0])
+        for idx, band_attr in enumerate(band_attrs_list):
+            # skip first band as it already serves as reference
+            if idx == 0:
+                continue
+            for attr in xarr_attrs:
+                # tuples are extended with entries from the single bands
+                # except the 'transform' entry that remains the same
+                # for all bands
+                if isinstance(xarr_attrs[attr], tuple):
+                    if attr != 'transform':
+                        attrs_list = list(xarr_attrs[attr])
+                        attrs_list.append(band_attr[attr][0])
+                        xarr_attrs.update({
+                            attr: tuple(attrs_list)
+                        })
+        return xarr.assign_attrs(xarr_attrs)

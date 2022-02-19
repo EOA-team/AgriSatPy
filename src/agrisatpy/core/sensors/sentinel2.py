@@ -135,6 +135,57 @@ class Sentinel2(RasterCollection):
 
         return band_df_safe
 
+    def _process_band_selection(
+            self,
+            in_dir: Path,
+            band_selection: Optional[List[str]] = None,
+            read_scl: Optional[bool] = True
+        ) -> pd.DataFrame:
+        """
+        Adopts the selection of Sentinel-2 spectral bands to ensure
+        that default bands are read if not specified otherwise.
+
+        :param in_dir:
+            path to the .SAFE archive of the S2 scene
+        :param band_selection:
+            optional selection of Sentinel-2 band names. If None the band
+            selection is aligned so that all 10 and 20m bands are read
+        :param read_scl:
+            if True (defaults) ensures that the scene classification layer
+            is read (L2A processing level)
+        :returns:
+            ``DataFrame`` with file-paths to the spectral bands
+        """
+        # load 10 and 20 bands by default
+        if band_selection is None:
+            band_selection = list(s2_band_mapping.keys())
+            bands_to_exclude = ['B01', 'B09']
+            for band in bands_to_exclude:
+                band_selection.remove(band)
+
+        # determine which spatial resolutions are selected and check processing level
+        band_df_safe = self._get_band_files(
+            in_dir=in_dir,
+            band_selection=band_selection,
+            read_scl=read_scl
+        )
+        # check if a band in the band_selection was not found
+        if band_selection is not None:
+            if len(band_selection) != len(band_df_safe.band_name):
+                bands_not_found = [
+                    x for x in band_selection if x not in \
+                    list(band_df_safe.band_name)
+                ]
+                # SCL might be "missing"
+                if len(bands_not_found) == 1:
+                    if bands_not_found[0] == 'SCL':
+                        return band_df_safe
+                raise BandNotFoundError(
+                    f'Couldnot find bands {bands_not_found} ' \
+                    'provided in selection'
+                )
+        return band_df_safe
+
     @classmethod
     def from_safe(
             cls,
@@ -171,14 +222,8 @@ class Sentinel2(RasterCollection):
             optional key-word arguments to pass to `~agrisatpy.core.band.Band.from_rasterio`
         """
         # load 10 and 20 bands by default
-        if band_selection is None:
-            band_selection = list(s2_band_mapping.keys())
-            bands_to_exclude = ['B01', 'B09']
-            for band in bands_to_exclude:
-                band_selection.remove(band)
-
-        # determine which spatial resolutions are selected and check processing level
-        band_df_safe = cls._get_band_files(
+        band_df_safe = cls._process_band_selection(
+            cls,
             in_dir=in_dir,
             band_selection=band_selection,
             read_scl=read_scl
@@ -190,59 +235,61 @@ class Sentinel2(RasterCollection):
         # extent regardless of their pixel size. This works since all S2 bands share the
         # same coordinate origin.
         # get lowest spatial resolution (maximum pixel size) band
-        lowest_resolution = band_df_safe['band_resolution'].max()
-        masking_after_read_required = False
         align_shapes = False
-        if band_df_safe['band_resolution'].unique().shape[0] > 1:
-            align_shapes = True
-            if kwargs.get('vector_features') is not None:
-                low_res_band = band_df_safe[
-                    band_df_safe['band_resolution'] == lowest_resolution
-                ].iloc[0]
-                # get vector feature(s) for spatial subsetting
-                vector_features = kwargs.get('vector_features')
-                if isinstance(vector_features, Path):
-                    vector_features_df = gpd.read_file(vector_features)
-                elif isinstance(vector_features, gpd.GeoDataFrame):
-                    vector_features_df = vector_features.copy()
+        masking_after_read_required = False
 
-                # drop Nones in geometry column
-                none_idx = vector_features_df[vector_features_df.geometry == None].index
-                vector_features_df.drop(index=none_idx, inplace=True)
-
-                with rio.open(low_res_band.band_path, 'r') as src:
-                    # convert to raster CRS
-                    raster_crs = src.crs
-                    vector_features_df.to_crs(crs=raster_crs, inplace=True)
-                    shape_mask, transform, window = raster_geometry_mask(
-                        dataset=src,
-                        shapes=vector_features_df.geometry,
-                        all_touched=True,
-                        crop=True,
+        if kwargs.get('vector_features') is not None:
+            lowest_resolution = band_df_safe['band_resolution'].max()
+            if band_df_safe['band_resolution'].unique().shape[0] > 1:
+                align_shapes = True
+                if kwargs.get('vector_features') is not None:
+                    low_res_band = band_df_safe[
+                        band_df_safe['band_resolution'] == lowest_resolution
+                    ].iloc[0]
+                    # get vector feature(s) for spatial subsetting
+                    vector_features = kwargs.get('vector_features')
+                    if isinstance(vector_features, Path):
+                        vector_features_df = gpd.read_file(vector_features)
+                    elif isinstance(vector_features, gpd.GeoDataFrame):
+                        vector_features_df = vector_features.copy()
+    
+                    # drop Nones in geometry column
+                    none_idx = vector_features_df[vector_features_df.geometry == None].index
+                    vector_features_df.drop(index=none_idx, inplace=True)
+    
+                    with rio.open(low_res_band.band_path, 'r') as src:
+                        # convert to raster CRS
+                        raster_crs = src.crs
+                        vector_features_df.to_crs(crs=raster_crs, inplace=True)
+                        shape_mask, transform, window = raster_geometry_mask(
+                            dataset=src,
+                            shapes=vector_features_df.geometry,
+                            all_touched=True,
+                            crop=True,
+                        )
+                    # get upper left coordinates rasterio takes for the band
+                    # with the coarsest spatial resolution
+                    ulx_low_res, uly_low_res = transform.c, transform.f
+                    # reconstruct the lower right corner
+                    llx_low_res = ulx_low_res + window.width * transform.a
+                    lly_low_res = uly_low_res + window.height * transform.e
+    
+                    # overwrite original vector features' bounds in the S2 scene
+                    # geometry of the lowest spatial resolution
+                    low_res_feature_bounds_s2_grid = box(
+                        minx=ulx_low_res,
+                        miny=lly_low_res,
+                        maxx=llx_low_res,
+                        maxy=uly_low_res
                     )
-                # get upper left coordinates rasterio takes for the band
-                # with the coarsest spatial resolution
-                ulx_low_res, uly_low_res = transform.c, transform.f
-                # reconstruct the lower right corner
-                llx_low_res = ulx_low_res + window.width * transform.a
-                lly_low_res = uly_low_res + window.height * transform.e
-
-                # overwrite original vector features' bounds in the S2 scene
-                # geometry of the lowest spatial resolution
-                low_res_feature_bounds_s2_grid = box(
-                    minx=ulx_low_res,
-                    miny=lly_low_res,
-                    maxx=llx_low_res,
-                    maxy=uly_low_res
-                )
-                # update bounds and pass them on to the kwargs
-                bounds_df = gpd.GeoDataFrame(
-                    geometry=[low_res_feature_bounds_s2_grid],
-                )
-                bounds_df.set_crs(crs=raster_crs, inplace=True)
-                # remember to mask the feature after clipping the data
-                if not kwargs.get('full_bounding_box_only', False):
-                    masking_after_read_required = True
+                    # update bounds and pass them on to the kwargs
+                    bounds_df = gpd.GeoDataFrame(
+                        geometry=[low_res_feature_bounds_s2_grid],
+                    )
+                    bounds_df.set_crs(crs=raster_crs, inplace=True)
+                    # remember to mask the feature after clipping the data
+                    if not kwargs.get('full_bounding_box_only', False):
+                        masking_after_read_required = True
 
         # determine platform (S2A or S2B)
         platform = get_S2_platform_from_safe(dot_safe_name=in_dir)
@@ -269,7 +316,7 @@ class Sentinel2(RasterCollection):
         # loop over bands and add them to the collection of bands
         sentinel2 = cls(scene_properties=scene_properties)
         kwargs_orig = deepcopy(kwargs)
-        for band_name in band_selection:
+        for band_name in list(band_df_safe.band_name):
 
             # get entry from dataframe with file-path of band
             band_safe = band_df_safe[band_df_safe.band_name == band_name]
@@ -342,14 +389,16 @@ class Sentinel2(RasterCollection):
     @classmethod
     def read_pixels_from_safe(
             cls,
-            point_features: Union[Path, gpd.GeoDataFrame],
+            vector_features: Union[Path, gpd.GeoDataFrame],
             in_dir: Path,
             band_selection: Optional[List[str]] = None,
             read_scl: Optional[bool] = True
         ) -> gpd.GeoDataFrame:
         """
         Extracts Sentinel-2 raster values at locations defined by one or many
-        point-like geometry features read from a vector file (e.g., ESRI shapefile).
+        vector geometry features read from a vector file (e.g., ESRI shapefile) or
+        ``GeoDataFrame``.
+
         The Sentinel-2 data must be organized in .SAFE archive structure in either
         L1C or L2A processing level. Each selected Sentinel-2 band is returned as
         a column in the resulting ``GeoDataFrame``. Pixels outside of the band
@@ -359,7 +408,7 @@ class Sentinel2(RasterCollection):
         IMPORTANT:
             This function works for Sentinel-2 data organized in .SAFE format!
             If the Sentinel-2 data has been converted to multi-band tiffs, use
-            `~Sentinel2Handler.read_pixels()` instead!resampled.is_bandstack()
+            `~Sentinel2().read_pixels()` instead.
 
         NOTE:
             A point is dimension-less, therefore, the raster grid cell (pixel) closest
@@ -378,17 +427,13 @@ class Sentinel2(RasterCollection):
             list of bands to read. Per default all raster bands available are read.
         :param read_scl:
             read SCL file if available (default, L2A processing level).
-        :return:
+        :returns:
             ``GeoDataFrame`` containing the extracted raster values. The band values
             are appened as columns to the dataframe. Existing columns of the input
             `in_file_pixels` are preserved.
         """
-
-        if band_selection is None:
-            band_selection = list(s2_band_mapping.keys())
-
-        # check band selection and get file-paths to the single jp2 files
-        band_df_safe = cls._get_band_files(
+        # load 10 and 20 bands by default
+        band_df_safe = cls._process_band_selection(
             cls,
             in_dir=in_dir,
             band_selection=band_selection,
@@ -397,7 +442,7 @@ class Sentinel2(RasterCollection):
 
         # loop over spectral bands and extract the pixel values
         band_gdfs = []
-        for idx, band_name in enumerate(band_selection):
+        for idx, band_name in enumerate(list(band_df_safe.band_name)):
 
             # get entry from dataframe with file-path of band
             band_safe = band_df_safe[band_df_safe.band_name == band_name]
@@ -406,13 +451,13 @@ class Sentinel2(RasterCollection):
             # read band pixels
             try:
                 gdf_band = cls.read_pixels(
-                    point_features=point_features,
-                    raster=band_fpath,
+                    vector_features=vector_features,
+                    fpath_raster=band_fpath,
+                    band_idxs=[1]
                 )
-
-                # rename the spectral band (rasterio returns None as band name from
-                # the jp2 files that is translated to NaN in geopandas)
-                gdf_band = gdf_band.rename(columns={None: band_name})
+                # rename the spectral band (always "B1" by default to its
+                # actual name)
+                gdf_band = gdf_band.rename(columns={'B1': band_name})
 
                 # remove the geometry column from all GeoDataFrames but the first
                 # since geopandas does not support multiple geometry columns
@@ -434,7 +479,7 @@ class Sentinel2(RasterCollection):
 
         # skip all pixels with zero reflectance (either blackfilled or outside of the
         # scene extent)
-        gdf = gdf.loc[~(gdf[band_selection]==0).all(axis=1)]
+        gdf = gdf.loc[~(gdf[band_df_safe.band_name] == 0).all(axis=1)]
 
         return gdf
 
