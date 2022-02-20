@@ -394,10 +394,6 @@ def cli_s2_scene_selection(
         logger.error(f'Metadata query for Sentinel-2 data failed: {e}')
         return
 
-    # drop xml columns
-    metadata.drop('mtd_tl_xml', axis=1, inplace=True)
-    metadata.drop('mtd_msi_xml', axis=1, inplace=True)
-
     # calculate average cloud cover for the selected scenes
     cc_avg = metadata.cloudy_pixel_percentage.mean()
 

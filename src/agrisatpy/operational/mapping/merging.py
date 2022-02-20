@@ -108,7 +108,7 @@ def merge_datasets(
         out_file, _ = merge(
             datasets=datasets,
             dst_path=out_file,
-            dst_kwds, dst_kwds,
+            dst_kwds=dst_kwds,
             **kwargs
         )
     except Exception as e:
