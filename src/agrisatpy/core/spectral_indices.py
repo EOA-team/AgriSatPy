@@ -10,7 +10,6 @@ import numpy as np
 from numpy import inf
 from typing import List, Union
 
-
 class SpectralIndices(object):
     """generic spectral indices"""
 
@@ -34,8 +33,10 @@ class SpectralIndices(object):
         :returns:
             list of SIs currently implemented
         """
-        return [x for x in dir(cls) if not x.startswith('__') and not x.endswith('__') \
-                and not x.islower()]
+        return [
+            x for x in dir(cls) if not x.startswith('__') \
+            and not x.endswith('__')  and not x.islower()
+        ]
 
     @classmethod
     def calc_si(
@@ -60,6 +61,9 @@ class SpectralIndices(object):
             si_data = si_fun.__call__(collection)
             # replace infinity values with nan
             si_data[si_data == inf] = np.nan
+            # replace masked values with nodata (might look weird otherwise)
+            if isinstance(si_data, np.ma.MaskedArray):
+                si_data.data[si_data.mask] = np.nan
         except Exception as e:
             raise NotImplementedError(e)
         return si_data
@@ -78,10 +82,11 @@ class SpectralIndices(object):
         :returns:
             NDVI values
         """
-
-        nir = collection.get(cls.nir_1).values
-        red = collection.get(cls.red).values
-        return (nir - red) / (nir + red)
+        
+        nir = collection.get(cls.nir_1).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
+        ndvi = (nir - red) / (nir + red)
+        return ndvi
 
     @classmethod
     def EVI(
@@ -97,9 +102,9 @@ class SpectralIndices(object):
         :returns:
             EVI values
         """
-        blue = collection.get(cls.blue).values
-        nir = collection.get(cls.nir_1).values
-        red = collection.get(cls.red).values
+        blue = collection.get(cls.blue).values.astype('float')
+        nir = collection.get(cls.nir_1).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
         numerator = 2.5 * (nir - red)
         denominator = (nir + 6*red - 7.5*blue + 1)
         return numerator / denominator 
@@ -119,8 +124,8 @@ class SpectralIndices(object):
         :returns:
             MSAVI values
         """
-        nir = collection.get(cls.nir_1).values
-        red = collection.get(cls.red).values
+        nir = collection.get(cls.nir_1).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
         return 0.5 * (2*nir + 1 - np.sqrt((2*nir + 1)**2 - 8*(nir - red)))
 
     @classmethod    
@@ -138,8 +143,8 @@ class SpectralIndices(object):
             CI-green values
         """
 
-        nir = collection.get(cls.nir_1).values
-        green = collection.get(cls.green).values
+        nir = collection.get(cls.nir_1).values.astype('float')
+        green = collection.get(cls.green).values.astype('float')
         return (nir / green) - 1
 
     @classmethod
@@ -157,20 +162,15 @@ class SpectralIndices(object):
         :returns:
             TCARI/OSAVI values
         """
-
-        green = collection.get(cls.green).values
-        red = collection.get(cls.red).values
-        red_edge_1 = collection.get(cls.red_edge_1).values
-        red_edge_3 = collection.get(cls.red_edge_3).values
+        green = collection.get(cls.green).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
+        red_edge_1 = collection.get(cls.red_edge_1).values.astype('float')
+        red_edge_3 = collection.get(cls.red_edge_3).values.astype('float')
     
         TCARI = 3*((red_edge_1 - red) - 0.2*(red_edge_1 - green) * (red_edge_1 / red))
         OSAVI = (1 + 0.16) * (red_edge_3 - red) / (red_edge_3 + red + 0.16)
-        tcari_osavi = TCARI/OSAVI
-        # clip values to range between 0 and 1 (division by zero might cause infinity)
-        tcari_osavi[tcari_osavi < 0.] = 0.
-        tcari_osavi[tcari_osavi > 1.] = 1.
+        tcari_osavi = TCARI / OSAVI
         return tcari_osavi
-
 
     @classmethod
     def NDRE(
@@ -186,8 +186,8 @@ class SpectralIndices(object):
         :returns:
             NDRE values
         """
-        red_edge_1 = collection.get(cls.red_edge_1)
-        red_edge_3 = collection.get(cls.red_edge_3)
+        red_edge_1 = collection.get(cls.red_edge_1).astype('float')
+        red_edge_3 = collection.get(cls.red_edge_3).astype('float')
         return (red_edge_3 - red_edge_1) / (red_edge_3 + red_edge_1)
 
     @classmethod
@@ -204,9 +204,9 @@ class SpectralIndices(object):
         :returns:
             MCARI values
         """
-        green = collection.get(cls.green)
-        red = collection.get(cls.red)
-        red_edge_1 = collection.get(cls.red_edge_1)
+        green = collection.get(cls.green).astype('float')
+        red = collection.get(cls.red).astype('float')
+        red_edge_1 = collection.get(cls.red_edge_1).astype('float')
         return ((red_edge_1 - red) - 0.2 * (red_edge_1 - green)) * (red_edge_1 / red)
 
     @classmethod    
@@ -222,8 +222,8 @@ class SpectralIndices(object):
         :returns:
             BSI values
         """
-        blue = collection.get(cls.blue)
-        red = collection.get(cls.red)
-        nir = collection.get(cls.nir_1)
-        swir_1 = collection.get(cls.swir_1)
+        blue = collection.get(cls.blue).astype('float')
+        red = collection.get(cls.red).astype('float')
+        nir = collection.get(cls.nir_1).astype('float')
+        swir_1 = collection.get(cls.swir_1).astype('float')
         return ((swir_1 + red) - (nir + blue)) / ((swir_1 + red) + (nir + blue))
