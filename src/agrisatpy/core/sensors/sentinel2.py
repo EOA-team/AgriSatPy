@@ -505,16 +505,17 @@ class Sentinel2(RasterCollection):
         #  therefore we work on a copy of SCL
         scl = self['SCL'].copy()
         if scl.is_masked_array:
-            scl.values = scl.values.filled(
+            new_values = scl.values.filled(
                 [k for k, v in SCL_Classes.values().items() if v == 'no_data']
             )
+            object.__setattr__(scl, 'values', new_values)
 
         # make a color map of fixed colors
         if colormap == '':
             # get only those colors required (classes in the layer)
             scl_colors = SCL_Classes.colors()
             scl_dict = SCL_Classes.values()
-            scl_classes = list(np.unique(self.get_values(['SCL'])))
+            scl_classes = list(np.unique(scl.values))
             selected_colors = [x for idx,x in enumerate(scl_colors) if idx in scl_classes]
             scl_cmap = colors.ListedColormap(selected_colors)
             scl_ticks = [x[1] for x in scl_dict.items() if x[0] in scl_classes]

@@ -627,14 +627,22 @@ class RasterCollection(MutableMapping):
         xmin, ymin, xmax, ymax = self[band_selection[0]].bounds.exterior.bounds
         # clip values to 8bit color depth
         array_list = []
+        masked = []
         for band_name in band_selection:
             band_data = self.get_band(band_name).values
             new_arr = ((band_data - band_data.min()) * \
                        (1/(band_data.max() - band_data.min()) * \
                         255)).astype('uint8')
             array_list.append(new_arr)
+            masked.append(isinstance(new_arr, np.ma.MaskedArray))
         # stack arrays into 3d array
-        stack = np.dstack(array_list)
+        if np.array(masked).any():
+            stack = np.ma.dstack(array_list)
+            # set masked values to zero reflectance
+            stack.data[stack.mask] = 0
+            stack = stack.data
+        else:
+            stack = np.dstack(array_list)
         # get quantiles to improve plot visibility
         vmin = np.nanquantile(stack, 0.1)
         vmax = np.nanquantile(stack, 0.9)

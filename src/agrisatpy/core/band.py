@@ -1180,6 +1180,7 @@ class Band(object):
             )
         else:
             # clip data for displaying to central 96% percentile
+            # TODO: here seems to be a bug with nans in the data ...
             if vmin is None:
                 vmin = np.nanquantile(self.values, 0.02)
             if vmax is None:
