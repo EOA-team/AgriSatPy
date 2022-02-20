@@ -75,15 +75,13 @@ def check_band_names(f):
                 else:
                     new_band_names = []
                     for band_name in band_names:
-                        if self.has_band_aliases:
-                            band_idx = self.band_aliases.index(band_name)
-                            band_name = self.band_names[band_idx]
+                        try:
+                            new_band_names.append(self[band_name].alias)
                         # band name must be in band names if not an alias
-                        else:
+                        except Exception:
                             raise BandNotFoundError(
                                 f'{band_name} not found in collection'
                             )
-                    new_band_names.append(band_name)
                 if len(args) > 0:
                     arg_list = list(args)
                     arg_list[0] = new_band_names
