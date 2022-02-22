@@ -16,6 +16,7 @@ import rasterio as rio
 
 from matplotlib.pyplot import Figure
 from matplotlib import colors
+from numbers import Number
 from pathlib import Path
 from rasterio.mask import raster_geometry_mask
 from shapely.geometry import box
@@ -47,7 +48,7 @@ from agrisatpy.utils.sentinel2 import (
     get_S2_bandfiles_with_res,
     get_S2_platform_from_safe,
     get_S2_processing_level,
-    get_S2_acquistion_time_from_safe
+    get_S2_acquistion_time_from_safe, get_S2_processing_baseline_from_safe
 )
 from copy import deepcopy
 
@@ -81,6 +82,28 @@ class Sentinel2(RasterCollection):
                 return (self[band_name].values == 0).all()
             elif self[band_name].is_zarr:
                 raise NotImplementedError()
+
+    @staticmethod
+    def _get_gain_and_offset(in_dir: Union[str, Path]) -> Tuple[Number, Number]:
+        """
+        Returns gain and offset factor depending on the PDGS processing baseline
+
+        :param in_dir:
+            Sentinel-2 .SAFE archive folder from which to read data
+        :returns:
+            tuple whose first entry denotes the gain and whose second entry
+            denotes the offset value to apply to the image data to scale
+            it between 0 and 1.
+        """
+        # check the PDGS baseline
+        baseline = get_S2_processing_baseline_from_safe(dot_safe_name=in_dir)
+        # starting with baseline N0400 (400) S2 reflectances have an offset value of -1000, i.e.,
+        # the values reported in the .jp2 files must be subtracted by 1000 to obtain the actual
+        # reflectance factor values
+        s2_offset = 0
+        if baseline >= 400:
+            s2_offset = -1000
+        return (s2_gain_factor, s2_offset)
 
     @staticmethod
     def _get_band_files(
@@ -192,6 +215,7 @@ class Sentinel2(RasterCollection):
             in_dir: Path,
             band_selection: Optional[List[str]] = None,
             read_scl: Optional[bool] = True,
+            apply_scaling: Optional[bool] = True,
             **kwargs
         ):
         """
@@ -218,8 +242,17 @@ class Sentinel2(RasterCollection):
             loaded unless you set ``read_scl`` to False.
         :param read_scl:
             read SCL file if available (default, L2A processing level).
+        :param apply_scaling:
+            apply Sentinel-2 gain and offset factor to derive reflectance values scaled
+            between 0 (negative values are possible from baseline N0400 onwards) and 1
+            (default behavior). Because of the reflectance offset of -1000 introduced with
+            PDGS baseline N0400 in January 2022 applying the automatized scaling is recommended
+            to always obtain physically correct reflectance factor values - at the cost of
+            higher storage requirements because scaling converts the data to float32.
         :param kwargs:
             optional key-word arguments to pass to `~agrisatpy.core.band.Band.from_rasterio`
+        :returns:
+            `Sentinel2` instance with S2 bands loaded
         """
         # load 10 and 20 bands by default
         band_df_safe = cls._process_band_selection(
@@ -310,8 +343,9 @@ class Sentinel2(RasterCollection):
         kwargs.update({'area_or_point': 'Area'})
         # set nodata to zero (unfortunately the S2 img metadata is incorrect here)
         kwargs.update({'nodata': 0})
-        # set correct scale factor (unfortunately not correct in S2 img metadata)
-        kwargs.update({'scale': s2_gain_factor})
+        # set correct scale factor (unfortunately not correct in S2 JP2 header but specified in
+        # the MTD_MSIL1C and MTD_MSIL2A.xml metadata document)
+        gain, offset = cls._get_gain_and_offset(in_dir=in_dir)
 
         # loop over bands and add them to the collection of bands
         sentinel2 = cls(scene_properties=scene_properties)
@@ -324,6 +358,8 @@ class Sentinel2(RasterCollection):
 
             # get color name and set it as alias
             color_name = s2_band_mapping[band_name]
+            kwargs.update({'scale': 1})
+            kwargs.update({'offset': 0})
 
             # store wavelength information per spectral band
             if band_name != 'SCL':
@@ -336,6 +372,11 @@ class Sentinel2(RasterCollection):
                     band_width=band_width
                 )
                 kwargs.update({'wavelength_info': wvl_info})
+                # do not apply the gain and offset factors from the spectral bands
+                # to the SCL file
+                kwargs.update({'scale': gain})
+                kwargs.update({'offset': offset})
+                
             # read band
             try:
                 if align_shapes:
@@ -382,17 +423,22 @@ class Sentinel2(RasterCollection):
                     bands_to_mask=[band_name],
                     inplace=True
                 )
-
+        # scaling of reflectance values
+        if apply_scaling:
+            sentinel2.scale(
+                inplace=True,
+                pixel_values_to_ignore=[sentinel2[sentinel2.band_names[0]].nodata]
+            )
         return sentinel2
 
-    # TODO: adopt this function to latest API version
     @classmethod
     def read_pixels_from_safe(
             cls,
             vector_features: Union[Path, gpd.GeoDataFrame],
             in_dir: Path,
             band_selection: Optional[List[str]] = None,
-            read_scl: Optional[bool] = True
+            read_scl: Optional[bool] = True,
+            apply_scaling: Optional[bool] = True
         ) -> gpd.GeoDataFrame:
         """
         Extracts Sentinel-2 raster values at locations defined by one or many
@@ -427,6 +473,13 @@ class Sentinel2(RasterCollection):
             list of bands to read. Per default all raster bands available are read.
         :param read_scl:
             read SCL file if available (default, L2A processing level).
+        :param apply_scaling:
+            apply Sentinel-2 gain and offset factor to derive reflectance values scaled
+            between 0 (negative values are possible from baseline N0400 onwards) and 1
+            (default behavior). Because of the reflectance offset of -1000 introduced with
+            PDGS baseline N0400 in January 2022 applying the automatized scaling is recommended
+            to always obtain physically correct reflectance factor values - at the cost of
+            higher storage requirements because scaling converts the data to float32.
         :returns:
             ``GeoDataFrame`` containing the extracted raster values. The band values
             are appened as columns to the dataframe. Existing columns of the input
@@ -439,6 +492,8 @@ class Sentinel2(RasterCollection):
             band_selection=band_selection,
             read_scl=read_scl
         )
+        # get gain and offset values depending on the processing baseline
+        gain, offset = cls._get_gain_and_offset(in_dir=in_dir)
 
         # loop over spectral bands and extract the pixel values
         band_gdfs = []
@@ -464,19 +519,27 @@ class Sentinel2(RasterCollection):
                 # (they are the same for each band, anyways)
                 if idx > 0:
                     gdf_band.drop('geometry', axis=1, inplace=True)
-                band_gdfs.append(gdf_band)
             except Exception as e:
                 raise Exception(
                     f'Could not extract pixels values from {band_name}: {e}'
                 )
+            # scale values by applying gain and offset factors (recommended),
+            # ignore the scl layer
+            if band_name != 'SCL':
+                if apply_scaling:
+                    gdf_scaled = gdf_band.copy()
+                    gdf_scaled[band_name] = gdf_scaled[band_name].astype(float)
+                    gdf_scaled[band_name] = \
+                        (offset + gdf_scaled[band_name].loc[gdf_scaled[band_name] != 0]) * gain
+                    band_gdfs.append(gdf_scaled)
+                    continue
+            band_gdfs.append(gdf_band)
 
         # concat the single GeoDataFrames with the band data
         gdf = pd.concat(band_gdfs, axis=1)
-
         # clean the dataframe and remove duplicate column names after merging
         # to avoid (large) redundancies
         gdf = gdf.loc[:,~gdf.columns.duplicated()]
-
         # skip all pixels with zero reflectance (either blackfilled or outside of the
         # scene extent)
         gdf = gdf.loc[~(gdf[band_df_safe.band_name] == 0).all(axis=1)]
