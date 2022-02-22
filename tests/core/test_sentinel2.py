@@ -11,6 +11,7 @@ from matplotlib.figure import Figure
 from datetime import date
 
 from agrisatpy.core.sensors import Sentinel2
+from agrisatpy.core.band import Band
 from agrisatpy.utils.exceptions import BandNotFoundError, InputError
 
 
@@ -41,12 +42,13 @@ def test_read_pixels_from_safe(get_s2_safe_l1c, get_s2_safe_l2a, get_points2, ge
     gdf_instancemethod = handler.get_pixels(vector_features=test_point_features)
     assert gdf_instancemethod.empty, 'pixel values returned although sample points lay completely outside of scene extent' 
 
-    # read points from L1C partly inside the scene extent
+    # read points from L1C partly inside the scene extent without scaling
     test_point_features = get_points3()
 
     gdf_classmethod = Sentinel2().read_pixels_from_safe(
         vector_features=test_point_features,
-        in_dir=safe_archive
+        in_dir=safe_archive,
+        apply_scaling=False
     )
 
     assert gdf_classmethod.shape[0] == 4, 'wrong number of pixels extracted'
@@ -58,6 +60,15 @@ def test_read_pixels_from_safe(get_s2_safe_l1c, get_s2_safe_l2a, get_points2, ge
 
     assert set(gdf_classmethod.B02) == set([875, 795, 908, 749]), 'wrong values for band 02'
     assert set(gdf_classmethod.B11) == set([1756, 2532, 990, 1254]), 'wrong values for band 11'
+
+    # apply scaling
+    gdf_classmethod = Sentinel2().read_pixels_from_safe(
+        vector_features=test_point_features,
+        in_dir=safe_archive,
+        apply_scaling=True
+    )
+    assert (0 < gdf_classmethod.B02).all() and (gdf_classmethod.B02 < 1).all(), 'wrong values for band 02'
+    assert (0 < gdf_classmethod.B11).all() and (gdf_classmethod.B11 < 1).all(), 'wrong values for band 11'
 
     # do the same with the instance method (read bands and then extract the pixels from
     # the read bands)
@@ -153,7 +164,7 @@ def test_read_from_safe_with_mask_l2a(datadir, get_s2_safe_l2a, get_polygons, ge
     assert resampled.is_bandstack(), 'after resampling bands must be bandstacked'
     assert (resampled['green'].values == handler['green'].values).all(), \
         'values of bands in target resolution must not change'
-    assert resampled['nir_2'].values.mean() == handler['nir_2'].values.mean(), \
+    assert abs(resampled['nir_2'].values.mean() - handler['nir_2'].values.mean()) < 1e-5, \
         'nearest neighbor resampling should not change band statistics'
 
     # make sure meta information was saved correctly
@@ -173,7 +184,7 @@ def test_read_from_safe_with_mask_l2a(datadir, get_s2_safe_l2a, get_polygons, ge
 
     ndvi = handler.calc_si('NDVI', inplace=False)
     assert isinstance(ndvi, np.ma.MaskedArray), 'wrong return type'
-    assert ndvi.mean() < 1, 'NDVI cannot get bigger than 1'
+    assert 0 < ndvi.mean() < 1, 'NDVI cannot get bigger than 1'
     assert (handler['NDVI'].values == ndvi).all(), \
         'index calculation did not produce the same results'
 
@@ -214,7 +225,7 @@ def test_ignore_scl(datadir, get_s2_safe_l2a, get_polygons_2):
     assert 'SCL' not in handler.band_names, 'SCL band should not be available'
 
     # read with weird band ordering
-    band_selection = ['B08','B06']
+    band_selection = ['B07','B06']
     handler = Sentinel2().from_safe(
         in_dir=in_dir,
         vector_features=in_file_aoi,
@@ -222,7 +233,9 @@ def test_ignore_scl(datadir, get_s2_safe_l2a, get_polygons_2):
         read_scl=False
     )
     assert 'SCL' not in handler.band_names, 'SCL band should not be available'
-    assert handler.band_names == ['nir_1', 'red_edge_2'], 'wrong order of bands'
+    # make sure the bands are always order ascending no matter how the input order was
+    assert handler.band_names == ['B06', 'B07'], 'wrong order of bands'
+    assert handler.band_aliases == ['red_edge_2', 'red_edge_3'], 'wrong order of band aliases'
     with pytest.raises(KeyError):
         handler['SCL'].meta
 
@@ -247,9 +260,8 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     in_dir = get_s2_safe_l2a()
 
     # read without AOI file
-    reader = Sentinel2()
     band_selection = ['B02', 'B03', 'B04', 'B08', 'B8A']
-    reader.from_safe(
+    reader = Sentinel2().from_safe(
         in_dir=in_dir,
         band_selection=band_selection
     )
@@ -274,7 +286,7 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     assert len(aliases) == len(bands), 'number of aliases does not match number of bands'
 
     # check single band data
-    blue = reader.get_band('B02')
+    blue = reader.get_band('B02').copy()
 
     assert type(blue.values) in (np.ndarray, np.array), 'wrong datatype for band'
     assert len(blue.values.shape) == 2, 'band array is not 2-dimensional'
@@ -300,10 +312,6 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     with pytest.raises(BandNotFoundError):
         non_existing_band = reader.get_band('B01')
 
-    ##### bounds
-    all_bounds = [reader[x].bounds for x in reader.band_names]
-    assert len(set(all_bounds)) == 1, 'all bands must share the same bounds'
-
     # check the RGB
     fig_rgb = reader.plot_multiple_bands(band_selection=['red','green','blue'])
     assert type(fig_rgb) == Figure, 'plotting of RGB bands failed'
@@ -313,18 +321,19 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     assert type(fig_scl) == Figure, 'plotting of SCL failed'
 
     spectral_bands = reader.band_names
-    spectral_bands.drop('SCL')
+    spectral_bands.remove('SCL')
     reader.resample(
         target_resolution=10,
-        resampling_method=cv2.INTER_CUBIC,
-        band_selection=spectral_bands
+        interpolation_method=cv2.INTER_CUBIC,
+        band_selection=spectral_bands,
+        inplace=True
     )
 
     # SCL should not have changed
     assert reader.get_values(['scl']).shape == (1, 5490,5490), 'SCL was resampled although excluded'
 
     # but B8A should have 10m resolution now
-    assert reader.get_values('B8A').shape == (1,10980,10980), 'B8A was not resampled although selected'
+    assert reader.get_values(['B8A']).shape == (1,10980,10980), 'B8A was not resampled although selected'
     assert reader['B8A'].geo_info.pixres_x == 10, 'geo info was not updated'
 
     # add custom band
@@ -332,7 +341,7 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     reader.add_band(
         band_constructor=Band,
         band_name='test',
-        band_values=band_to_add,
+        values=band_to_add,
         geo_info=reader['blue'].geo_info
     )
     assert (reader['test'].values == band_to_add).all(), 'band was not added correctly'
@@ -343,7 +352,7 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     assert 0 <= cloudy_pixels <= 100, 'cloud pixel percentage must be between 0 and 100%'
 
     # check blackfill (there is some but not the entire scene is blackfilled)
-    assert not reader.is_blackfilled(), 'blackfill detection did not work out - to many false positives'
+    assert not reader.is_blackfilled, 'blackfill detection did not work out - to many false positives'
 
     # blackfill_mask = reader.get_blackfill('blue')
     # assert blackfill_mask.dtype == bool, 'A boolean mask is required for the blackfill'
@@ -356,20 +365,17 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     # resample SCL and try masking again
     reader.resample(target_resolution=10, inplace=True)
 
-    reader.mask_clouds_and_shadows(bands_to_mask=['blue'])
-    reader.mask_clouds_and_shadows(bands_to_mask=['B03', 'B04', 'NDVI'])
-
-    # since the test since contains some clouds the bands should slightly differ after masking
-    assert not (reader['blue'].values == blue.values).all(), 'cloud masking had no effect'
+    reader.mask_clouds_and_shadows(bands_to_mask=['blue'], inplace=True)
+    reader.mask_clouds_and_shadows(bands_to_mask=['B03', 'B04'], inplace=True)
 
     # drop a band
     reader.drop_band('test')
 
     assert 'test' not in reader.band_names, 'band "test" still available although dropped'
-    with pytest.raises(Exception):
+    with pytest.raises(BandNotFoundError):
         reader.get_band('test')
-    with pytest.raises(Exception):
-        reader.get_meta('test')
+    with pytest.raises(KeyError):
+        reader['test'].meta
 
     # re-project a band to another UTM zone (33)
     reader.reproject(
@@ -379,8 +385,7 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     )
 
     assert reader.is_bandstack(), 'data should fulfill bandstack criteria but doesnot'
-
-    assert reader['blue'].crs.as_epsg() == 32633, 'projection was not updated'
+    assert reader['blue'].crs == 32633, 'projection was not updated'
 
     # try writing bands to output file
     reader.to_rasterio(
@@ -394,28 +399,3 @@ def test_read_from_safe_l2a(datadir, get_s2_safe_l2a):
     xds = reader.to_xarray()
 
     assert xds.crs == 32633, 'EPSG got lost in xarray dataset'
-
-def test_si_calculation(datadir, get_s2_safe_l2a, get_polys):
-    """Some tests with SI (spectral index) calculation"""
-
-    handler.read_from_safe(
-        in_dir=safe_archive,
-        polygon_features=in_file_aoi,
-        full_bounding_box_only=True
-    )
-    handler.calc_si('EVI')
-
-    assert not handler.check_is_bandstack(), 'bands have different spatial resolutions, therefore they cannot be bandstacked'
-    assert handler.get_meta()['EVI'] == handler.get_meta()['blue'], 'wrong meta entry'
-    assert handler.get_meta('EVI') == handler.get_meta()['EVI'], 'wrong meta entry returned'
-    assert len(handler.get_attrs('EVI')['nodatavals']) == 1, 'wrong number of nodata entries in band attributes'
-
-    # resampling of all bands -> transforms the handler into a bandstack
-    handler.resample(
-        target_resolution=10.,
-        resampling_method=cv2.INTER_NEAREST_EXACT
-    )
-
-    handler.calc_si('NDVI')
-    assert handler.from_bandstack(), 'when resampling all bands, handler should be band-stacked'
-    assert handler.check_is_bandstack(), 'when resampling all bands, band-stack criteria must pass'

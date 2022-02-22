@@ -239,8 +239,6 @@ def test_masking(datadir, get_test_band, get_bandstack, get_points3):
     values_before_scaling = band.values
     band.scale_data()
     assert (values_before_scaling.data == band.values.data).all(), 'scaling must not have an effect'
-    band.scale_data(inverse=True)
-    assert (values_before_scaling.data == band.values.data).all(), 'scaling must not have an effect'
 
     # read data with AOI outside of the raster bounds -> should raise a ValueError
     fpath_raster = get_bandstack()

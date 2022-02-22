@@ -14,6 +14,7 @@ from agrisatpy.core.band import GeoInfo
 from agrisatpy.core.band import Band
 from agrisatpy.core.raster import SceneProperties
 from agrisatpy.core.raster import RasterCollection
+from agrisatpy.utils.exceptions import BandNotFoundError
 
 
 def test_ndarray_constructor():
@@ -92,7 +93,7 @@ def test_ndarray_constructor():
         handler['random']
 
     # drop non-existing band
-    with pytest.raises(KeyError):
+    with pytest.raises(BandNotFoundError):
         handler.drop_band('test')
 
 def test_rasterio_constructor_single_band(get_bandstack):
@@ -142,14 +143,8 @@ def test_scale():
     before_scaling = handler.get_values()
     handler.scale(inplace=True)
     after_scaling = handler.get_values()
-    assert (after_scaling == (scale * before_scaling + offset)).all(), 'values not scaled correctly'
-    assert (after_scaling == 102).all(), 'wrong value after scaling'
-
-    # inverse scaling -> should return the original values again
-    handler.scale(inverse=True, inplace=True)
-    after_scaling = handler.get_values()
-    assert (after_scaling == before_scaling).all(), 'after undoing scaling values differ from original'
-    assert (after_scaling == 1).all(), 'wrong values after undoing scaling operation'
+    assert (after_scaling == (scale * (before_scaling + offset))).all(), 'values not scaled correctly'
+    assert (after_scaling == 300).all(), 'wrong value after scaling'
 
 def test_rasterio_constructor_multi_band(get_bandstack):    
     """
@@ -162,10 +157,10 @@ def test_rasterio_constructor_multi_band(get_bandstack):
     )
 
     assert gTiff_collection.band_names == \
-        ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12'], \
+        ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10'], \
         'wrong list of band names in collection'
     assert gTiff_collection.is_bandstack(), 'collection must be bandstacked'
-    gTiff_collection['B02'].crs == 32632, 'wrong CRS'
+    gTiff_collection['B2'].crs == 32632, 'wrong CRS'
 
     # read multi-band geoTiff into new handler with custom destination names
     colors = ['blue', 'green', 'red', 'red_edge_1', 'red_edge_2', 'red_edge_3', \
@@ -181,6 +176,8 @@ def test_rasterio_constructor_multi_band(get_bandstack):
         'wrong number of columns in SI'
     assert gTiff_collection['NDVI'].nrows == gTiff_collection['red'].nrows, \
         'wrong number of rows in SI'
+    assert -1 < np.nanmin(gTiff_collection['NDVI'].values) < 0, 'minimum NDVI should be <-1 and <0'
+    assert 0 < np.nanmax(gTiff_collection['NDVI'].values) < 1, 'maximum NDVI should be <0 and <1'
 
     gdf = gTiff_collection.to_dataframe(['NDVI', 'swir_2'])
     assert set(['NDVI', 'swir_2']).issubset(gdf.columns), 'bands not added as GeoDataFrame columns'
