@@ -544,7 +544,6 @@ class Band(object):
         :returns:
             new ``Band`` instance from a ``rasterio`` dataset.
         """
-
         # check vector features if provided
         masking = False
         if vector_features is not None:
@@ -619,7 +618,7 @@ class Band(object):
         # get scale, offset and unit (if available) from kwargs or the raster
         # attributes. If scale, etc. are provided in kwargs, the raster attributes
         # are ignored. If neither kwargs nor raster attributes provide information
-        # about scale etc. use the defaults
+        # about scale etc., use the defaults
         if 'scale' in kwargs.keys():
             scale = kwargs['scale']
             kwargs.pop('scale')

@@ -470,7 +470,8 @@ class RasterCollection(MutableMapping):
         """
         # ensure band aliases get deleted as well
         if self.has_band_aliases:
-            self._band_aliases.remove(self[band_name].alias)
+            if self[band_name].alias in self.band_aliases:
+                self._band_aliases.remove(self[band_name].alias)
         self.__delitem__(band_name)
 
     def is_bandstack(
@@ -957,7 +958,7 @@ class RasterCollection(MutableMapping):
         # loop over band reproject the selected ones
         for band_name in bands_to_mask:
             if inplace:
-                self.collection[band_name].mask(
+                self[band_name].mask(
                     mask=mask,
                     inplace=inplace
                 )

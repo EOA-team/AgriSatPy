@@ -423,10 +423,14 @@ class Sentinel2(RasterCollection):
                     bands_to_mask=[band_name],
                     inplace=True
                 )
-        # scaling of reflectance values
+        # scaling of reflectance values (i.e., do not scale SCL)
         if apply_scaling:
+            sel_bands = sentinel2.band_names
+            if 'SCL' in sel_bands:
+                sel_bands.remove('SCL')
             sentinel2.scale(
                 inplace=True,
+                band_selection=sel_bands,
                 pixel_values_to_ignore=[sentinel2[sentinel2.band_names[0]].nodata]
             )
         return sentinel2
@@ -531,6 +535,7 @@ class Sentinel2(RasterCollection):
                     gdf_scaled[band_name] = gdf_scaled[band_name].astype(float)
                     gdf_scaled[band_name] = \
                         (offset + gdf_scaled[band_name].loc[gdf_scaled[band_name] != 0]) * gain
+                    gdf_scaled[band_name][np.isnan(gdf_scaled[band_name])] = 0
                     band_gdfs.append(gdf_scaled)
                     continue
             band_gdfs.append(gdf_band)
@@ -541,7 +546,7 @@ class Sentinel2(RasterCollection):
         # to avoid (large) redundancies
         gdf = gdf.loc[:,~gdf.columns.duplicated()]
         # skip all pixels with zero reflectance (either blackfilled or outside of the
-        # scene extent)
+        # scene extent); in case of dtype float check for NaNs
         gdf = gdf.loc[~(gdf[band_df_safe.band_name] == 0).all(axis=1)]
 
         return gdf
@@ -576,6 +581,7 @@ class Sentinel2(RasterCollection):
         # make a color map of fixed colors
         if colormap == '':
             # get only those colors required (classes in the layer)
+            # FIXME: plotting cannot really handle when values are missing in between, e.g., [0,2,3,4]
             scl_colors = SCL_Classes.colors()
             scl_dict = SCL_Classes.values()
             scl_classes = list(np.unique(scl.values))
@@ -595,8 +601,9 @@ class Sentinel2(RasterCollection):
     def mask_clouds_and_shadows(
             self,
             bands_to_mask: List[str],
-            cloud_classes: Optional[List[int]] = [2, 3, 7, 8, 9, 10]
-        ) -> None:
+            cloud_classes: Optional[List[int]] = [2, 3, 7, 8, 9, 10],
+            **kwargs
+        ):
         """
         A Wrapper around the inherited ``mask`` method to mask clouds,
         shadows, water and snow based on the SCL band. Works therefore on L2A data,
@@ -614,19 +621,22 @@ class Sentinel2(RasterCollection):
             list of SCL values to be considered as clouds/shadows and snow.
             By default, all three cloud classes and cloud shadows are considered
             plus snow.
+        :param kwargs:
+            optional kwargs to pass to `~agrisatpy.core.raster.RasterCollection.mask`
+        :returns:
+            depending on `inplace` (passed in the kwargs) a new `Sentinel2` instance
+            or None
         """
         mask_band = 'SCL'
-        
         try:
-            self.mask(
+            return self.mask(
                 mask=mask_band,
                 mask_values=cloud_classes,
                 bands_to_mask=bands_to_mask,
-                inplace=True
+                **kwargs
             )
         except Exception as e:
             raise Exception(f'Could not apply cloud mask: {e}')
-
 
     def get_scl_stats(self) -> pd.DataFrame:
         """
