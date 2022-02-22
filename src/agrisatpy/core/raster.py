@@ -975,8 +975,8 @@ class RasterCollection(MutableMapping):
     def scale(
             self,
             band_selection: Optional[List[str]] = None,
-            inverse: Optional[bool] = False,
-            inplace: Optional[bool] = False
+            inplace: Optional[bool] = False,
+            **kwargs
         ):
         """
         Applies gain and offset factors to bands in collection
@@ -984,12 +984,13 @@ class RasterCollection(MutableMapping):
         :param band_selection:
             selection of bands to process. If not provided uses all
             bands
-        :param inverse:
-            if True reverse the scaling (i.e., takes the inverse
-            of the scale factor and changes the sign of the offset)
         :param inplace:
             if False returns a new `RasterCollection` (default) otherwise
             overwrites existing raster band entries
+        :param kwargs:
+            optional kwargs to pass to `~agrisatpy.core.band.Band.scale_data`
+        :returns:
+            `RasterCollection` if `inplace == False`, None otherwise
         """
         if band_selection is None:
             band_selection = self.band_names
@@ -1005,15 +1006,15 @@ class RasterCollection(MutableMapping):
         for band_name in band_selection:
             if inplace:
                 self.collection[band_name].scale_data(
-                    inverse=inverse,
-                    inplace=inplace
+                    inplace=inplace,
+                    **kwargs
                 )
             else:
                 band = self.get_band(band_name)
                 collection.add_band(
                     band_constructor=band.scale_data,
-                    inverse=inverse,
-                    inplace=True  # within the band instance `inplace` must be True
+                    inplace=True  # within the band instance `inplace` must be True,
+                    **kwargs
                 )
         return collection
 

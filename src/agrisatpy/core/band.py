@@ -1633,43 +1633,41 @@ class Band(object):
 
     def scale_data(
             self,
-            inverse: Optional[bool] = False,
-            inplace: Optional[bool] = False
+            inplace: Optional[bool] = False,
+            pixel_values_to_ignore: Optional[List[Union[int,float]]] = None
         ):
         """
         Applies scale and offset factors to the data.
 
-        :param inverse:
-            if True reverse the scaling (i.e., takes the inverse
-            of the scale factor and changes the sign of the offset)
         :param inplace:
             if False (default) returns a copy of the ``Band`` instance
             with the changes applied. If True overwrites the values
             in the current instance.
+        :param pixel_values_to_ignore:
+            optional list of pixel values (e.g., nodata values) to ignore,
+            i.e., where scaling has no effect
         :returns:
             ``Band`` instance if `inplace` is False, None instead.
         """
-
-        if inverse:
-            scale = 1. / self.scale
-            offset = -1. * self.offset
-        else:
-            scale, offset = self.scale, self.offset
-
+        scale, offset = self.scale, self.offset
         if self.is_masked_array:
-            if inverse:
+            if pixel_values_to_ignore is None:
                 scaled_array = scale * (self.values.data + offset)
             else:
-                scaled_array = scale * self.values.data + offset
+                scaled_array = self.values.data.copy().astype(float)
+                scaled_array[~np.isin(scaled_array, pixel_values_to_ignore)] = \
+                    scale * (scaled_array[~np.isin(scaled_array, pixel_values_to_ignore)] + offset)
             scaled_array = np.ma.MaskedArray(
                 data=scaled_array,
                 mask=self.values.mask
             )
         elif self.is_ndarray:
-            if inverse:
+            if pixel_values_to_ignore is None:
                 scaled_array = scale * (self.values + offset)
             else:
-                scaled_array = scale * self.values + offset
+                scaled_array = self.values.copy().astype(float)
+                scaled_array[~np.isin(scaled_array, pixel_values_to_ignore)] = \
+                    scale * (scaled_array[~np.isin(scaled_array, pixel_values_to_ignore)] + offset)
         elif self.is_zarr:
             raise NotImplemented()
 
