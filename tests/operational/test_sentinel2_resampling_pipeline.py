@@ -6,7 +6,7 @@ import rasterio as rio
 from agrisatpy.io.sentinel2 import Sentinel2Handler
 from agrisatpy.spatial_resampling.sentinel2 import resample_and_stack_s2
 
-
+# TODO: adopt to latest API changes
 @pytest.mark.parametrize('resampling_method', [(cv2.INTER_CUBIC), (cv2.INTER_NEAREST_EXACT)])
 def test_resample_and_stack_s2(datadir, get_s2_safe_l2a, pixel_division):
     """Tests the resample and band stack module from the pipeline"""
