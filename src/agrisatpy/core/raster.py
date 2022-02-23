@@ -15,6 +15,7 @@ Besides that, ``RasterCollection`` is a super class from which sensor-specific c
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import rasterio as rio
 import xarray as xr
 import zarr
@@ -667,7 +668,6 @@ class RasterCollection(MutableMapping):
         # add title str
         title_str = ", ".join(band_selection)
         ax.set_title(title_str, fontdict={'fontsize': fontsize})
-
         return fig
 
     @check_band_names
@@ -770,6 +770,32 @@ class RasterCollection(MutableMapping):
             raise NotImplementedError()
         else:
             raise ValueError('Unsupported array type')
+
+    @check_band_names
+    def band_summaries(
+            self,
+            band_selection: Optional[List[str]] = None,
+            methods: Optional[List[str]] = ['nanmin', 'nanmean', 'nanstd', 'nanmax']
+        ) -> pd.DataFrame:
+        """
+        Descriptive band statistics
+
+        :param band_selection:
+            selection of bands to process. If not provided uses all
+            bands
+        :param methods:
+            descriptive metrics to compute for each band
+        :returns:
+            ``DataFrame`` with descriptive statistics for all bands selected
+        """
+        stats = []
+        if band_selection is None:
+            band_selection = self.band_names
+        for band_name in band_selection:
+            band_stats = self[band_name].reduce(method=methods)
+            band_stats['band_name'] = band_name
+            stats.append(band_stats)
+        return pd.DataFrame(stats)
 
     @check_band_names
     def reproject(
