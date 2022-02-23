@@ -353,7 +353,9 @@ def resample_and_stack_s2(
     meta.update({
         'count': 10,         # Sentinel-2 has 10 bands relevant for agriculture
         'dtype': 'uint16',   # Sentinel-2 data is stored as unsigned integers (16bit)
-        'driver': driver
+        'driver': driver,
+        'REVERSIBLE': 'YES',
+        'QUALITY': 100
     })
     # open output dataset
     s2_bands = list(s2_band_mapping.keys())
@@ -376,7 +378,8 @@ def resample_and_stack_s2(
                 src = Sentinel2().from_safe(
                     in_dir=in_dir,
                     band_selection=[s2_band],
-                    read_scl=False
+                    read_scl=False,
+                    apply_scaling=False
                 )
             except Exception as e:
                 logger.error(f'Could not read band {s2_band} from {in_dir}: {e}')
