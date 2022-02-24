@@ -227,3 +227,21 @@ class SpectralIndices(object):
         nir = collection.get(cls.nir_1).astype('float')
         swir_1 = collection.get(cls.swir_1).astype('float')
         return ((swir_1 + red) - (nir + blue)) / ((swir_1 + red) + (nir + blue))
+
+    @classmethod
+    def VARI(
+            cls,
+            collection
+        ):
+        """
+        Calculates the Visible Atmospherically Resistant Index (VARI)
+
+        :param collection:
+            reflectance in the 'blue', 'red', 'nir_1' and 'swir_1' channel
+        :returns:
+            BSI values
+        """
+        blue = collection.get(cls.blue).astype('float')
+        green = collection.get(cls.green).astype('float')
+        red = collection.get(cls.red).astype('float')
+        return (green - red) / (green + red - blue)
