@@ -8,7 +8,7 @@ import uuid
 from datetime import date
 import pandas as pd
 from pathlib import Path
-from shapely.geometry import box
+from shapely.geometry import box, Point
 from sqlalchemy.exc import DatabaseError
 from typing import Any
 from typing import Dict
@@ -20,16 +20,17 @@ from agrisatpy.config import get_settings
 from agrisatpy.core.sensors import Sentinel2
 from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_bbox
 from agrisatpy.operational.mapping.mapper import Mapper, Feature
+from agrisatpy.operational.mapping.merging import merge_datasets
 from agrisatpy.operational.resampling.utils import identify_split_scenes
-from agrisatpy.utils.constants.sentinel2 import ProcessingLevels, s2_gain_factor
+from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.exceptions import InputError, BlackFillOnlyError,\
     DataNotFoundError
 from agrisatpy.metadata.sentinel2.utils import identify_updated_scenes
 from agrisatpy.metadata.utils import reconstruct_path
+from agrisatpy.core.band import GeoInfo
 
-logger = get_settings().logger
-return_types = ['xarray', 'GeoDataFrame']
-
+settings = get_settings()
+logger = settings.logger
 
 class Sentinel2Mapper(Mapper):
     """
@@ -232,7 +233,6 @@ class Sentinel2Mapper(Mapper):
         object.__setattr__(self, 'observations', s2_scenes)
         object.__setattr__(self, 'feature_collection', features)
 
-    # TODO: develop this function further
     def _read_multiple_scenes(
             self,
             scenes_date: pd.DataFrame,
@@ -243,15 +243,9 @@ class Sentinel2Mapper(Mapper):
         Backend method for processing and reading scene data if more than one scene
         is available for a given sensing date and feature (area of interest)
         """
-        
-        candidate_scene_ids = scenes_date.scene_id.astype(list)
-        feature_id = feature_gdf['identifier'].iloc[0].values
-
         # check which baseline should be used
         return_highest_baseline = kwargs.get('return_highest_baseline', True)
-
         res = None
-
         # if the feature is a point we take the data set that is not blackfilled.
         # If more than one data set is not blackfilled  we simply take the
         # first data set
@@ -266,9 +260,6 @@ class Sentinel2Mapper(Mapper):
                 # a empty data frame indicates black-fill
                 if feature_gdf.empty:
                     continue
-
-                # otherwise we take the first non-blackfilled pixel values
-                selected_scene_id = candidate_scene.scene_id
                 res = feature_gdf
                 break
         # in case of a (Multi-)Polygon: check if one of the candidate scenes complete
@@ -288,30 +279,58 @@ class Sentinel2Mapper(Mapper):
             if updated_scenes.shape[0] == 1:
                 res = Sentinel2.from_safe(
                         in_dir=candidate_scene.real_path,
-                        band_selection=self.mapper_configs.band_names
+                        band_selection=self.mapper_configs.band_names,
+                        **kwargs
                     )
-            # if updated scenes is not empty overwrite the scenes_date DataFrame
+            # TODO: if updated scenes is not empty overwrite the scenes_date DataFrame
             if not updated_scenes.empty:
                 scenes_date = updated_scenes.copy()
 
             # apply merge logic
+            tmp_fnames = []
             for _, candidate_scene in scenes_date.iterrows():
-                # TODO: continue here with merge logic
-                # 2. check if the scenes have all the same CRS
-                # 2.1    if they have the same CRS merge the scenes based on the maximum value method
-                # 2.2    
                 s2_scene = Sentinel2.from_safe(
                     in_dir=candidate_scene.real_path,
-                    band_selection=self.mapper_configs.band_names
+                    band_selection=self.mapper_configs.band_names,
+                    **kwargs
                 )
+                # reproject the scene if its CRS is not the same as the target_crs
+                if s2_scene[s2_scene.band_names[0]].geo_info.epsg != candidate_scene.target_crs:
+                    # make sure the pixel size remains the same after re-projection
+                    # to do so, construct an explicit affine transformation matrix
+                    for band in s2_scene.band_names:
+                        bounds_orig = s2_scene[band].bounds.exterior.coords
+                        geo_info_orig = s2_scene[band].geo_info
+                        crs_orig = s2_scene[band].crs
+                        ulx_orig = bounds_orig[0]
+                        uly_orig = bounds_orig[3]
+                        ul_orig = gpd.GeoDataFrame(Point(ulx_orig, uly_orig), crs=crs_orig)
+                        ul_transformed = ul_orig.to_crs(candidate_scene.target_crs)
+                        ulx_transformed = ul_transformed.geometry.x.iloc[0]
+                        uly_transformed = ul_transformed.geometry.y.iloc[0]
+                        # GeoInfo of the transformed raster band
+                        geo_info_transformed = GeoInfo(
+                            epsg=candidate_scene.target_crs,
+                            ulx=ulx_transformed, 
+                            uly=uly_transformed,
+                            pixres_x=geo_info_orig.pixres_x,
+                            pixres_y=geo_info_orig.pixres_y
+                        )
+                        s2_scene.reproject(
+                            band_selection=[band],
+                            target_crs=candidate_scene.target_crs,
+                            dst_transform=geo_info_transformed.as_affine(),
+                            inplace=True
+                        )
+                # write scene to temporary working directory and call rasterio.merge, returning
+                # the merged dataset (save as tif to avoid compression issues)
+                fname_scene = settings.TEMP_WORKING_DIR.joinpath(f'{uuid.uuid4()}.tif')
+                s2_scene.to_rasterio(fname_scene)
+                tmp_fnames.append(fname_scene)
 
-        # delete those scenes in the observations dataframe that were not used
-        candidate_scene_ids.remove(selected_scene_id)
-        drop_idx = self.observations[feature_id][
-            self.observations[feature_id].scene_id.isin(candidate_scene_ids)
-        ].index
-        self.observations[feature_id].drop(drop_idx, inplace=True)
-
+            # merge datasets
+            vector_features = kwargs.get('vector_features', None)
+            res = merge_datasets(datasets=tmp_fnames, vector_features=vector_features)
         return res
 
     def get_observation(
@@ -339,7 +358,6 @@ class Sentinel2Mapper(Mapper):
         """
         # define variable for returning results
         res = None
-
         # get available observations for the AOI feature
         scenes_df = self.observations.get(feature_id, None)
         if scenes_df is None:
@@ -370,7 +388,6 @@ class Sentinel2Mapper(Mapper):
         kwargs.update({
             'vector_features': feature_gdf
         })
-
         # multiple scenes for a single date
         # check what to do (re-projection, merging)
         if scenes_date.shape[0] > 1:
@@ -426,11 +443,9 @@ class Sentinel2Mapper(Mapper):
         :param kwargs:
             optional key-word arguments to pass to `~agrisatpy.core.band.Band.from_rasterio`
         """
-
         assets = {}
         # loop over features (AOIs) in feature dict
         for feature, scenes_df in self.observations.items():
-
             # in case a feature selection is available check if the current
             # feature is part of it
             if feature_selection is not None:
@@ -469,5 +484,4 @@ class Sentinel2Mapper(Mapper):
                 assets[feature] = pd.concat(feature_res)
             else:
                 assets[feature] = feature_res
-
         return assets
