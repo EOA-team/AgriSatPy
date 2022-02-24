@@ -2,21 +2,18 @@
 Mapping module for Sentinel-2 data
 '''
 
+import pandas as pd
 import geopandas as gpd
 import uuid
 
 from datetime import date
-import pandas as pd
 from pathlib import Path
 from shapely.geometry import box, Point
 from sqlalchemy.exc import DatabaseError
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Union
+from typing import Any, Dict, List, Optional, Union
 
 from agrisatpy.config import get_settings
+from agrisatpy.core.band import GeoInfo
 from agrisatpy.core.sensors import Sentinel2
 from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_bbox
 from agrisatpy.operational.mapping.mapper import Mapper, Feature
@@ -27,7 +24,6 @@ from agrisatpy.utils.exceptions import InputError, BlackFillOnlyError,\
     DataNotFoundError
 from agrisatpy.metadata.sentinel2.utils import identify_updated_scenes
 from agrisatpy.metadata.utils import reconstruct_path
-from agrisatpy.core.band import GeoInfo
 
 settings = get_settings()
 logger = settings.logger
@@ -396,7 +392,6 @@ class Sentinel2Mapper(Mapper):
                 feature_dict=feature_dict,
                 **kwargs
             )
-
         else:
             # if there is only one scene all we have to do is to read
             # read pixels in case the feature's dtype is point
@@ -478,7 +473,6 @@ class Sentinel2Mapper(Mapper):
                         f'({idx+1}/{n_sensing_dates}) failed: {e}'
                     )
                     continue
-
             # if res is a GeoDataFrame the list can be concated
             if isinstance(res, gpd.GeoDataFrame):
                 assets[feature] = pd.concat(feature_res)
