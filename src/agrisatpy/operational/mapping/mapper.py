@@ -94,7 +94,6 @@ class Feature(object):
             geometry=[self.geom],
         )
 
-
 class MapperConfigs(object):
     """
     Class defining configurations for the ``Mapper`` class
@@ -114,7 +113,6 @@ class MapperConfigs(object):
         optional selection of tile ids for sensors following a tiling scheme
         (e.g., S2 tiles, or Landsat PathRows).
     """
-
     def __init__(
             self,
             band_names: Optional[List[str]] = None,
@@ -153,7 +151,6 @@ class MapperConfigs(object):
     def __repr__(self):
         return str(self.__dict__)
 
-
 class Mapper(object):
     """
     Generic Mapping class to extract raster data for a selection of areas of interest
@@ -179,7 +176,6 @@ class Mapper(object):
     :attrib observations:
         data structure for storing DB query results per AOI.
     """
-
     def __init__(
             self,
             date_start: date,
@@ -290,11 +286,10 @@ class Mapper(object):
         :param feature_identifier:
             unique identifier of the aoi. Must be the same identifier
             used during the database query
-        :return:
+        :returns:
             ``DataFrame`` with all scenes found for a given
             set of search parameters
         """
-
         try:
             return self.observations[feature_identifier].copy()
         except Exception as e:
