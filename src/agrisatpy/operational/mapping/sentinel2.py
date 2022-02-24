@@ -50,7 +50,6 @@ class Sentinel2Mapper(Mapper):
         those scenes from the latest baseline. Otherwise, it is possible to use
         the baseline most scenes were processed with.
     """
-
     def __init__(
             self,
             processing_level: ProcessingLevels,
