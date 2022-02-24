@@ -394,6 +394,7 @@ class Sentinel2Mapper(Mapper):
                     res = Sentinel2.from_safe(
                         in_dir=scenes_date['real_path'].iloc[0],
                         band_selection=self.mapper_configs.band_names,
+                        **kwargs
                     )
                 except BlackFillOnlyError:
                     return res

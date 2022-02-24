@@ -129,7 +129,7 @@ class SpectralIndices(object):
         return 0.5 * (2*nir + 1 - np.sqrt((2*nir + 1)**2 - 8*(nir - red)))
 
     @classmethod    
-    def CI_green(
+    def CI_GREEN(
             cls,
             collection
         ) -> np.array:
@@ -186,8 +186,8 @@ class SpectralIndices(object):
         :returns:
             NDRE values
         """
-        red_edge_1 = collection.get(cls.red_edge_1).astype('float')
-        red_edge_3 = collection.get(cls.red_edge_3).astype('float')
+        red_edge_1 = collection.get(cls.red_edge_1).values.astype('float')
+        red_edge_3 = collection.get(cls.red_edge_3).values.astype('float')
         return (red_edge_3 - red_edge_1) / (red_edge_3 + red_edge_1)
 
     @classmethod
@@ -204,9 +204,9 @@ class SpectralIndices(object):
         :returns:
             MCARI values
         """
-        green = collection.get(cls.green).astype('float')
-        red = collection.get(cls.red).astype('float')
-        red_edge_1 = collection.get(cls.red_edge_1).astype('float')
+        green = collection.get(cls.green).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
+        red_edge_1 = collection.get(cls.red_edge_1).values.astype('float')
         return ((red_edge_1 - red) - 0.2 * (red_edge_1 - green)) * (red_edge_1 / red)
 
     @classmethod    
@@ -222,10 +222,10 @@ class SpectralIndices(object):
         :returns:
             BSI values
         """
-        blue = collection.get(cls.blue).astype('float')
-        red = collection.get(cls.red).astype('float')
-        nir = collection.get(cls.nir_1).astype('float')
-        swir_1 = collection.get(cls.swir_1).astype('float')
+        blue = collection.get(cls.blue).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
+        nir = collection.get(cls.nir_1).values.astype('float')
+        swir_1 = collection.get(cls.swir_1).values.astype('float')
         return ((swir_1 + red) - (nir + blue)) / ((swir_1 + red) + (nir + blue))
 
     @classmethod
@@ -241,7 +241,7 @@ class SpectralIndices(object):
         :returns:
             BSI values
         """
-        blue = collection.get(cls.blue).astype('float')
-        green = collection.get(cls.green).astype('float')
-        red = collection.get(cls.red).astype('float')
+        blue = collection.get(cls.blue).values.astype('float')
+        green = collection.get(cls.green).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
         return (green - red) / (green + red - blue)
