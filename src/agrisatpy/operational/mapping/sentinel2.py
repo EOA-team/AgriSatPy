@@ -181,7 +181,7 @@ class Sentinel2Mapper(Mapper):
                 raise DatabaseError(f'Querying metadata DB failed: {e}')
 
             # filter by tile if required
-            tile_ids = self.mapper.configs.tile_selection
+            tile_ids = self.mapper_configs.tile_selection
             if tile_ids is not None:
                 other_tile_idx = scenes_df[~scenes_df.tile_id.isin(tile_ids)].index
                 scenes_df.drop(other_tile_idx, inplace=True)
