@@ -734,6 +734,10 @@ class Band(object):
             allowed_geometry_types=allowed_geometry_types
         )
 
+        # check if the vector features are in the CRS specified by the geo_info passed
+        if in_gdf.crs != geo_info.epsg:
+            in_gdf = in_gdf.to_crs(geo_info.epsg)
+
         # check passed attribute selection. If the band_name_src attribute does
         # not exist fill it with 1 so that a binary raster can be created
         if band_name_src is None:

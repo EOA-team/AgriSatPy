@@ -37,8 +37,6 @@ from agrisatpy.core.band import Band
 from agrisatpy.core.scene import SceneProperties
 from agrisatpy.core.spectral_indices import SpectralIndices
 from agrisatpy.utils.decorators import check_band_names
-from agrisatpy.utils.exceptions import BandNotFoundError
-from scipy.signal.filter_design import band_dict
 
 
 class RasterCollection(MutableMapping):
