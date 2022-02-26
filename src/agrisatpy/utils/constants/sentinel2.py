@@ -140,7 +140,8 @@ s2_band_mapping = {
         'SCL': 'scl'
 }
 
-# S2 data is stored as uint16
+# S2 data is stored as uint16, to convert to 0-1 reflectance factors
+# apply this gain factor
 s2_gain_factor = 0.0001
 
 # scene classification layer (Sen2Cor)
