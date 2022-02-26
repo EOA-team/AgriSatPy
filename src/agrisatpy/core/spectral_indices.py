@@ -105,9 +105,14 @@ class SpectralIndices(object):
         blue = collection.get(cls.blue).values.astype('float')
         nir = collection.get(cls.nir_1).values.astype('float')
         red = collection.get(cls.red).values.astype('float')
-        numerator = 2.5 * (nir - red)
+        numerator = nir - red
         denominator = (nir + 6*red - 7.5*blue + 1)
-        return numerator / denominator 
+        # values larger 1 and smaller -1 might occur (e.g., on artificial
+        # surfaces); here we cut them of
+        evi = 2.5 * (numerator / denominator)
+        evi[evi > 1.] = 1.
+        evi[evi < -1.] = -1.
+        return evi
 
     @classmethod
     def MSAVI(
