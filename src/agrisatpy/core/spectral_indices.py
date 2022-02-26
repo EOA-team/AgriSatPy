@@ -148,7 +148,7 @@ class SpectralIndices(object):
         return (nir / green) - 1
 
     @classmethod
-    def TCARI_OSAVI(
+    def MTCARI_OSAVI(
             cls,
             collection
         ) -> np.array:
