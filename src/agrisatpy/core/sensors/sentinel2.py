@@ -546,7 +546,10 @@ class Sentinel2(RasterCollection):
         gdf = gdf.loc[:,~gdf.columns.duplicated()]
         # skip all pixels with zero reflectance (either blackfilled or outside of the
         # scene extent); in case of dtype float check for NaNs
-        gdf = gdf.loc[~(gdf[band_df_safe.band_name] == 0).all(axis=1)]
+        if (gdf.dtypes[gdf.columns.str.startswith('B')] == 'float64').all():
+            gdf.dropna(axis=0, inplace=True)
+        elif (gdf.dtypes[gdf.columns.str.startswith('B')] == 'int16').all():
+            gdf = gdf.loc[~(gdf[band_df_safe.band_name] == 0).all(axis=1)]
 
         return gdf
 
