@@ -322,7 +322,7 @@ def test_from_vector(get_polygons):
     vector_features = get_polygons()
 
     # read data from vector source
-    epsg = 32633
+    epsg = 32632
     gdf = gpd.read_file(vector_features)
     ulx = gdf.geometry.total_bounds[0]
     uly = gdf.geometry.total_bounds[-1]
