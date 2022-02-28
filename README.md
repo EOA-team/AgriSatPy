@@ -42,10 +42,10 @@ The following examples show you how to **get started** with as little effort as 
 The following code snippet reads spectral bands from a Sentinel-2 scene organized in .SAFE folder structure acquired over Southern Germany in Level2A (bottom-of-atmosphere reflectance). The Sentinel-2 scene can be downloaded [here](https://data.mendeley.com/datasets/ckcxh6jskz/1) ( S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.zip):
 
 ```python
+import geopandas as gpd
 from pathlib import Path
 from shapely.geometry import Polygon
-import geopandas as gpd
-from agrisatpy.io.sentinel2 import Sentinel2Handler
+from agrisatpy.core.sensors import Sentinel2
 
 # file-path to the .SAFE dataset
 dot_safe_dir = Path('../data/S2A_MSIL2A_20190524T101031_N0212_R022_T32UPU_20190524T130304.SAFE')
@@ -58,24 +58,30 @@ bbox = Polygon([(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)])
 # AgriSatPy expects a vector file or a GeoDataFrame for spatial sub-setting
 bbox_gdf = gpd.GeoDataFrame(geometry=[bbox], crs=4326)
 
-# read data from .SAFE using Sentinel2Handler (reads all 10 and 20m bands + scene classification layer)
-handler = Sentinel2Handler()
-handler.read_from_safe(
+# read data from .SAFE (all 10 and 20m bands + scene classification layer)
+s2_ds = Sentinel2().from_safe(
     in_dir=dot_safe_dir,
-    polygon_features=bbox_gdf
+    vector_features=bbox_gdf
 )
 
-# check the bands read. AgriSatPy converts band names (B02, etc.) to color names
-# however, original Sentinel-2 bands also work for selecting bands!
-handler.get_bandnames()
+# AgriSatPy support band aliasing. Thus, you can access the bands by their name ...
+s2_ds.band_names
 ```
 Output
 ```shell
->>> ['blue', 'green', 'red', 'red_edge_1', 'red_edge_2', 'red_edge_3', 'nir_1', 'nir_2', 'swir_1', 'swir_2', 'scl']
+>>> ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12', 'SCL']
 ```
 ```python
+# ... or by their alias, i.e., their color name
+s2_ds.band_aliases
+```
+```shell
+>>> ['blue', 'green', 'red', 'red_edge_1', 'red_edge_2', 'red_edge_3', 'nir_1', 'nir_2', 'swir_1', 'swir_2', 'scl']
+```
+
+```python
 # plot false-color infrared preview
-fig_nir = handler.plot_false_color_infrared()
+s2_ds.plot_multiple_bands(band_selection=['nir_1','red','green'])
 ```
 <p align="left">
   <img src="./img/AgriSatPy_Sentinel-2_NIR.png" alt="AgriSatPy-Sentinel-NIR" width="400"/>
@@ -83,7 +89,7 @@ fig_nir = handler.plot_false_color_infrared()
 
 ```python
 # plot scene classification layer
-fig_scl = handler.plot_scl()
+s2_ds.plot_scl()
 ```
 <p align="left">
   <img src="./img/AgriSatPy_Sentinel-2_SCL.png" alt="AgriSatPy-Sentinel-SCL" width="500"/>
@@ -91,8 +97,8 @@ fig_scl = handler.plot_scl()
 
 ```python
 # calculate the NDVI using 10m bands (no spatial resampling required)
-handler.calc_si('NDVI')
-fig_ndvi = handler.plot_band('NDVI', colormap='BrBG')
+s2_ds.calc_si('NDVI', inplace=True)
+s2_ds.plot_band('NDVI', colormap='summer', vmin=-1, vmax=1)
 ```
 <p align="left">
   <img src="./img/AgriSatPy_Sentinel-2_NDVI.png" alt="AgriSatPy-Sentinel-NDVI" width="400"/>
@@ -100,13 +106,14 @@ fig_ndvi = handler.plot_band('NDVI', colormap='BrBG')
 
 ```python
 # mask the water (SCL class 6); requires resampling to 10m spatial resolution
-handler.resample(target_resolution=10)
-handler.mask(
-    name_mask_band='SCL',
-    mask_values=[6],  # SCL class 6 := water
-    bands_to_mask=['NDVI']
+s2_ds.resample(target_resolution=10, inplace=True)
+s2_ds.mask(
+    mask='SCL',
+    mask_values=[6],
+    bands_to_mask=['NDVI'],
+    inplace=True
 )
-fig_ndvi = handler.plot_band('NDVI', colormap='summer')
+s2_ds.plot_band('NDVI', colormap='summer', vmin=-1, vmax=1)
 ```
 <p align="left">
   <img src="./img/AgriSatPy_Sentinel-2_NDVI_masked.png" alt="AgriSatPy-Sentinel-NDVI_masked" width="400"/>
@@ -117,29 +124,18 @@ fig_ndvi = handler.plot_band('NDVI', colormap='summer')
 We will read a cloud-optimized geoTiff from [SwissTopo](https://www.swisstopo.admin.ch/), load and visualize it. The data is a tile from the high-resolution Digital Elevation Model of Switerland [SwissALTI3D](https://www.swisstopo.admin.ch/en/geodata/height/alti3d.html) and shows a mountain ridge close to Zermatt:
 
 ```python
-from agrisatpy.io import SatDataHandler
+from agrisatpy.core.band import Band
 
-# link to cloud-optimized geoTiff resource at Swisstopp
+# link to cloud-optimized geoTiffs at Swisstopp
 dem_file = 'https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2019_2618-1092/swissalti3d_2019_2618-1092_2_2056_5728.tif'
 
-# get SatDataHandler instance
-handler = SatDataHandler()
-# read the data into the current SatDataHandler instance
-handler.read_from_bandstack(
-    fname_bandstack=dem_file
-)
+# load resource into a Band instance and name it "Elevation"
+dem = Band.from_rasterio(fpath_raster=dem_file, band_name_dst='Elevation')
 
-# we can overwrite the default band names (usually B1, B2, ..) to, e.g., "Elevation"
-handler.reset_bandnames(['Elevation'])
-
-# we can check the physical unit of the "Elevation" band data
-band_unit = handler.get_attrs('Elevation')['units'][0]
-
-# visualize the "Elevation" band
-fig = handler.plot_band(
-    band_name='Elevation',
+# fast visualization
+fig = dem.plot(
     colormap='terrain',
-    colorbar_label=f'Elevation above Mean Sea Level [{band_unit}]'
+    colorbar_label=f'Elevation above Mean Sea Level [m]'
 )
 ```
 The output:

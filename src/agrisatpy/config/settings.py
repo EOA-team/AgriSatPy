@@ -1,16 +1,21 @@
 '''
-Created on Jul 8, 2021
+Global *AgriSatPy* settings defining access to metadata DB (`agrisatpy.operational`
+modules, only), CREODIAS (optional), Copernicus (optional) and some package-wide
+file and directory naming defaults. In addition, the module exposes a `logger` object
+for package wide-logging (console and file output).
 
-@author: graflu
+The ``Settings`` class uses ``pydantic``. This means all attributes of the class can
+be **overwritten** using environmental variables or a `.env` file. 
 '''
 
-from typing import List
 import logging
-from pathlib import Path
-from os.path import join
-from pydantic import BaseSettings
-from functools import lru_cache
+import tempfile
+
 from datetime import datetime
+from functools import lru_cache
+from os.path import join
+from pathlib import Path
+from pydantic import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -26,8 +31,6 @@ class Settings(BaseSettings):
 
     RESAMPLED_METADATA_FILE: str = 'metadata.csv'
 
-    PROCESSING_LEVELS: List[str] = ['L1C', 'L2A']
-    
     # define date format
     DATE_FMT_INPUT: str = '%Y-%m-%d'
     DATE_FMT_FILES: str = '%Y%m%d'
@@ -46,8 +49,7 @@ class Settings(BaseSettings):
     DB_HOST: str = 'localhost'
     DB_PORT: str = '5432'
     DB_NAME: str = 'metadata_db'
-    DB_URL: str = f'postgresql://{DB_USER}:{DB_PW}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
-    
+
     DEFAULT_SCHEMA: str = 'cs_sat_s1'
     ECHO_DB: bool = False
     
@@ -61,8 +63,11 @@ class Settings(BaseSettings):
     # processing checks
     PROCESSING_CHECK_FILE_NO_BF: str = f'successful_scenes_noblackfill.txt'
     PROCESSING_CHECK_FILE_BF: str = f'successful_scenes_blackfill.txt'
-    
 
+    # temporary working directory
+    TEMP_WORKING_DIR: Path = Path(tempfile.gettempdir())
+
+    # logger
     logger: logging.Logger = logging.getLogger(LOGGER_NAME)
 
     def get_logger(self):
@@ -94,7 +99,7 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings():
     """
-    loads package settings
+    loads package settings using ``last-recently-used`` cache
     """
     s = Settings()
     s.get_logger()

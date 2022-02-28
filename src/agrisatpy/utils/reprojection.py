@@ -15,7 +15,8 @@ from typing import Union
 from typing import Tuple
 from typing import Optional
 from geopandas import GeoDataFrame
-from agrisatpy.io.utils.geometry import read_geometries
+
+from agrisatpy.core.utils.geometry import read_geometries
 
 
 def check_aoi_geoms(

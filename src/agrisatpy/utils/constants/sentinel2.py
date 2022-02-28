@@ -90,6 +90,40 @@ central_wavelengths = {
     'unit': 'nm'  
 }
 
+band_widths = {
+    'S2A': {
+        'B01': 21,
+        'B02': 66,
+        'B03': 36,
+        'B04': 31,
+        'B05': 15,
+        'B06': 15,
+        'B07': 20,
+        'B08': 106,
+        'B8A': 21,
+        'B09': 20,
+        'B10': 31,
+        'B11': 91,
+        'B12': 175
+    },
+    'S2B':  {
+        'B01': 21,
+        'B02': 66,
+        'B03': 36,
+        'B04': 31,
+        'B05': 16,
+        'B06': 15,
+        'B07': 20,
+        'B08': 106,
+        'B8A': 22,
+        'B09': 21,
+        'B10': 30,
+        'B11': 94,
+        'B12': 185
+    },
+    'unit': 'nm'  
+}
+
 s2_band_mapping = {
         'B01': 'ultra_blue',
         'B02': 'blue',
@@ -101,13 +135,13 @@ s2_band_mapping = {
         'B08': 'nir_1',
         'B8A': 'nir_2',
         'B09': 'nir_3',
-        'B10': 'swir_0',
         'B11': 'swir_1',
         'B12': 'swir_2',
         'SCL': 'scl'
 }
 
-# S2 data is stored as uint16
+# S2 data is stored as uint16, to convert to 0-1 reflectance factors
+# apply this gain factor
 s2_gain_factor = 0.0001
 
 # scene classification layer (Sen2Cor)

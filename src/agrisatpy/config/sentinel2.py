@@ -1,7 +1,8 @@
 '''
-Created on Jul 9, 2021
+Global settings for Sentinel-2 that can be customized if required.
 
-@author: Lukas Graf (D-USYS, ETHZ)
+The ``Sentinel2`` class uses ``pydantic``. This means all attributes of the class can
+be **overwritten** using environmental variables or a `.env` file. 
 '''
 
 from pydantic.main import BaseModel

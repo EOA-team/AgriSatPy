@@ -6,9 +6,9 @@ Helper functions to read Sentinel-2 TCI (RGB quicklook) and Scene Classification
 from pathlib import Path
 from typing import Optional
 
-from agrisatpy.io import SatDataHandler
-from agrisatpy.io.sentinel2 import Sentinel2Handler
-from agrisatpy.utils.sentinel2 import get_S2_tci, get_S2_sclfile
+from agrisatpy.core.raster import RasterCollection
+from agrisatpy.core.sensors import Sentinel2
+from agrisatpy.utils.sentinel2 import get_S2_tci
 from agrisatpy.utils.sentinel2 import get_S2_processing_level
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 
@@ -16,7 +16,7 @@ from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 def read_s2_sclfile(
         in_dir: Path,
         in_file_aoi: Optional[Path] = None
-    ) -> Sentinel2Handler:
+    ) -> Sentinel2:
     """
     Reads the Sentinel-2 scene classification layer (SCL) file from
     a dataset in .SAFE format.
@@ -30,36 +30,32 @@ def read_s2_sclfile(
         optional vector geometry file defining an area of interest (AOI).
         If not provided, the entire spatial extent of the scene is read
     :return:
-        ``SatDataHandler`` with SCL band data
+        ``RasterCollection`` with SCL band data
     """
-
     # read SCL file and return
-    reader = Sentinel2Handler()
-    reader.read_from_safe(
+    scl = Sentinel2().from_safe(
         in_dir=in_dir,
-        polygon_features=in_file_aoi,
-        band_selection=['B05']
+        vector_features=in_file_aoi,
+        band_selection=['SCL']
     )
-    reader.drop_band(band_name='B05')
-
-    return reader
+    return scl
 
 
 def read_s2_tcifile(
         in_dir: Path,
         in_file_aoi: Optional[Path] = None
-    ) -> Sentinel2Handler:
+    ) -> Sentinel2:
     """
-    Reads the Sentinel-2 RGB quicklook file from a dataset in
+    Reads the Sentinel-2 RGB quicklook file from a data set in
     .SAFE format (processing levels L1C and L2A)
 
     :param in_dir:
-        .SAFE Sentinel-2 archive
+        path to .SAFE Sentinel-2 archive
     :param in_file_aoi:
         optional vector geometry file defining an area of interest (AOI).
         If not provided, the entire spatial extent of the scene is read
-    :return:
-        ``SatDataHandler`` with quicklook band data
+    :returns:
+        ``RasterCollection`` with quicklook band data
     """
 
     # determine processing level first
@@ -77,19 +73,16 @@ def read_s2_tcifile(
     except Exception as e:
         raise Exception from e
 
-    reader = SatDataHandler()
-    reader.read_from_bandstack(
-        fname_bandstack=tci_file,
-        in_file_aoi=in_file_aoi
-    )
-    # replace band names with red, green, blue
     try:
-        reader.reset_bandnames(
-            new_bandnames=['red', 'green', 'blue']
+        tci = RasterCollection.from_multi_band_raster(
+            fpath_raster=tci_file,
+            band_idxs=[1,2,3],
+            band_aliases=['red', 'green', 'blue'],
+            vector_features=in_file_aoi
         )
     except Exception as e:
         raise Exception from e
 
-    return reader
+    return tci
 
         

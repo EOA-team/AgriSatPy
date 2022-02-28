@@ -1,3 +1,15 @@
+Release v1.3
+------------
+- major improvements and advances in the data model. From now on the base unit in the data model is the Band. A band holds
+a 2-d numpy array, numpy masked Array, or zarr (further support for zarr will be added in the future) and has geo-localisation
+information. Raster datasets consist of 0 to N Band objects; these are called `RasterCollections` henceforth.
+- the second major effort of this release concerns the mapping module. The mapping module queries the satellite metadata base using
+a temporal and spatial area of interest and extracts satellite data for a set of (multi-)polygons or point-like features. The
+returned series is either a collection of RasterCollection objects or a GeoDataFrame in the case of point-like features
+- the latest Sentinel-2 baseline changes have been included. From now on Sentinel-2 gain and offset factors are determined based
+on the PDGS processing baseline and the reflectance factor values are converted automatically from UINT16 to float (scaled
+using gain and offset). To avoid automatic scaling, it is possible to unset a flag in the reading methods
+
 Release v1.2
 ------------
 - some bugfixes in the processing of L1C data (spatial resampling and blackfill merging)
@@ -8,3 +20,8 @@ Release v1.2
 - added fast and generic vegetation index calculation
 - added fast and generic plotting of spectral and discrete raster band data using matplotlib
 - database model has been extended to support concept of geographic regions for organizing the SAT archive by geographic extent
+
+Release v1.1
+------------
+- first draft of AgriSatPy including its satellite metadata base and functions to extract pixel values from Sentinel-2 scenes
+- many features still experimental and likely to undergo major changes in the (near) future

@@ -17,7 +17,7 @@ from geoalchemy2.functions import ST_GeomFromText
 from shapely.geometry import Polygon
 from sqlalchemy import create_engine
 from sqlalchemy import and_
-from sqlalchemy import desc
+from sqlalchemy import asc
 from sqlalchemy.orm import sessionmaker
 from typing import Optional
 from typing import Union
@@ -45,7 +45,8 @@ def find_raw_data_by_bbox(
     ) -> pd.DataFrame:
     """
     Queries the metadata DB by Sentinel-2 bounding box, time period and processing
-    level (and cloud cover).
+    level (and cloud cover). The returned data is ordered by sensing time in
+    ascending order.
 
     NOTE:
         For the spatial query ``ST_Intersects`` is called.
@@ -62,7 +63,7 @@ def find_raw_data_by_bbox(
     :param cloud_cover_threshold:
         optional cloud cover threshold to filter datasets by scene cloud coverage.
         Must be provided as number between 0 and 100%.
-    :return:
+    :returns:
         dataframe with references to found Sentinel-2 scenes
     """
 
@@ -86,7 +87,8 @@ def find_raw_data_by_bbox(
         S2_Raw_Metadata.cloudy_pixel_percentage,
         S2_Raw_Metadata.sensing_orbit_number,
         S2_Raw_Metadata.sensing_time,
-        S2_Raw_Metadata.cloudy_pixel_percentage
+        S2_Raw_Metadata.cloudy_pixel_percentage,
+        S2_Raw_Metadata.epsg
     ).filter(
          ST_Intersects(S2_Raw_Metadata.geom, ST_GeomFromText(bounding_box))
     ).filter(
@@ -99,7 +101,7 @@ def find_raw_data_by_bbox(
     ).filter(
         S2_Raw_Metadata.cloudy_pixel_percentage <= cloud_cover_threshold
     ).order_by(
-        S2_Raw_Metadata.sensing_date.desc()
+        S2_Raw_Metadata.sensing_date.asc()
     ).statement
 
     # read returned records in DataFrame and return
@@ -109,7 +111,6 @@ def find_raw_data_by_bbox(
         raise DataNotFoundError(
             f'Could not find Sentinel-2 data by bounding box: {e}'
         )
-
 
 def find_raw_data_by_tile(
         date_start: date,
@@ -133,7 +134,7 @@ def find_raw_data_by_tile(
     :param cloud_cover_threshold:
         optional cloud cover threshold to filter datasets by scene cloud coverage.
         Must be provided as number between 0 and 100%.
-    :return:
+    :returns:
         dataframe with references to found Sentinel-2 scenes
     """
 
@@ -151,7 +152,8 @@ def find_raw_data_by_tile(
         S2_Raw_Metadata.cloudy_pixel_percentage,
         S2_Raw_Metadata.sensing_orbit_number,
         S2_Raw_Metadata.sensing_time,
-        S2_Raw_Metadata.cloudy_pixel_percentage
+        S2_Raw_Metadata.cloudy_pixel_percentage,
+        S2_Raw_Metadata.epsg
     ).filter(
         S2_Raw_Metadata.tile_id == tile
     ).filter(
@@ -172,4 +174,30 @@ def find_raw_data_by_tile(
     except Exception as e:
         raise DataNotFoundError(
             f'Could not find Sentinel-2 data by tile: {e}'
+        )
+
+def get_scene_metadata(
+        product_uri: str
+    ) -> pd.DataFrame:
+    """
+    Returns the complete metadata record of a Sentinel-2 scene
+
+    :param product_uri:
+        unique product identifier. This corresponds to the .SAFE
+        name of a Sentinel-2 dataset
+    :returns:
+        ``DataFrame`` with complete scene metadata
+    """
+    query_statement = session.query(
+        S2_Raw_Metadata
+    ).filter(
+        S2_Raw_Metadata.product_uri == product_uri
+    ).statement
+
+    try:
+        return pd.read_sql(query_statement, session.bind)
+    except Exception as e:
+        raise DataNotFoundError(
+            'Could not find Sentinel-2 scene with product_uri '\
+            f'{product_uri}: {e}'
         )
