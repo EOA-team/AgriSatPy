@@ -16,8 +16,6 @@ from typing import List
 from typing import Optional
 from typing import Union
 
-from agrisatpy.core.raster import RasterCollection
-
 
 class Feature(object):
     """
@@ -117,7 +115,7 @@ class MapperConfigs(object):
             self,
             band_names: Optional[List[str]] = None,
             resampling_method: Optional[int] = cv2.INTER_NEAREST_EXACT,
-            spatial_resolution: Optional[Union[int, float]] = None,
+            spatial_resolution: Optional[Union[int, float]] = 10.,
             reducers: Optional[List[str]] = None,
             tile_selection: Optional[List[str]] = None
         ):

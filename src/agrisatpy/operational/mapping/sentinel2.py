@@ -2,6 +2,8 @@
 Mapping module for Sentinel-2 data
 '''
 
+import os
+import cv2
 import pandas as pd
 import geopandas as gpd
 import uuid
@@ -21,7 +23,7 @@ from agrisatpy.operational.mapping.merging import merge_datasets
 from agrisatpy.operational.resampling.utils import identify_split_scenes
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.exceptions import InputError, BlackFillOnlyError,\
-    DataNotFoundError
+    DataNotFoundError, ReprojectionError
 from agrisatpy.metadata.sentinel2.utils import identify_updated_scenes
 from agrisatpy.metadata.utils import reconstruct_path
 
@@ -121,7 +123,7 @@ class Sentinel2Mapper(Mapper):
             except Exception as e:
                 raise InputError(
                     f'Could not read polygon features from file ' \
-                    f'{self.aoi_features}: {e}'
+                    f'{self.feature_collection}: {e}'
                 )
         else:
             aoi_features = self.feature_collection.copy()
@@ -229,6 +231,37 @@ class Sentinel2Mapper(Mapper):
         object.__setattr__(self, 'observations', s2_scenes)
         object.__setattr__(self, 'feature_collection', features)
 
+    def _resample_s2_scene(self, s2_scene) -> None:
+        """
+        Resamples the Sentinel-2 into a user-defined spatial resolution
+
+        :param s2_scene:
+            `~agrisatpy.core.sentinel2.Sentinel2` object with loaded S2
+            data
+        """
+        # resample to target resolution based on the MapperConfig settings
+        band_selection = self.mapper_configs.band_names
+        if band_selection is None:
+            band_selection = s2_scene.band_names
+            has_scl = False
+            # make sure SCL is always resampled to 10m using nearest neighbor
+            if 'SCL' in band_selection:
+                band_selection.remove('SCL')
+                has_scl = True
+        s2_scene.resample(
+            band_selection=band_selection,
+            interpolation_method=self.mapper_configs.resampling_method,
+            target_resolution=self.mapper_configs.spatial_resolution,
+            inplace=True
+        )
+        if has_scl:
+            s2_scene.resample(
+                band_selection=['SCL'],
+                interpolation_method=cv2.INTER_NEAREST_EXACT,
+                target_resolution=self.mapper_configs.spatial_resolution,
+                inplace=True
+            )
+
     def _read_multiple_scenes(
             self,
             scenes_date: pd.DataFrame,
@@ -257,6 +290,8 @@ class Sentinel2Mapper(Mapper):
                 if feature_gdf.empty:
                     continue
                 res = feature_gdf
+                res['sensing_date'] = candidate_scene['sensing_date'].values
+                res['scene_id'] = candidate_scene['scene_id'].values
                 break
         # in case of a (Multi-)Polygon: check if one of the candidate scenes complete
         # contains the feature (i.e., its bounding box). If that's the case and the
@@ -274,11 +309,12 @@ class Sentinel2Mapper(Mapper):
             # only one scene left -> read the scene and return
             if updated_scenes.shape[0] == 1:
                 res = Sentinel2.from_safe(
-                        in_dir=candidate_scene.real_path,
+                        in_dir=updated_scenes.real_path.iloc[0],
                         band_selection=self.mapper_configs.band_names,
                         **kwargs
                     )
-            # TODO: if updated scenes is not empty overwrite the scenes_date DataFrame
+                self._resample_s2_scene(s2_scene=res)
+            # if updated scenes is not empty overwrite the scenes_date DataFrame
             if not updated_scenes.empty:
                 scenes_date = updated_scenes.copy()
 
@@ -290,34 +326,25 @@ class Sentinel2Mapper(Mapper):
                     band_selection=self.mapper_configs.band_names,
                     **kwargs
                 )
+                self._resample_s2_scene(s2_scene=s2_scene)
                 # reproject the scene if its CRS is not the same as the target_crs
                 if s2_scene[s2_scene.band_names[0]].geo_info.epsg != candidate_scene.target_crs:
                     # make sure the pixel size remains the same after re-projection
-                    # to do so, construct an explicit affine transformation matrix
-                    for band in s2_scene.band_names:
-                        bounds_orig = s2_scene[band].bounds.exterior.coords
-                        geo_info_orig = s2_scene[band].geo_info
-                        crs_orig = s2_scene[band].crs
-                        ulx_orig = bounds_orig[0]
-                        uly_orig = bounds_orig[3]
-                        ul_orig = gpd.GeoDataFrame(Point(ulx_orig, uly_orig), crs=crs_orig)
-                        ul_transformed = ul_orig.to_crs(candidate_scene.target_crs)
-                        ulx_transformed = ul_transformed.geometry.x.iloc[0]
-                        uly_transformed = ul_transformed.geometry.y.iloc[0]
-                        # GeoInfo of the transformed raster band
-                        geo_info_transformed = GeoInfo(
-                            epsg=candidate_scene.target_crs,
-                            ulx=ulx_transformed, 
-                            uly=uly_transformed,
-                            pixres_x=geo_info_orig.pixres_x,
-                            pixres_y=geo_info_orig.pixres_y
-                        )
-                        s2_scene.reproject(
-                            band_selection=[band],
-                            target_crs=candidate_scene.target_crs,
-                            dst_transform=geo_info_transformed.as_affine(),
-                            inplace=True
-                        )
+                    # to do so, construct an explicit affine transformation matrix.
+                    # Since all bands have the same spatial resolution this step can be
+                    # applied to all bands at the same time
+                    band = s2_scene.band_names[0]
+                    nodata = s2_scene[band].nodata
+                    geo_info_orig = s2_scene[band].geo_info
+                    pixres_x_dst = abs(geo_info_orig.pixres_x)
+                    pixres_y_dst = abs(geo_info_orig.pixres_y)
+                    s2_scene.reproject(
+                        band_selection=s2_scene.band_names,
+                        target_crs=candidate_scene.target_crs,
+                        dst_resolution=(pixres_x_dst, pixres_y_dst),
+                        dst_nodata=nodata,
+                        inplace=True
+                    )
                 # write scene to temporary working directory and call rasterio.merge, returning
                 # the merged dataset (save as tif to avoid compression issues)
                 fname_scene = settings.TEMP_WORKING_DIR.joinpath(f'{uuid.uuid4()}.tif')
@@ -326,7 +353,24 @@ class Sentinel2Mapper(Mapper):
 
             # merge datasets
             vector_features = kwargs.get('vector_features', None)
-            res = merge_datasets(datasets=tmp_fnames, vector_features=vector_features)
+            band_options = {
+                'band_names_dst': s2_scene.band_names,
+                'band_aliases': s2_scene.band_aliases
+            }
+            try:
+                res = merge_datasets(
+                    datasets=tmp_fnames,
+                    vector_features=vector_features,
+                    band_options=band_options,
+                    sensor='sentinel2'
+                )
+            except Exception as e:
+                raise ValueError(
+                    f'Could not merge Sentinel-2 datasets: {e}'
+                )
+            # clean up working directory
+            for tmp_fname in tmp_fnames:
+                os.remove(tmp_fname)
         return res
 
     def get_observation(
@@ -362,9 +406,10 @@ class Sentinel2Mapper(Mapper):
             )
         
         # get scene(s) closest to the sensing_date provided
-        scenes_date = scenes_df.iloc[[
-            abs((scenes_df.sensing_date - sensing_date)).argmin()
-        ]].copy()
+        min_delta = abs((scenes_df.sensing_date - sensing_date)).min()
+        scenes_date = scenes_df[
+            abs((scenes_df.sensing_date - sensing_date)) == min_delta
+        ].copy()
 
         # map the dataset path(s)
         try:
@@ -389,17 +434,22 @@ class Sentinel2Mapper(Mapper):
         if scenes_date.shape[0] > 1:
             res = self._read_multiple_scenes(
                 scenes_date=scenes_date,
-                feature_dict=feature_dict,
+                feature_gdf=feature_gdf,
                 **kwargs
             )
+            return res
         else:
             # if there is only one scene all we have to do is to read
             # read pixels in case the feature's dtype is point
             if feature_dict['features'][0]['geometry']['type'] == 'Point':
                 res = Sentinel2.read_pixels_from_safe(
-                    in_dir=scenes_date['realpath'].iloc[0],
-                    band_selection=self.mapper_configs.band_names
+                    in_dir=scenes_date['real_path'].iloc[0],
+                    band_selection=self.mapper_configs.band_names,
+                    **kwargs
                 )
+                res['sensing_date'] = scenes_date['sensing_date'].values
+                res['scene_id'] = scenes_date['scene_id'].values
+                return res
             # or the feature
             else:
                 try:
@@ -408,17 +458,12 @@ class Sentinel2Mapper(Mapper):
                         band_selection=self.mapper_configs.band_names,
                         **kwargs
                     )
+                    self._resample_s2_scene(s2_scene=res)
                 except BlackFillOnlyError:
                     return res
                 except Exception as e:
                     raise Exception from e
-            
-        # append date to GeoDataFrame
-        if isinstance(res, gpd.GeoDataFrame):
-            res['sensing_date'] = scenes_date['sensing_date']
-            res['scene_id'] = scenes_date['scene_id']
-
-        return res
+                return res
 
     def get_complete_timeseries(
             self,
@@ -444,7 +489,7 @@ class Sentinel2Mapper(Mapper):
             # in case a feature selection is available check if the current
             # feature is part of it
             if feature_selection is not None:
-                if feature in feature_selection:
+                if feature not in feature_selection:
                     continue
 
             # loop over scenes, they are already ordered by date (ascending)

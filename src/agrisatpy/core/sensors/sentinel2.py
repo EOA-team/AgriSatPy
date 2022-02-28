@@ -532,10 +532,9 @@ class Sentinel2(RasterCollection):
             if band_name != 'SCL':
                 if apply_scaling:
                     gdf_scaled = gdf_band.copy()
-                    gdf_scaled[band_name] = gdf_scaled[band_name].astype(float)
+                    gdf_scaled[band_name] = 0.
                     gdf_scaled[band_name] = \
-                        (offset + gdf_scaled[band_name].loc[gdf_scaled[band_name] != 0]) * gain
-                    gdf_scaled[band_name][np.isnan(gdf_scaled[band_name])] = 0
+                        (offset + gdf_band[band_name].loc[gdf_band[band_name] != 0]) * gain
                     band_gdfs.append(gdf_scaled)
                     continue
             band_gdfs.append(gdf_band)

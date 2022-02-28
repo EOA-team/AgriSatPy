@@ -1543,6 +1543,15 @@ class Band(object):
             raise NotImplementedError()
 
         try:
+            # set destination array in case dst_transfrom is provided
+            if 'dst_transform' in reprojection_options.keys() and \
+            reprojection_options.get('dst_transfrom') is not None:
+                if 'destination' not in reprojection_options.keys():
+                    dst = np.zeros_like(band_data)
+                    reprojection_options.update({
+                        'destination': dst
+                    })
+                
             out_data, out_transform = reproject_raster_dataset(
                 raster=band_data,
                 **reprojection_options
@@ -1561,10 +1570,14 @@ class Band(object):
                 raster=band_mask,
                 **reprojection_options
             )
-            out_mask = out_mask.astype(bool)
+            out_mask = out_mask[0,:,:].astype(bool)
+            # mask also those pixels which were set to nodata after reprojection
+            # due to the raster alignment
+            nodata = reprojection_options.get('src_nodata', 0)
+            out_mask[out_data == nodata] = True
             out_data = np.ma.MaskedArray(
                 data=out_data,
-                mask=out_mask[0,:,:]
+                mask=out_mask
             )
 
         new_geo_info = GeoInfo.from_affine(

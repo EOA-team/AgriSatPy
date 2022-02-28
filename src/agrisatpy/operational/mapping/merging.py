@@ -11,10 +11,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from rasterio.merge import merge
 from rasterio.crs import CRS
 
+import agrisatpy
 from agrisatpy.config import get_settings
 from agrisatpy.core.band import Band, GeoInfo
 from agrisatpy.core.raster import RasterCollection
-from future.builtins.misc import isinstance
 
 Settings = get_settings()
 
@@ -48,6 +48,8 @@ def merge_datasets(
         out_file: Optional[Path] = None,
         target_crs: Optional[Union[int,CRS]] = None,
         vector_features: Optional[Union[Path, gpd.GeoDataFrame]] = None,
+        band_options: Optional[Dict[str,Any]] = None,
+        sensor: Optional[str] = None,
         **kwargs
     ) -> Union[None, RasterCollection]:
     """
@@ -73,6 +75,12 @@ def merge_datasets(
         instance.
     :param vector_features:
         optional vector features to clip the merged dataset to (full bounding box).
+    :param band_options:
+        specify target band names and aliases (information gets lost otherwise) in
+        case a new `RasterCollection` is returned
+    :param sensor:
+        if the data is from a sensor explicitly supported by AgriSatPy such as
+        Sentinel-2 the raster data is loaded into a sensor-specific collection
     :param kwargs:
         kwargs to pass to ``rasterio.warp.reproject``
     :returns:
@@ -165,11 +173,16 @@ def merge_datasets(
         tmp_dir = Settings.TEMP_WORKING_DIR
         fname_tmp = tmp_dir.joinpath(f'{uuid.uuid4()}.tif')
         raster.to_rasterio(fname_tmp)
-        raster = RasterCollection.from_multi_band_raster(
+        if sensor is None:
+            expr = 'RasterCollection'
+        else:
+            expr = f'agrisatpy.core.sensors.{sensor.lower()}.{sensor[0].upper() + sensor[1::]}()'
+        raster = eval(f'''{expr}.from_multi_band_raster(
             fpath_raster=fname_tmp,
             vector_features=vector_features,
-            full_bounding_box_only=False
-        )
+            full_bounding_box_only=False,
+            **band_options
+        )''')
         os.remove(fname_tmp)
 
     return raster
