@@ -101,7 +101,7 @@ class Sentinel2(RasterCollection):
         # the values reported in the .jp2 files must be subtracted by 1000 to obtain the actual
         # reflectance factor values
         s2_offset = 0
-        if baseline >= 400:
+        if baseline == 400:
             s2_offset = -1000
         return (s2_gain_factor, s2_offset)
 
