@@ -15,10 +15,10 @@ import rasterio as rio
 from pathlib import Path
 from typing import Dict
 
-from agrisatpy.analysis.mosaicing import merge_datasets
 from agrisatpy.config import get_settings
-from agrisatpy.io.sentinel2 import Sentinel2Handler
-from agrisatpy.io.sat_data_handler import SatDataHandler
+from agrisatpy.core.sensors import Sentinel2
+from agrisatpy.core.raster import RasterCollection
+from agrisatpy.operational.mapping.merging import merge_datasets
 from agrisatpy.operational.resampling.sentinel2.resample_and_stack import resample_and_stack_s2
 from agrisatpy.operational.resampling.sentinel2.resample_and_stack import create_rgb_preview
 from agrisatpy.operational.resampling.sentinel2.resample_and_stack import create_scl_preview
@@ -26,7 +26,6 @@ from agrisatpy.utils.constants.sentinel2 import s2_band_mapping
 
 Settings = get_settings()
 logger = Settings.logger
-
 
 def merge_split_scenes(
         scene_1: Path,
@@ -99,7 +98,7 @@ def merge_split_scenes(
     # merged file has some name as the first scene and is directly written to target directory
     out_file = out_dir.joinpath(scene_out_1['bandstack'].name)
     # we create a temporary file first
-    out_file_temp = working_dir.joinpath(out_file.name.split('.')[0] + '_temp.tif')
+    out_file_temp = working_dir.joinpath(out_file.name.split('.')[0] + '_temp.jp2')
     datasets = [scene_out_1['bandstack'], scene_out_2['bandstack']]
 
     logger.info(f'Starting merging files {datasets[0]} and {datasets[1]}')
@@ -116,9 +115,16 @@ def merge_split_scenes(
 
     out_band_names = list(s2_band_mapping.keys())
     out_band_names.remove('SCL')
+    if kwargs.get('skip_60m_bands', True):
+        out_band_names.remove('B01')
+        out_band_names.remove('B09')
 
     # set correct band descriptions and write final image to target directory
     meta = rio.open(out_file_temp, 'r').meta
+    meta.update({
+        'QUALITY': '100',
+        'REVERSIBLE': 'YES'
+    })
 
     with rio.open(out_file, 'w', **meta) as dst:
 
@@ -132,14 +138,12 @@ def merge_split_scenes(
     logger.info(f'Merged datasets into {out_file}')
 
     # generate RGB preview image from merged dataset (and SCL if applicable)
-    handler = SatDataHandler()
     vis_bands = ['B02', 'B03', 'B04']
-    handler.read_from_bandstack(
-        fname_bandstack=out_file,
-        band_selection=vis_bands
+    handler = RasterCollection.from_multi_band_raster(
+        fpath_raster=out_file,
+        band_names_src=vis_bands,
+        band_names_dst=['blue','green','red']
     )
-    # we need to set color names
-    handler.reset_bandnames(['blue', 'green', 'red'])
     fname_rgb_preview = create_rgb_preview(
         out_dir=out_dir,
         reader=handler,
@@ -182,11 +186,10 @@ def merge_split_scenes(
 
         # finally plot the scl file
         try:
-            handler = Sentinel2Handler()
-            handler.read_from_bandstack(
-                fname_bandstack=out_file,
-                int16_to_float=False,
-                band_selection=['B02']
+            handler = Sentinel2().from_multi_band_raster(
+                fpath_raster=out_file_scl,
+                band_idx=1,
+                band_names_dst=['SCL']
             )
     
             fname_scl_preview = fname_rgb_preview.parent.joinpath(scene_out_1['scl_preview'].name)
@@ -219,9 +222,6 @@ if __name__ == '__main__':
     scene_2 = sat_dir.joinpath('S2A_MSIL2A_20180518T104021_N0207_R008_T32TLT_20180518T125548')
 
     out_dir = Path('/mnt/ides/Lukas/debug/Processed')
-
-    pixel_division = False
-    options = {'pixel_division': pixel_division}
 
     fnames_out = merge_split_scenes(scene_1, scene_2, out_dir)
     

@@ -6,8 +6,9 @@ selection.
 '''
 
 import numpy as np
-from typing import List
 
+from numpy import inf
+from typing import List, Union
 
 class SpectralIndices(object):
     """generic spectral indices"""
@@ -24,236 +25,228 @@ class SpectralIndices(object):
     swir_1 = 'swir_1'
     swir_2 = 'swir_2'
 
-    def __init__(
-            self,
-            reader
-        ):
-        """
-        :param reader:
-           object of class ``SatDataHandler`` or inheriting class
-        """
-        # we only take the readers data attribute
-        self._band_data = reader.data
-
-
     @classmethod
     def get_si_list(cls) -> List[str]:
         """
         Returns a list of implemented Spectral Indices (SIs)
 
-        :return:
+        :returns:
             list of SIs currently implemented
         """
+        return [
+            x for x in dir(cls) if not x.startswith('__') \
+            and not x.endswith('__')  and not x.islower()
+        ]
 
-        return [x for x in dir(cls) if not x.startswith('__') and not x.endswith('__') \
-                and not x.islower()]
-
-
-    def calc_si(self, si: str) -> np.array:
+    @classmethod
+    def calc_si(
+            cls,
+            si: str,
+            collection: dict
+        ) -> Union[np.ndarray, np.ma.MaskedArray]:
         """
         Calculates the selected spectral index (SI) for
-        spectral band data derived from `~agrisatpy.io.SatDataHandler`.
+        spectral band data derived from `~agrisatpy.core.RasterCollection`.
         The resulting vi is returned as ``numpy.ndarray``.
 
         :param si:
             name of the selected vegetation index (e.g., NDVI). Raises
             an error if the vegetation index is not implemented/ found.
-        :return:
-            2d numpy array with VI values
+        :returns:
+            2d ``numpy.ndarray`` or ``np.ma.MaskedArray`` with VI values
+            (depends on array-type of the input)
         """
-
         try:
-            si_data = eval(f'self.{si.upper()}(**self._band_data)')
+            si_fun = eval(f'cls.{si.upper()}')
+            si_data = si_fun.__call__(collection)
+            # replace infinity values with nan
+            si_data[si_data == inf] = np.nan
+            # replace masked values with nodata (might look weird otherwise)
+            if isinstance(si_data, np.ma.MaskedArray):
+                si_data.data[si_data.mask] = np.nan
         except Exception as e:
             raise NotImplementedError(e)
         return si_data
 
-
     @classmethod
     def NDVI(
             cls,
-            **kwargs
+            collection
         ) -> np.array:
         """
         Calculates the Normalized Difference Vegetation Index
         (NDVI) using the red and the near-infrared (NIR) channel.
     
-        :param kwargs:
+        :param collection:
             reflectance in the 'red' and 'nir_1' channel
-        :return:
+        :returns:
             NDVI values
         """
-
-        nir = kwargs.get(cls.nir_1)
-        red = kwargs.get(cls.red)
-        return (nir - red) / (nir + red)
-
+        
+        nir = collection.get(cls.nir_1).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
+        ndvi = (nir - red) / (nir + red)
+        return ndvi
 
     @classmethod
     def EVI(
             cls,
-            **kwargs
+            collection
         ):
         """
         Calculates the Enhanced Vegetation Index (EVI) following the formula
         provided by Huete et al. (2002)
     
-        :param kwargs:
+        :param collection:
             reflectance in the 'blue', 'red' and 'nir_1' channel
-        :return:
+        :returns:
             EVI values
         """
-
-        blue = kwargs.get(cls.blue)
-        nir = kwargs.get(cls.nir_1)
-        red = kwargs.get(cls.red)
-        return 2.5 * (nir - red) / (nir + 6*red - 7.5*blue + 1)
-
-
-    @classmethod
-    def AVI(
-            cls,
-            **kwargs
-        ) -> np.array:
-        """
-        Calculates the Advanced Vegetation Index (AVI)
-    
-        :param kwargs:
-            reflectance in the 'red' and 'nir_1' channel
-        :return:
-            AVI values
-        """
-
-        nir = kwargs.get(cls.nir_1)
-        red = kwargs.get(cls.red)
-        expr = nir * (1 - red) * (nir - red)
-        return np.power(expr, (1./3.))
-
+        blue = collection.get(cls.blue).values.astype('float')
+        nir = collection.get(cls.nir_1).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
+        numerator = nir - red
+        denominator = (nir + 6*red - 7.5*blue + 1)
+        # values larger 1 and smaller -1 might occur (e.g., on artificial
+        # surfaces); here we cut them of
+        evi = 2.5 * (numerator / denominator)
+        evi[evi > 1.] = 1.
+        evi[evi < -1.] = -1.
+        return evi
 
     @classmethod
     def MSAVI(
             cls,
-            **kwargs
+            collection
         ) -> np.array:
         """
         Calculates the Modified Soil-Adjusted Vegetation Index
         (MSAVI). MSAVI is sensitive to the green leaf area index
         (greenLAI).
     
-        :param kwargs:
+        :param collection:
             reflectance in the 'red' and 'nir_1' channel
-        :return:
+        :returns:
             MSAVI values
         """
-
-        nir = kwargs.get(cls.nir_1)
-        red = kwargs.get(cls.red)
+        nir = collection.get(cls.nir_1).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
         return 0.5 * (2*nir + 1 - np.sqrt((2*nir + 1)**2 - 8*(nir - red)))
 
-
     @classmethod    
-    def CI_green(
+    def CI_GREEN(
             cls,
-            **kwargs
+            collection
         ) -> np.array:
         """
         Calculates the green chlorophyll index (CI_green).
         It is sensitive to canopy chlorophyll concentration (CCC).
     
-        :param kwargs:
+        :param collection:
             reflectance in the 'green' and 'nir_1' channel
-        :return:
+        :returns:
             CI-green values
         """
 
-        nir = kwargs.get(cls.nir_1)
-        green = kwargs.get(cls.green)
+        nir = collection.get(cls.nir_1).values.astype('float')
+        green = collection.get(cls.green).values.astype('float')
         return (nir / green) - 1
-    
 
     @classmethod
-    def TCARI_OSAVI(
+    def MTCARI_OSAVI(
             cls,
-            **kwargs
+            collection
         ) -> np.array:
         """
         Calculates the ratio of the Transformed Chlorophyll Index (TCARI)
         and the Optimized Soil-Adjusted Vegetation Index (OSAVI). It is sensitive
         to changes in the leaf chlorophyll content (LCC).
     
-        :param kwargs:
+        :param collection:
             reflectance in the 'green', 'red', 'red_edge_1', 'red_edge_3' channel
-        :return:
+        :returns:
             TCARI/OSAVI values
         """
-
-        green = kwargs.get(cls.green)
-        red = kwargs.get(cls.red)
-        red_edge_1 = kwargs.get(cls.red_edge_1)
-        red_edge_3 = kwargs.get(cls.red_edge_3)
+        green = collection.get(cls.green).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
+        red_edge_1 = collection.get(cls.red_edge_1).values.astype('float')
+        red_edge_3 = collection.get(cls.red_edge_3).values.astype('float')
     
         TCARI = 3*((red_edge_1 - red) - 0.2*(red_edge_1 - green) * (red_edge_1 / red))
         OSAVI = (1 + 0.16) * (red_edge_3 - red) / (red_edge_3 + red + 0.16)
-        tcari_osavi = TCARI/OSAVI
-        # clip values to range between 0 and 1 (division by zero might cause infinity)
-        tcari_osavi[tcari_osavi < 0.] = 0.
-        tcari_osavi[tcari_osavi > 1.] = 1.
+        tcari_osavi = TCARI / OSAVI
         return tcari_osavi
-
 
     @classmethod
     def NDRE(
             cls,
-            **kwargs
+            collection
         ) -> np.array:
         """
         Calculates the Normalized Difference Red Edge (NDRE). It extends
         the capabilities of the NDVI for middle and late season crops.
     
-        :param kwargs:
+        :param collection:
             reflectance in the 'red_edge_1' and 'red_edge_3' channel
-        :return:
+        :returns:
             NDRE values
         """
-
-        red_edge_1 = kwargs.get(cls.red_edge_1)
-        red_edge_3 = kwargs.get(cls.red_edge_3)
+        red_edge_1 = collection.get(cls.red_edge_1).values.astype('float')
+        red_edge_3 = collection.get(cls.red_edge_3).values.astype('float')
         return (red_edge_3 - red_edge_1) / (red_edge_3 + red_edge_1)
-
 
     @classmethod
     def MCARI(
             cls,
-            **kwargs
+            collection
         ):
         """
         Calculates the Modified Chlorophyll Absorption Ratio Index (MCARI).
         It is sensitive to leaf chlorophyll concentration (LCC).
     
-        :param **kwargs:
+        :param collection:
             refletcnace in the 'green', 'red', and 'red_edge_1' channel
+        :returns:
+            MCARI values
         """
-
-        green = kwargs.get(cls.green)
-        red = kwargs.get(cls.red)
-        red_edge_1 = kwargs.get(cls.red_edge_1)
+        green = collection.get(cls.green).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
+        red_edge_1 = collection.get(cls.red_edge_1).values.astype('float')
         return ((red_edge_1 - red) - 0.2 * (red_edge_1 - green)) * (red_edge_1 / red)
-
 
     @classmethod    
     def BSI(
             cls,
-            **kwargs
+            collection
         ):
         """
         Calculates the Bare Soil Index (BSI).
     
-        :param kwargs:
+        :param collection:
             reflectance in the 'blue', 'red', 'nir_1' and 'swir_1' channel
+        :returns:
+            BSI values
         """
-
-        blue = kwargs.get(cls.blue)
-        red = kwargs.get(cls.red)
-        nir = kwargs.get(cls.nir_1)
-        swir_1 = kwargs.get(cls.swir_1)
+        blue = collection.get(cls.blue).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
+        nir = collection.get(cls.nir_1).values.astype('float')
+        swir_1 = collection.get(cls.swir_1).values.astype('float')
         return ((swir_1 + red) - (nir + blue)) / ((swir_1 + red) + (nir + blue))
+
+    @classmethod
+    def VARI(
+            cls,
+            collection
+        ):
+        """
+        Calculates the Visible Atmospherically Resistant Index (VARI)
+
+        :param collection:
+            reflectance in the 'blue', 'red', 'nir_1' and 'swir_1' channel
+        :returns:
+            BSI values
+        """
+        blue = collection.get(cls.blue).values.astype('float')
+        green = collection.get(cls.green).values.astype('float')
+        red = collection.get(cls.red).values.astype('float')
+        return (green - red) / (green + red - blue)

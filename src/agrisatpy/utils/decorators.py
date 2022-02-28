@@ -36,9 +36,9 @@ def check_band_names(f):
     def wrapper(self, *args, **kwargs):
 
         band_names = None
-        # RGB and False-Color are white-listed
-        white_list = ['RGB', 'False-Color']
-
+        if len(args) == 0 and len(kwargs) == 0:
+            return f(self, *args, **kwargs)
+        
         if len(args) > 0:
             # band name(s) are always provided as first argument
             band_names = args[0]
@@ -46,50 +46,61 @@ def check_band_names(f):
             # check for band_name and band_names key word argument
             band_names = kwargs.get('band_name', band_names)
             if band_names is None:
-                band_names = kwargs.get('band_names', band_names)
+                band_names = kwargs.get('band_selection', band_names)
 
         # check if band aliases is enabled
-        if self._has_bandaliases:
+        if self.has_band_aliases:
             # check if passed band names are actual band names or their alias
             if isinstance(band_names, str):
                 band_name = band_names
-                # passed band name is alias
-                if band_name in self._band_aliases.values():
-                    band_name = [k for k, v in self._band_aliases.items() if v == band_name][0]
-                    if len(args) > 0:
-                        arg_list = list(args)
-                        arg_list[0] = band_name
-                        args = tuple(arg_list)
-                    if kwargs != {} and 'band_name' in kwargs.keys():
-                        kwargs.update({'band_name': band_name})
-                else:
-                    if band_name not in self.get_bandnames() and band_name not in white_list:
+                if band_name not in self.band_names:
+                    # passed band name is alias
+                    if band_name in self.band_aliases:
+                        band_idx = self.band_aliases.index(band_name)
+                        band_name = self.band_names[band_idx]
+                        if len(args) > 0:
+                            arg_list = list(args)
+                            arg_list[0] = band_name
+                            args = tuple(arg_list)
+                        if kwargs != {} and 'band_name' in kwargs.keys():
+                            kwargs.update({'band_name': band_name})
+                    else:
                         raise BandNotFoundError(
-                            f'{band_names} not found in data dict'
-                    )
+                            f'{band_names} not found in collection'
+                        )
             elif isinstance(band_names, list):
                 # check if passed band names are aliases
-                new_band_names = []
-                for band_name in band_names:
-                    if band_name in self._band_aliases.values():
-                        band_name = [k for k, v in self._band_aliases.items() if v == band_name][0]
-                    # band name must be in band names if not an alias
-                    else:
-                        if band_name not in self.get_bandnames() and band_name not in white_list:
-                            raise BandNotFoundError(f'{band_name} not found in data dict')
-                    new_band_names.append(band_name)
+                if set(band_names).issubset(self.band_names):
+                    new_band_names = band_names
+                else:
+                    new_band_names = []
+                    for band_name in band_names:
+                        try:
+                            new_band_names.append(self[band_name].alias)
+                        # band name must be in band names if not an alias
+                        except Exception:
+                            raise BandNotFoundError(
+                                f'{band_name} not found in collection'
+                            )
                 if len(args) > 0:
                     arg_list = list(args)
                     arg_list[0] = new_band_names
                     args = tuple(arg_list)
-                if kwargs != {} and 'band_names' in kwargs.keys():
-                    kwargs.update({'band_names': new_band_names})
+                if kwargs != {} and 'band_selection' in kwargs.keys():
+                    kwargs.update({'band_selection': new_band_names})
 
         # if no band aliasing is enabled the passed name must be in band names
         else:
             if isinstance(band_names, str):
-                if not band_names in self.get_bandnames() and band_names not in white_list:
-                    raise BandNotFoundError(f'{band_names} not found in data dict')
+                if not band_names in self.band_names:
+                    raise BandNotFoundError(
+                        f'{band_names} not found in collection'
+                    )
+            elif isinstance(band_names, list):
+                if not set(band_names).issubset(self.band_names):
+                    raise BandNotFoundError(
+                        f'{band_names} not found in collection'
+                    )
 
         return f(self, *args, **kwargs)
 
@@ -126,5 +137,3 @@ def check_metadata(f):
         return f(self, *args, **kwargs)
 
     return wrapper
-
-

@@ -52,6 +52,78 @@ band_resolution = {
     }    
 }
 
+# define central wavelengths of the single bands (nm) taken from
+# https://sentinels.copernicus.eu/documents/247904/685211/S2-SRF_COPE-GSEG-EOPG-TN-15-0007_3.0.xlsx
+# and refined for S2A and S2B using information from
+# https://sentinels.copernicus.eu/web/sentinel/missions/sentinel-2/instrument-payload/resolution-and-swath
+central_wavelengths = {
+    'S2A': {
+        'B01': 442.7,
+        'B02': 492.4,
+        'B03': 559.8,
+        'B04': 664.6,
+        'B05': 704.1,
+        'B06': 740.5,
+        'B07': 782.8,
+        'B08': 832.8,
+        'B8A': 864.7,
+        'B09': 945.1,
+        'B10': 1373.5,
+        'B11': 1613.7,
+        'B12': 2202.4
+    },
+    'S2B': {
+        'B01': 442.2,
+        'B02': 492.1,
+        'B03': 559.0,
+        'B04': 664.9,
+        'B05': 703.8,
+        'B06': 739.1,
+        'B07': 779.7,
+        'B08': 832.9,
+        'B8A': 864.0,
+        'B09': 943.2,
+        'B10': 1376.9,
+        'B11': 1610.4,
+        'B12': 2185.7
+    },
+    'unit': 'nm'  
+}
+
+band_widths = {
+    'S2A': {
+        'B01': 21,
+        'B02': 66,
+        'B03': 36,
+        'B04': 31,
+        'B05': 15,
+        'B06': 15,
+        'B07': 20,
+        'B08': 106,
+        'B8A': 21,
+        'B09': 20,
+        'B10': 31,
+        'B11': 91,
+        'B12': 175
+    },
+    'S2B':  {
+        'B01': 21,
+        'B02': 66,
+        'B03': 36,
+        'B04': 31,
+        'B05': 16,
+        'B06': 15,
+        'B07': 20,
+        'B08': 106,
+        'B8A': 22,
+        'B09': 21,
+        'B10': 30,
+        'B11': 94,
+        'B12': 185
+    },
+    'unit': 'nm'  
+}
+
 s2_band_mapping = {
         'B01': 'ultra_blue',
         'B02': 'blue',
@@ -63,13 +135,13 @@ s2_band_mapping = {
         'B08': 'nir_1',
         'B8A': 'nir_2',
         'B09': 'nir_3',
-        'B10': 'swir_0',
         'B11': 'swir_1',
         'B12': 'swir_2',
         'SCL': 'scl'
 }
 
-# S2 data is stored as uint16
+# S2 data is stored as uint16, to convert to 0-1 reflectance factors
+# apply this gain factor
 s2_gain_factor = 0.0001
 
 # scene classification layer (Sen2Cor)

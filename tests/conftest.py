@@ -10,7 +10,6 @@ from distutils import dir_util
 from pathlib import Path
 from agrisatpy.downloader.sentinel2.utils import unzip_datasets
 
-
 @pytest.fixture
 def tmppath(tmpdir):
     '''
@@ -18,7 +17,6 @@ def tmppath(tmpdir):
     Posix or Windows path instead of 'localpath'
     '''
     return Path(tmpdir)
-
 
 @pytest.fixture
 def datadir(tmppath, request):
@@ -39,7 +37,6 @@ def datadir(tmppath, request):
 
     return tmppath
 
-
 @pytest.fixture()
 def get_s2_safe_l2a():
     """
@@ -47,7 +44,6 @@ def get_s2_safe_l2a():
     download the data from the Menedely dataset link provided (might take a while
     depending on your internet connection)
     """
-
     def _get_s2_safe_l2a():
 
         testdata_dir = Path('../../data')
@@ -75,7 +71,6 @@ def get_s2_safe_l2a():
 
     return _get_s2_safe_l2a
 
-
 @pytest.fixture()
 def get_s2_safe_l1c():
     """
@@ -83,7 +78,6 @@ def get_s2_safe_l1c():
     download the data from the Menedely dataset link provided (might take a while
     depending on your internet connection)
     """
-
     def _get_s2_safe_l1c():
 
         testdata_dir = Path('../../data')
@@ -111,7 +105,6 @@ def get_s2_safe_l1c():
 
     return _get_s2_safe_l1c
 
-
 @pytest.fixture()
 def get_bandstack():
     """
@@ -126,7 +119,6 @@ def get_bandstack():
         )
         return testdata_fname
     return _get_bandstack
-
 
 @pytest.fixture()
 def get_points():
@@ -143,7 +135,6 @@ def get_points():
         return testdata_points
     return _get_points
 
-
 @pytest.fixture()
 def get_points2():
     """
@@ -158,7 +149,6 @@ def get_points2():
         )
         return testdata_points
     return _get_points
-
 
 @pytest.fixture()
 def get_points3():
@@ -190,7 +180,6 @@ def get_polygons():
         return testdata_polys
     return _get_polygons
 
-
 @pytest.fixture()
 def get_polygons_2():
     """
@@ -202,6 +191,21 @@ def get_polygons_2():
         testdata_dir = Path('../../data')
         testdata_polys = testdata_dir.joinpath(
             Path('sample_polygons').joinpath('BY_AOI_2019_CLOUDS_EPSG32632.shp')
+        )
+        return testdata_polys
+    return _get_polygons
+
+@pytest.fixture()
+def get_polygons_3():
+    """
+    Returns path to agricultural field polygons to use for masking
+    """
+    
+    def _get_polygons():
+        
+        testdata_dir = Path('../../data')
+        testdata_polys = testdata_dir.joinpath(
+            Path('sample_polygons').joinpath('western_switzerland.gpkg')
         )
         return testdata_polys
     return _get_polygons
