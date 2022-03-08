@@ -20,6 +20,14 @@ agrisatpy.metadata.sentinel2.parsing module
    :undoc-members:
    :show-inheritance:
 
+agrisatpy.metadata.sentinel2.utils module
+-----------------------------------------
+
+.. automodule:: agrisatpy.metadata.sentinel2.utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 
