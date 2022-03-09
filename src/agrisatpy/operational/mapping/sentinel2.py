@@ -309,11 +309,12 @@ class Sentinel2Mapper(Mapper):
             # only one scene left -> read the scene and return
             if updated_scenes.shape[0] == 1:
                 res = Sentinel2.from_safe(
-                        in_dir=updated_scenes.real_path.iloc[0],
-                        band_selection=self.mapper_configs.band_names,
-                        **kwargs
-                    )
+                    in_dir=updated_scenes.real_path.iloc[0],
+                    band_selection=self.mapper_configs.band_names,
+                    **kwargs
+                )
                 self._resample_s2_scene(s2_scene=res)
+                return res
             # if updated scenes is not empty overwrite the scenes_date DataFrame
             if not updated_scenes.empty:
                 scenes_date = updated_scenes.copy()
