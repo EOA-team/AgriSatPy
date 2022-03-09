@@ -1,8 +1,6 @@
 agrisatpy.utils.constants package
 =================================
 
-A subpackage define static attributes of raster imagery.
-
 Submodules
 ----------
 

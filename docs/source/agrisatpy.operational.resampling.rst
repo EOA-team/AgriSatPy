@@ -1,13 +1,21 @@
 agrisatpy.operational.resampling package
 ========================================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   agrisatpy.operational.resampling.sentinel2
+
 Submodules
 ----------
 
-agrisatpy.operational.resampling.sentinel2 module
--------------------------------------------------
+agrisatpy.operational.resampling.utils module
+---------------------------------------------
 
-.. automodule:: agrisatpy.operational.resampling.sentinel2
+.. automodule:: agrisatpy.operational.resampling.utils
    :members:
    :undoc-members:
    :show-inheritance:

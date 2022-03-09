@@ -60,6 +60,14 @@ agrisatpy.utils.stacking module
    :undoc-members:
    :show-inheritance:
 
+agrisatpy.utils.types module
+----------------------------
+
+.. automodule:: agrisatpy.utils.types
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 agrisatpy.utils.warnings module
 -------------------------------
 

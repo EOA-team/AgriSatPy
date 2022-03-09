@@ -1,12 +1,6 @@
 agrisatpy.metadata package
 ==========================
 
-The agrisatpy.metadata package allows for creating, maintaining and querying a satellite metadata database.
-The metadata DB is the key requirement for all operational functions.
-
-To make this agrisatpy.metadata package work a running PostgreSQL DBMS instance is required. Additionally, the
-spatial PostGIS extension must be enabled.
-
 Subpackages
 -----------
 
@@ -15,6 +9,17 @@ Subpackages
 
    agrisatpy.metadata.database
    agrisatpy.metadata.sentinel2
+
+Submodules
+----------
+
+agrisatpy.metadata.utils module
+-------------------------------
+
+.. automodule:: agrisatpy.metadata.utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Module contents
 ---------------

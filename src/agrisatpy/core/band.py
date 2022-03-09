@@ -901,7 +901,7 @@ class Band(object):
                             f'Could not find band "{band_name_src}" ' \
                             f'in {fpath_raster}'
                         )
-                    band_idx = band_names.index(band_name_src)
+                    band_idx = band_names.index(band_name_src) + 1
             try:
                 # yield all values from the generator
                 def _sample(src, coord_list, band_idx):
