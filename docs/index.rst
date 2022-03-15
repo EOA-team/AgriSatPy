@@ -16,7 +16,7 @@ We believe that researchers and analysts should **deal as little as possible wit
 Therefore, we have developed *AgriSatPy* in such a way that a large part of these tasks is taken away from the user and provided in the form of self-explanatory attributes and methods on a high semantic level.
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 4
    :caption: Contents:
    
    source/agrisatpy.rst
