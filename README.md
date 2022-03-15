@@ -6,16 +6,16 @@
     <img src="./img/AgriSatPy_Banner.jpg" alt="AgriSatPy-Banner" width="400"/>
 </p>
 
-*AgriSatPy* is a lightweight `Python` package to **explore**, **organize** and **process** geo-spatial (satellite) **raster data** in an easy and intuitive manner. 
+*AgriSatPy* is a lightweight `Python` package to **organize**, **explore** and **process** geo-spatial (satellite) **raster data** in an easy and intuitive manner. 
 
-*AgriSatPy* was developed for **agricultural remote sensing applications** with **Sentinel-2**. However, due to its **modular and object-oriented programming structure**, it allows in principle the **processing of any type of raster data** and can
-be **adapted** to **other remote sensing platforms** or **raster data sources** (e.g., Digital Elevation Models, Land Cover Maps, etc.).
+*AgriSatPy* was developed for **agricultural remote sensing applications** with **Sentinel-2**. However, due to its **modular and object-oriented programming structure**, it allows the **processing of any type of raster data** and can
+be **adapted** to **other remote sensing platforms** or **raster data sources** (e.g. Digital Elevation Models, Land Cover Maps etc.).
 
-We believe that researchers and analysts should **deal as little as possible with file handling and backend engineering**. In addition, the underlying source code should be **open source** and non-proprietary.
-Therefore, we have developed *AgriSatPy* in such a way that a large part of these tasks is taken away from the user and provided in the form of self-explanatory attributes and methods on a high semantic level.
+We believe that researchers and analysts should have **to deal as little as possible with file handling and backend engineering** and that the underlying source code should be **open source** and non-proprietary.
+Therefore, *AgriSatPy* was developed in such a way that a large part of these tasks is taken away from the user and provided in the form of self-explanatory `Python` attributes and methods on a high semantic level.
 
 Check out our minimum-effort <a href="#examples">Examples</a>
- to get first insights.
+ to get started.
 
 ## Main Features
 
@@ -25,7 +25,7 @@ Check out our minimum-effort <a href="#examples">Examples</a>
 * storage of raster bands with different spatial resolutions (and even extents) in a single raster handler instance allowing to do raster analytics **without the need to resample the data first** (e.g., extraction of pixel values across spectral bands with different spatial resolutions)
 * dedicated and convenient **support for Sentinel-2 data** stored in [.SAFE format](https://earth.esa.int/SAFE/) (processing levels: [L1C](https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-2-msi/processing-levels/level-1) and [L2A](https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-2-msi/processing-levels/level-2))
 * implements a **backend** for **operational (Sentinel-2) satellite data storage, querying and processing** using a [PostGIS](https://postgis.net/) `spatial database`.
-* AgriSatPy provides **interfaces** to widely used Python libraries such as [xarray](https://xarray.pydata.org/en/stable/#) and [geopandas](https://geopandas.org/en/stable/) and uses [rasterio](https://rasterio.readthedocs.io/en/latest/) and [numpy](https://numpy.org/) as backend.
+* *AgriSatPy* provides **interfaces** to widely used Python libraries such as [xarray](https://xarray.pydata.org/en/stable/#) and [geopandas](https://geopandas.org/en/stable/) and uses [rasterio](https://rasterio.readthedocs.io/en/latest/) and [numpy](https://numpy.org/) as backend.
 
 ## Structure
 *AgriSatPy* consists of **two main branches**: **ANALYTICS** and **OPERATIONAL**
