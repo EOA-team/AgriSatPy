@@ -47,6 +47,7 @@ setuptools.setup(
                       'opencv-python',
                       'requests',
                       'xarray',
-                      'rtree'
+                      'rtree',
+                      'zarr'
                       ]
 )
