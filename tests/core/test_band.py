@@ -341,6 +341,7 @@ def test_from_vector(get_polygons):
         band_name_src='GIS_ID',
         band_name_dst='gis_id',
     )
+    bounds = band.bounds
 
     assert band.band_name == 'gis_id', 'wrong band name inserted'
     assert band.values.dtype == 'float32', 'wrong data type for values'
@@ -356,7 +357,8 @@ def test_from_vector(get_polygons):
         geo_info=geo_info,
         band_name_src='GIS_ID',
         band_name_dst='gis_id',
-        dtype_src='uint16'
+        dtype_src='uint16',
+        snap_bounds=bounds
     )
     assert band.values.dtype == 'uint16', 'wrong data type'
 
