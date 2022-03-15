@@ -1,15 +1,14 @@
 # *AgriSatPy*
 
-**Reading, Analyzing, Modifying, Converting, Writing Geo-Spatial Raster Data**
+**Reading, Analyzing, Modifying, Converting and Writing Geo-Spatial Raster Data**
 
 <p align="center">
     <img src="./img/AgriSatPy_Banner.jpg" alt="AgriSatPy-Banner" width="400"/>
 </p>
 
-*AgriSatPy* is a lightweight `Python` package to **explore**, **organize** and **process** geo-spatial **raster** and epecially (satellite) **remote sensing data** in an easy and intuitive manner.
+*AgriSatPy* is a lightweight `Python` package to **explore**, **organize** and **process** geo-spatial (satellite) **raster data** in an easy and intuitive manner. 
 
-Developed for **agricultural remote sensing applications** with
-**Sentinel-2**, this is still the main thematic focus. However, due to its **modular and object-oriented programming structure**, it allows in principle the **processing of any type of raster data** and can
+*AgriSatPy* was developed for **agricultural remote sensing applications** with **Sentinel-2**. However, due to its **modular and object-oriented programming structure**, it allows in principle the **processing of any type of raster data** and can
 be **adapted** to **other remote sensing platforms** or **raster data sources** (e.g., Digital Elevation Models, Land Cover Maps, etc.).
 
 We believe that researchers and analysts should **deal as little as possible with file handling and backend engineering**. In addition, the underlying source code should be **open source** and non-proprietary.
