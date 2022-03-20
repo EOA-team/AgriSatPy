@@ -182,6 +182,8 @@ def merge_datasets(
             expr = 'RasterCollection'
         else:
             expr = f'agrisatpy.core.sensors.{sensor.lower()}.{sensor[0].upper() + sensor[1::]}()'
+        if band_options is None:
+            band_options = {}
         raster = eval(f'''{expr}.from_multi_band_raster(
             fpath_raster=fname_tmp,
             vector_features=vector_features,
