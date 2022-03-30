@@ -26,7 +26,7 @@ copyright = '2021, Gregor Perich & Lukas Graf (D-USYS, ETHZ)'
 author = 'Gregor Perich and Lukas Graf'
 
 # The full version, including alpha/beta/rc tags
-release = '0.0.1'
+release = '1.3.2'
 
 
 # -- General configuration ---------------------------------------------------
