@@ -255,7 +255,7 @@ class RasterCollection(MutableMapping):
             dictionary with band indices, and names based on the custom
             selection
         """
-        # chech band selection
+        # check band selection
         band_names, band_count = None, None
         if band_idxs is None:
             try:
@@ -267,6 +267,8 @@ class RasterCollection(MutableMapping):
             # use default band names if not provided in data set
             if len(band_names) == 0:
                 band_names_src = [f'B{idx+1}' for idx in range(band_count)]
+            else:
+                band_names_src = band_names
             # is a selection of bands provided? If no use all available bands
             # otherwise check the band indices
             if band_names_src is None:

@@ -15,6 +15,7 @@ import agrisatpy
 from agrisatpy.config import get_settings
 from agrisatpy.core.band import Band, GeoInfo
 from agrisatpy.core.raster import RasterCollection
+from agrisatpy.core.scene import SceneProperties
 
 Settings = get_settings()
 
@@ -48,6 +49,7 @@ def merge_datasets(
         out_file: Optional[Path] = None,
         target_crs: Optional[Union[int,CRS]] = None,
         vector_features: Optional[Union[Path, gpd.GeoDataFrame]] = None,
+        scene_properties: Optional[SceneProperties] = None,
         band_options: Optional[Dict[str,Any]] = None,
         sensor: Optional[str] = None,
         **kwargs
@@ -75,9 +77,11 @@ def merge_datasets(
         instance.
     :param vector_features:
         optional vector features to clip the merged dataset to (full bounding box).
+    :param scene_properties:
+        optional scene properties to set to the resulting merged dataset
     :param band_options:
-        specify target band names and aliases (information gets lost otherwise) in
-        case a new `RasterCollection` is returned
+        optional sensor-specific band options to pass to the sensor's
+        ``RasterCollection`` constructor
     :param sensor:
         if the data is from a sensor explicitly supported by AgriSatPy such as
         Sentinel-2 the raster data is loaded into a sensor-specific collection
@@ -127,7 +131,8 @@ def merge_datasets(
     if out_file is not None:
         return
     # otherwise, create new SatDataHandler instance from merged datasets
-    raster = RasterCollection()
+    # add scene properties if available
+    raster = RasterCollection(scene_properties=scene_properties)
     n_bands = out_ds.shape[0]
     # take attributes of the first dataset
     attrs = attrs_list[0]
@@ -177,12 +182,17 @@ def merge_datasets(
             expr = 'RasterCollection'
         else:
             expr = f'agrisatpy.core.sensors.{sensor.lower()}.{sensor[0].upper() + sensor[1::]}()'
+        if band_options is None:
+            band_options = {}
         raster = eval(f'''{expr}.from_multi_band_raster(
             fpath_raster=fname_tmp,
             vector_features=vector_features,
             full_bounding_box_only=False,
             **band_options
         )''')
+        # set scene properties if available
+        if scene_properties is not None:
+            raster.scene_properties = scene_properties
         os.remove(fname_tmp)
 
     return raster

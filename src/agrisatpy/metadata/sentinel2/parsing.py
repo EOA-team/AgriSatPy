@@ -14,8 +14,7 @@ from xml.dom import minidom
 from pyproj import Transformer
 from pathlib import Path
 import pandas as pd
-from typing import Optional
-from typing import Tuple
+from typing import Any, Dict, Optional, Tuple
 from datetime import date
 
 from agrisatpy.config import get_settings
@@ -27,10 +26,9 @@ from agrisatpy.utils.warnings import NothingToDo
 logger = get_settings().logger
 S2 = Sentinel2()
 
-
 def parse_MTD_DS(
         in_file: Path
-    ) -> dict:
+    ) -> Dict[str, Any]:
     """
     Parses the MTD_DS.xml located in tghe /DATASTRIP folder
     in each .SAFE dataset. The xml contains the noise model parameters
@@ -75,10 +73,9 @@ def parse_MTD_DS(
 
     return metadata
 
-
 def parse_MTD_TL(
         in_file: Path
-    ) -> dict:
+    ) -> Dict[str, Any]:
     """
     Parses the MTD_TL.xml metadata file provided by ESA.This metadata
     XML is usually placed in the GRANULE subfolder of a ESA-derived
@@ -233,10 +230,9 @@ def parse_MTD_TL(
 
     return metadata
 
-
 def parse_MTD_MSI(
         in_file: str
-    ) -> dict:
+    ) -> Dict[str, Any]:
     """
     parses the MTD_MSIL1C or MTD_MSIL2A metadata file that is delivered with
     ESA Sentinel-2 L1C and L2A products, respectively.
@@ -281,6 +277,9 @@ def parse_MTD_MSI(
 
     metadata['datatakeIdentifier'] = datatakeIdentifier
 
+    # extract PDGS baseline
+    metadata['pdgs_baseline'] = metadata['PRODUCT_URI'].split('_')[3]
+
     # stupid Sen2Cor is not consistent here ...
     if metadata['PROCESSING_LEVEL'] == 'Level-2Ap':
         metadata['PROCESSING_LEVEL'] = 'Level-2A'
@@ -301,7 +300,6 @@ def parse_MTD_MSI(
     metadata['TILE_ID'] = metadata['PRODUCT_URI'].split('_')[5]
 
     return metadata
-    
 
 def get_scene_footprint(
         sensor_data: dict
@@ -353,11 +351,10 @@ def get_scene_footprint(
 
     return wkt
 
-
 def parse_s2_scene_metadata(
         in_dir: Path,
         extract_datastrip: Optional[bool] = False
-    ) -> Tuple[dict]:
+    ) -> Tuple[Dict[str, Any]]:
     """
     wrapper function to extract metadata from ESA Sentinel-2
     scenes. It returns a dict with the metadata most important
@@ -425,7 +422,6 @@ def parse_s2_scene_metadata(
     mtd_msi['storage_device_ip'] = ''
 
     return mtd_msi, mtd_ds
-
 
 def loop_s2_archive(
         in_dir: Path,
@@ -519,8 +515,8 @@ def loop_s2_archive(
     # convert to pandas dataframe and return
     return (pd.DataFrame.from_dict(metadata_scenes), pd.DataFrame.from_dict(ql_ds_scenes))
 
-
+# unit test
 if __name__ == '__main__':
     
-    mtd_ds = Path('/mnt/ides/Lukas/04_Work/S2A_MSIL1C_20190130T103251_N0207_R108_T32TMT_20190130T110147.SAFE/DATASTRIP/DS_MTI__20190130T110147_S20190130T103254/MTD_DS.xml')
-    metadata = parse_MTD_DS(in_file=mtd_ds)
+    s2_archive = Path('./../../../../data')
+    metadata = loop_s2_archive(in_dir=s2_archive, extract_datastrip=True)

@@ -26,6 +26,7 @@ from agrisatpy.utils.exceptions import InputError, BlackFillOnlyError,\
     DataNotFoundError, ReprojectionError
 from agrisatpy.metadata.sentinel2.utils import identify_updated_scenes
 from agrisatpy.metadata.utils import reconstruct_path
+from agrisatpy.core.scene import SceneProperties
 
 settings = get_settings()
 logger = settings.logger
@@ -321,12 +322,14 @@ class Sentinel2Mapper(Mapper):
 
             # apply merge logic
             tmp_fnames = []
+            scene_props = []
             for _, candidate_scene in scenes_date.iterrows():
                 s2_scene = Sentinel2.from_safe(
                     in_dir=candidate_scene.real_path,
                     band_selection=self.mapper_configs.band_names,
                     **kwargs
                 )
+                scene_props.append(s2_scene.scene_properties)
                 self._resample_s2_scene(s2_scene=s2_scene)
                 # reproject the scene if its CRS is not the same as the target_crs
                 if s2_scene[s2_scene.band_names[0]].geo_info.epsg != candidate_scene.target_crs:
@@ -358,11 +361,22 @@ class Sentinel2Mapper(Mapper):
                 'band_names_dst': s2_scene.band_names,
                 'band_aliases': s2_scene.band_aliases
             }
+            # adopt scene properties
+            scene_dict = scene_props[0].__dict__
+            scene_dict_keys = [x[1::] for x in scene_dict.keys()]
+            scene_dict_vals = list(scene_dict.values())
+            scene_dict = dict(zip(scene_dict_keys, scene_dict_vals))
+            # combine product_uri's from the single datasets by '&'
+            new_product_uri = ''.join([x.product_uri + '&' for x in scene_props])[:-1]
+            scene_dict.update({'product_uri': new_product_uri})
+            scene_properties = SceneProperties(**scene_dict)
+            
             try:
                 res = merge_datasets(
                     datasets=tmp_fnames,
                     vector_features=vector_features,
                     band_options=band_options,
+                    scene_properties=scene_properties,
                     sensor='sentinel2'
                 )
             except Exception as e:
