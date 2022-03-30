@@ -519,4 +519,4 @@ def loop_s2_archive(
 if __name__ == '__main__':
     
     s2_archive = Path('./../../../../data')
-    metadata = loop_s2_archive(in_dir=s2_archive, extract_datastrip=True
+    metadata = loop_s2_archive(in_dir=s2_archive, extract_datastrip=True)
