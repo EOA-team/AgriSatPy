@@ -515,7 +515,6 @@ def loop_s2_archive(
     # convert to pandas dataframe and return
     return (pd.DataFrame.from_dict(metadata_scenes), pd.DataFrame.from_dict(ql_ds_scenes))
 
-
 # unit test
 if __name__ == '__main__':
     
