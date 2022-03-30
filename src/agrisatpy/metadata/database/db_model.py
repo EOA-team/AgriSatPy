@@ -42,6 +42,9 @@ class S2_Raw_Metadata(Base):
     tile_id = Column(String, nullable=False)
     l1c_tile_id = Column(String)
 
+    # processing baseline
+    pdgs_baseline = Column(String, nullable=False)
+
     # Datatake Information
     datatakeidentifier = Column(String, nullable=False)
 
