@@ -1,17 +1,17 @@
 '''
-Created on Dec 10, 2021
-
-@author: Lukas Graf
+Utilities to interact with 2d arrays
 '''
 
 import itertools
+import geopandas as gpd
 import numpy as np
 
+from numba import njit, prange
 from numpy.ma.core import MaskedArray
-from typing import Union
-from typing import Optional
+from typing import Optional, Union
 
 from agrisatpy.utils.exceptions import InputError
+from agrisatpy.core.utils.geometry import check_geometry_types
 
 
 def count_valid(
@@ -88,3 +88,102 @@ def upsample_array(
                 itertools.repeat(x, scaling_factor) for x in column))
         counter += scaling_factor
     return out_array
+
+# @njit(cache=True, parallel=True)
+def _fill_array(
+        img_arr: np.ndarray,
+        vals: np.ndarray,
+        x_indices: np.ndarray,
+        x_coords: np.ndarray,
+        y_indices: np.ndarray,
+        y_coords: np.ndarray
+    ) -> np.ndarray:
+    """
+    `numba` accelerated back-end for fast rasterization of POINT
+    vector features (`GeoDataFrame` attribute column to 2d-array)
+
+    :param img_arr:
+        target 2d array to populate with values from `vals`
+    :param vals:
+        `POINT` like feature values to rasterize
+    :param x_indices:
+        `POINT` x coordinates calculated from vector features
+    :param x_coords:
+        output raster x coordinates (from vector features' spatial
+        extent)
+    :param y_indices:
+        `POINT` y coordinates calculated from vector features
+    :param y_coords:
+        output raster y coordinates (from vector features' spatial
+        extent)
+    :returns:
+        2d-array with rasterized `POINT` features
+    """
+    _img_arr = img_arr.copy()
+    nvals = vals.shape[0]
+    for idx in prange(nvals):
+        x_index = np.where(x_indices == x_coords[idx])[0][0]
+        try:
+            y_index = np.where(y_indices == y_coords[idx])[0][0]
+        except Exception as e:
+            print(e)
+        _img_arr[y_index, x_index] = vals[idx]
+    return _img_arr
+
+def array_from_points(
+        gdf: gpd.GeoDataFrame,
+        band_name_src: str,
+        pixres_x: Union[int,float],
+        pixres_y: Union[int, float],
+        nodata_dst: Optional[Union[int,float]] = 0,
+        dtype_src: Optional[str] = 'float32'
+    ) -> np.array:
+    """
+    Converts a `GeoDataFrame` with POINT features into a 2-d `np.ndarray`
+    using the full spatial extent of the input features
+
+    :param gdf:
+        `GeoDataFrame` with POINT features to convert to raster
+    :param band_name_src:
+        name of `GeoDataFrame` column to rasterize
+    :param pixres_x:
+        spatial resolution of the output raster (in units of the CRS of the
+        `gdf` input) in x direction
+    :param pixres_y:
+        spatial resolution of the output raster (in units of the CRS of the
+        `gdf` input) in y direction
+    :param nodata_dst:
+        no data values to assign to empty cells. Zero by default.
+    :param dtype_src:
+        data type of the resulting raster array. Per default "float32" is used.
+    :returns:
+        2-d `numpy.ndarray` with rasterized POINT features
+    """
+    # check input geometries, must be Point
+    gdf = check_geometry_types(
+        in_dataset=gdf,
+        allowed_geometry_types=['Point'],
+        remove_empty_geoms=True
+    )
+
+    bounds = gdf.total_bounds
+    # get upper left X/Y coordinates
+    ulx = bounds[0]
+    uly = bounds[-1]
+    # get lower right X/Y coordinates to span the img matrix
+    lrx = bounds[2]
+    lry = bounds[1]
+    # calculate max rows along x and y axis
+    max_x_coord = int((lrx - ulx) / pixres_x) + 1
+    max_y_coord = int((uly - lry) / pixres_y) + 1
+    # create index lists for coordinates
+    x_indices = np.arange(ulx, lrx+pixres_x, step=pixres_x)
+    y_indices = np.arange(uly, lry-pixres_y, step=-pixres_y)
+    
+    # un-flatten the DataFrame along the selected columns (e.g. loop over columns)
+    img_arr = np.ones(shape=(max_y_coord, max_x_coord), dtype=dtype_src) * nodata_dst
+    x_coords = gdf.geometry.x.values
+    y_coords = gdf.geometry.y.values
+    vals = gdf[band_name_src].values
+    rasterized = _fill_array(img_arr, vals, x_indices, x_coords, y_indices, y_coords)
+    return rasterized
