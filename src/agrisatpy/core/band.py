@@ -22,6 +22,7 @@ import xarray as xr
 import zarr
 
 from copy import deepcopy
+from matplotlib.axes import Axes
 from matplotlib.colors import ListedColormap
 from matplotlib.figure import figaspect
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -46,7 +47,7 @@ from agrisatpy.core.utils.geometry import check_geometry_types
 from agrisatpy.core.utils.geometry import convert_3D_2D
 from agrisatpy.core.utils.raster import get_raster_attributes
 from agrisatpy.utils.reprojection import check_aoi_geoms
-from agrisatpy.utils.arrays import count_valid, upsample_array
+from agrisatpy.utils.arrays import count_valid, upsample_array, array_from_points
 from agrisatpy.utils.exceptions import BandNotFoundError, \
     DataExtractionError, ResamplingFailedError, ReprojectionError
 from agrisatpy.utils.reprojection import reproject_raster_dataset
@@ -715,7 +716,7 @@ class Band(object):
             having no value assigned from the input vector features. If not
             provided the nodata value is set to 0 (rasterio default)
         :param dtype_src:
-            datatype of the resulting raster array. Per default "float32" is used.
+            data type of the resulting raster array. Per default "float32" is used.
         :param kwargs:
             additional key-word arguments to pass to `~agrisatpy.core.Band`
         :returns:
@@ -807,26 +808,41 @@ class Band(object):
             pixres_y=geo_info.pixres_y
         )
 
-        # rasterize the vector features
-        try:
-            shapes = (
-                    (geom,value) for geom, value in zip(
-                        in_gdf.geometry,
-                        in_gdf[band_name_src].astype(dtype_src)
+        # rasterize the vector features. Point features work in another way than Polygons
+        if (in_gdf.geom_type.unique() == ['Point']).all():
+            try:
+                rasterized = array_from_points(
+                    gdf=in_gdf,
+                    band_name_src=band_name_src,
+                    pixres_x=geo_info.pixres_x,
+                    pixres_y=geo_info.pixres_y,
+                    nodata_dst=nodata_dst,
+                    dtype_src=dtype_src
+                )
+            except Exception as e:
+                raise Exception(
+                    f'Could not process POINT attribute "{band_name_src}": {e}'
+                )
+        else:
+            try:
+                shapes = (
+                        (geom,value) for geom, value in zip(
+                            in_gdf.geometry,
+                            in_gdf[band_name_src].astype(dtype_src)
+                        )
                     )
+                rasterized = features.rasterize(
+                    shapes=shapes,
+                    out_shape=snap_shape,
+                    transform=geo_info.as_affine(),
+                    all_touched=True,
+                    fill=nodata_dst,
+                    dtype=dtype_src
                 )
-            rasterized = features.rasterize(
-                shapes=shapes,
-                out_shape=snap_shape,
-                transform=geo_info.as_affine(),
-                all_touched=True,
-                fill=nodata_dst,
-                dtype=dtype_src
-            )
-        except Exception as e:
-            raise Exception(
-                    f'Could not process attribute "{band_name_src}": {e}'
-                )
+            except Exception as e:
+                raise Exception(
+                        f'Could not process MULTI/POLYGON attribute "{band_name_src}": {e}'
+                    )
 
         # initialize new Band instance
         return cls(
@@ -1099,7 +1115,8 @@ class Band(object):
             colorbar_label: Optional[str] = None,
             vmin: Optional[Union[int, float]] = None,
             vmax: Optional[Union[int, float]] = None,
-            fontsize: Optional[int] = 12
+            fontsize: Optional[int] = 12,
+            ax: Optional[Axes] = None
         ) -> plt.Figure:
         """
         Plots the raster values using ``matplotlib``
@@ -1129,11 +1146,12 @@ class Band(object):
         :param fontsize:
             fontsize to use for axes labels, plot title and colorbar label.
             12 pts by default.
+        :param ax:
+            optional `matplotlib.axes` object to plot onto
         :returns:
             matplotlib figure object with the band data
             plotted as map
         """
-
         # get the bounds of the band
         bounds = BoundingBox(*self.bounds.exterior.bounds)
 
@@ -1156,15 +1174,19 @@ class Band(object):
         w_h_ratio = figaspect(east_west_dim / north_south_dim)
 
         # open figure and axes for plotting
-        fig, ax = plt.subplots(
-            nrows=1,
-            ncols=1,
-            figsize=w_h_ratio,
-            num=1,
-            clear=True
-        )
+        if ax is None:
+            fig, ax = plt.subplots(
+                nrows=1,
+                ncols=1,
+                figsize=w_h_ratio,
+                num=1,
+                clear=True
+            )
+        # or get figure from existing axis object passed
+        else:
+            fig = ax.get_figure()
 
-        # get colormap
+        # get color-map
         cmap = user_defined_colors
         if cmap is None:
             cmap = plt.cm.get_cmap(colormap)
