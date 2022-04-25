@@ -118,12 +118,14 @@ def merge_datasets(
         'REVERSIBLE': 'YES'
     }
     try:
-        out_ds, out_transform = merge(
+        res = merge(
             datasets=datasets,
             dst_path=out_file,
             dst_kwds=dst_kwds,
             **kwargs
         )
+        if res is not None:
+            out_ds, out_transform = res[0], res[1]
     except Exception as e:
         raise Exception(f'Could not merge datasets: {e}')
 
