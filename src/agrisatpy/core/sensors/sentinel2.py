@@ -51,6 +51,7 @@ from agrisatpy.utils.sentinel2 import (
     get_S2_acquistion_time_from_safe, get_S2_processing_baseline_from_safe
 )
 from copy import deepcopy
+from agrisatpy.core.utils.geometry import convert_3D_2D
 
 
 class Sentinel2(RasterCollection):
@@ -294,6 +295,9 @@ class Sentinel2(RasterCollection):
                         # convert to raster CRS
                         raster_crs = src.crs
                         vector_features_df.to_crs(crs=raster_crs, inplace=True)
+                        # check if the geometry contains the z (3rd) dimension. If yes
+                        # convert it to 2d to avoid an error poping up from rasterio
+                        vector_features_df = convert_3D_2D(vector_features_df)
                         shape_mask, transform, window = raster_geometry_mask(
                             dataset=src,
                             shapes=vector_features_df.geometry,
