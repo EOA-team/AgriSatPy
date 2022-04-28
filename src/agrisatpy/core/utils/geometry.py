@@ -12,7 +12,6 @@ from typing import Union
 from typing import List
 from typing import Optional
 
-
 def read_geometries(
         in_dataset: Union[Path, gpd.GeoDataFrame]
         ) -> gpd.GeoDataFrame:
@@ -34,7 +33,6 @@ def read_geometries(
         raise NotImplementedError(
             f'Could not read geometries of input type {type(in_dataset)}'
         )
-
 
 def check_geometry_types(
         in_dataset: Union[Path, gpd.GeoDataFrame],
@@ -79,9 +77,7 @@ def check_geometry_types(
         raise ValueError(
             f'Encounter geometry types not allowed for reading band data: ({not_allowed_types})'
         )
-
     return gdf
-
 
 def convert_3D_2D(geometry: gpd.GeoSeries) -> gpd.GeoSeries:
     '''
@@ -91,7 +87,7 @@ def convert_3D_2D(geometry: gpd.GeoSeries) -> gpd.GeoSeries:
 
     :param geometry:
         ``GeoSeries`` from ``GeoDataFrame``
-    :return:
+    :returns:
         updated ``GeoSeries`` without third dimension (z)
     '''
 
@@ -112,5 +108,4 @@ def convert_3D_2D(geometry: gpd.GeoSeries) -> gpd.GeoSeries:
         else:
             new_geo = geometry
             break
-
     return new_geo
