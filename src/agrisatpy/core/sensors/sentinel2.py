@@ -297,10 +297,10 @@ class Sentinel2(RasterCollection):
                         vector_features_df.to_crs(crs=raster_crs, inplace=True)
                         # check if the geometry contains the z (3rd) dimension. If yes
                         # convert it to 2d to avoid an error poping up from rasterio
-                        vector_features_df = convert_3D_2D(vector_features_df)
+                        vector_features_geom = convert_3D_2D(vector_features_df.geometry)
                         shape_mask, transform, window = raster_geometry_mask(
                             dataset=src,
-                            shapes=vector_features_df.geometry,
+                            shapes=vector_features_geom,
                             all_touched=True,
                             crop=True,
                         )
