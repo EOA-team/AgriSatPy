@@ -26,6 +26,7 @@ from matplotlib.axes import Axes
 from matplotlib.colors import ListedColormap
 from matplotlib.figure import figaspect
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from numbers import Number
 from pathlib import Path
 from rasterio import Affine
 from rasterio import features
@@ -43,6 +44,7 @@ from typing import Optional
 from typing import Tuple
 from typing import Union
 
+from agrisatpy.core.utils.band import BandOperator
 from agrisatpy.core.utils.geometry import check_geometry_types
 from agrisatpy.core.utils.geometry import convert_3D_2D
 from agrisatpy.core.utils.raster import get_raster_attributes
@@ -367,6 +369,9 @@ class Band(object):
 
     def __delattr__(self, *args, **kwargs):
         raise TypeError('Band object attributes immutable')
+
+    def __add__(self, other):
+        return BandOperator.calc(a=self, other=other, operator='+')
 
     @property
     def alias(self) -> Union[str, None]:
