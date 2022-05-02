@@ -44,7 +44,6 @@ from typing import Optional
 from typing import Tuple
 from typing import Union
 
-from agrisatpy.core.utils.band import BandOperator
 from agrisatpy.core.utils.geometry import check_geometry_types
 from agrisatpy.core.utils.geometry import convert_3D_2D
 from agrisatpy.core.utils.raster import get_raster_attributes
@@ -54,6 +53,78 @@ from agrisatpy.utils.exceptions import BandNotFoundError, \
     DataExtractionError, ResamplingFailedError, ReprojectionError
 from agrisatpy.utils.reprojection import reproject_raster_dataset
 import uuid
+
+class BandOperator:
+    """
+    Band operator supporting basic algebraic operations and Band objects
+    """
+    operators: List[str] = ['+', '-', '*', '/', '**', '<', '>', '==', '<=', '>=']
+
+    class BandMathError(Exception):
+        pass
+    
+    @classmethod
+    def calc(
+            cls,
+            a,
+            other: Union[Number,np.ndarray],
+            operator: str,
+            inplace: Optional[bool] = False,
+            band_name: Optional[str] = None
+        ) -> Union[None,np.ndarray]:
+        """
+        executes a custom algebraic operator on Band objects
+
+        :param a:
+            `Band` object with values
+        :param other:
+            scalar or two-dimemsional `numpy.array` to use on the right-hand
+            side of the operator. If a `numpy.array` is passed the array must
+            have the same x and y dimensions as the current `Band` data.
+        :param operator:
+            symbolic representation of the operator (e.g., '+'
+            for addition)
+        :param inplace:
+            returns a new `Band` object if False (default) otherwise overwrites
+            the current `Band` data
+        :param band_name:
+            optional name of the resulting `Band` object if inplace is False.
+        :returns:
+            `numpy.ndarray` if inplace is False, None instead
+        """
+        other_copy = None
+        other_is_band = False
+        if operator not in cls.operators:
+            raise ValueError(f'Unknown operator "{operator}"')
+        if isinstance(other, np.ndarray) or isinstance(other, np.ma.MaskedArray):
+            if other.shape != a.values.shape:
+                raise ValueError(
+                    f'Passed array has wrong dimensions. Expected {a.values.shape}' \
+                    + f' - Got {other.shape}'
+                )
+        elif isinstance(other, Band):
+            other_copy = other.copy()
+            other = other.values
+            other_is_band = True
+        # perform the operation
+        try:
+            expr = f'a.values {operator} other'
+            res = eval(expr)
+        except Exception as e:
+            raise cls.BandMathError(f'Could not execute {expr}: {e}')
+        # return result or overwrite band data
+        if inplace:
+            return a.__setattr__('values', res)
+        else:
+            attrs = deepcopy(a.__dict__)
+            if band_name is None:
+                band_name = a.band_name
+                if other_is_band:
+                    band_name += f'{operator}{other_copy.band_name}'
+            attrs.update({'band_name': band_name})
+            attrs.update({'values': res})
+            return Band(**attrs)
+
 
 class GeoInfo(object):
     """
@@ -372,6 +443,33 @@ class Band(object):
 
     def __add__(self, other):
         return BandOperator.calc(a=self, other=other, operator='+')
+
+    def __sub__(self, other):
+        return BandOperator.calc(a=self, other=other, operator='-')
+
+    def __pow__(self, other):
+        return BandOperator.calc(a=self, other=other, operator='**')
+
+    def __le__(self, other):
+        return BandOperator.calc(a=self, other=other, operator='<=')
+
+    def __ge__(self, other):
+        return BandOperator.calc(a=self, other=other, operator='>=')
+
+    def __truediv__(self, other):
+        return BandOperator.calc(a=self, other=other, operator='/')
+
+    def __mul__(self, other):
+        return BandOperator.calc(a=self, other=other, operator='*')
+
+    def __eq__(self, other):
+        return BandOperator.calc(a=self, other=other, operator='==')
+
+    def __gt__(self, other):
+        return BandOperator.calc(a=self, other=other, operator='>')
+
+    def __lt__(self, other):
+        return BandOperator.calc(a=self, other=other, operator='<')
 
     @property
     def alias(self) -> Union[str, None]:
@@ -1338,6 +1436,32 @@ class Band(object):
             attrs = deepcopy(self.__dict__)
             attrs.update({'values': masked_array})
             return Band(**attrs)
+
+    def rename(
+            self,
+            name: str,
+            alias: Optional[bool] = False,
+            autoupdate_alias: Optional[bool] = True
+        ) -> None:
+        """
+        Sets a new band name or alias
+
+        :param name:
+            new band name or alias
+        :param alias:
+            if False (defaults) renames the actual band name, otherwise changes
+            the alias
+        :param autoupdate_alias:
+            if True (default) the band alias is set to the same value as the band
+            name if `alias==False`
+        """
+        if not isinstance(name, str) or name == '':
+            raise ValueError(f'Invalid name {name} - only non-empty strings are allowed')
+        # auto-update the band alias
+        if alias or autoupdate_alias:
+            object.__setattr__(self, 'band_alias', name)
+        if not alias:
+            object.__setattr__(self, 'band_name', name)
 
     def resample(
             self,
