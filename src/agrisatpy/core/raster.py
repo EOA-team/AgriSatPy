@@ -532,7 +532,7 @@ class RasterCollection(MutableMapping):
 
     def add_band(
             self,
-            band_constructor: Callable[..., Band],
+            band_constructor: Union[Callable[..., Band],Band],
             *args,
             **kwargs
         ) -> None:
@@ -543,7 +543,8 @@ class RasterCollection(MutableMapping):
         name constraint)
 
         :param band_constructor:
-            callable returning a `~agrisatpy.core.Band` instance
+            callable returning a `~agrisatpy.core.Band` instance or existing
+            `Band` instance
         :param args:
             arguments to pass to `band_constructor` or one of its
             class methods (`Band.from_rasterio`, `Band.from_vector`)
@@ -552,7 +553,10 @@ class RasterCollection(MutableMapping):
             class methods (`Band.from_rasterio`, `Band.from_vector`)
         """
         try:
-            band = band_constructor.__call__(*args, **kwargs)
+            if isinstance(band_constructor, Band):
+                band = band_constructor
+            else:
+                band = band_constructor.__call__(*args, **kwargs)
         except Exception as e:
             raise ValueError(f'Cannot initialize new Band instance: {e}')
         
