@@ -685,7 +685,7 @@ class RasterCollection(MutableMapping):
             unit = 'm'
         fontsize = kwargs.get('fontsize', 12)
         ax.set_xlabel(f'X [{unit}] (EPSG:{epsg})', fontsize=fontsize)
-        ax.xaxis.set_ticks(np.arange(ymin, ymax, x_interval))
+        ax.xaxis.set_ticks(np.arange(xmin, xmax, x_interval))
         ax.set_ylabel(f'Y [{unit}] (EPSG:{epsg})', fontsize=fontsize)
         ax.yaxis.set_ticks(np.arange(ymin, ymax, y_interval))
         ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.0f'))
