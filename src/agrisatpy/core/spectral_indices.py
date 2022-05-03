@@ -267,3 +267,20 @@ class SpectralIndices(object):
         blue = collection.get(cls.blue).values.astype('float')
         green = collection.get(cls.green).values.astype('float')
         return (green - blue) / (green + blue)
+
+    @classmethod
+    def NDWI(
+            cls,
+            collection
+        ):
+        """
+        Calculates the Normalized Difference Yellowness Index
+
+        :param collection:
+            reflectance in the 'green' and 'nir channel
+        :returns:
+            NDYI values
+        """
+        green = collection.get(cls.green).values.astype('float')
+        nir = collection.get(cls.nir_1).values.astype('float')
+        return (green - nir) / (green + nir)
