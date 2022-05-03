@@ -1208,6 +1208,50 @@ class Band(object):
             gdf.drop(col_to_drop, axis=1, inplace=True)
 
         return gdf
+
+    def hist(
+            self,
+            ax: Optional[Axes] = None,
+            ylabel: Optional[str] = None,
+            xlabel: Optional[str] = None,
+            fontsize: Optional[int] = 12,
+            **kwargs
+        ) -> plt.Figure:
+        """
+        Plots the raster histogram using ``matplotlib``
+
+        :param nbins:
+            optional number of histogram bins
+        :param ax:
+            optional `matplotlib.axes` object to plot onto
+        :param ylabel:
+            optional y axis label
+        :param xlabel:
+            optional x axis label
+        :param fontsize:
+            fontsize to use for axes labels, plot title and colorbar label.
+            12 pts by default.
+        """
+        # open figure and axes for plotting
+        if ax is None:
+            fig, ax = plt.subplots(
+                nrows=1,
+                ncols=1,
+                num=1,
+                clear=True
+            )
+        # or get figure from existing axis object passed
+        else:
+            fig = ax.get_figure()
+        ax.hist(self.values, **kwargs)
+        if xlabel is None:
+            xlabel = self.band_name
+        if ylabel is None:
+            ylabel = 'Frequency'
+        ax.set_xlabel(xlabel, fontsize=fontsize)
+        ax.set_ylabel(ylabel, fontsize=fontsize)
+
+        return fig
         
     def plot(
             self,
