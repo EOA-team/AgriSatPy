@@ -14,6 +14,7 @@ Besides that, ``RasterCollection`` is a super class from which sensor-specific c
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 import rasterio as rio
@@ -631,6 +632,22 @@ class RasterCollection(MutableMapping):
 
         # get bounds in the spatial coordinate system for plotting
         xmin, ymin, xmax, ymax = self[band_selection[0]].bounds.exterior.bounds
+        # determine intervals for plotting and aspect ratio (figsize)
+        east_west_dim = xmax - xmin
+        if abs(east_west_dim) < 5000:
+            x_interval = 500
+        elif abs(east_west_dim) >= 5000 and abs(east_west_dim) < 100000:
+            x_interval = 5000
+        else:
+            x_interval = 50000
+        north_south_dim = ymax - ymin
+        if abs(north_south_dim) < 5000:
+            y_interval = 500
+        elif abs(north_south_dim) >= 5000 and abs(north_south_dim) < 100000:
+            y_interval = 5000
+        else:
+            y_interval = 50000
+
         # clip values to 8bit color depth
         array_list = []
         masked = []
@@ -668,7 +685,11 @@ class RasterCollection(MutableMapping):
             unit = 'm'
         fontsize = kwargs.get('fontsize', 12)
         ax.set_xlabel(f'X [{unit}] (EPSG:{epsg})', fontsize=fontsize)
+        ax.xaxis.set_ticks(np.arange(ymin, ymax, x_interval))
         ax.set_ylabel(f'Y [{unit}] (EPSG:{epsg})', fontsize=fontsize)
+        ax.yaxis.set_ticks(np.arange(ymin, ymax, y_interval))
+        ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.0f'))
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.0f'))
         # add title str
         title_str = ", ".join(band_selection)
         ax.set_title(title_str, fontdict={'fontsize': fontsize})
