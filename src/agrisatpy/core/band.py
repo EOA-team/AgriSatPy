@@ -1243,7 +1243,7 @@ class Band(object):
         # or get figure from existing axis object passed
         else:
             fig = ax.get_figure()
-        ax.hist(self.values, **kwargs)
+        ax.hist(self.values.flatten(), **kwargs)
         if xlabel is None:
             xlabel = self.band_name
         if ylabel is None:
