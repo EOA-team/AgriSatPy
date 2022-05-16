@@ -18,6 +18,7 @@ import matplotlib.ticker as ticker
 import numpy as np
 import rasterio as rio
 import rasterio.mask
+import uuid
 import xarray as xr
 import zarr
 
@@ -52,7 +53,7 @@ from agrisatpy.utils.arrays import count_valid, upsample_array, array_from_point
 from agrisatpy.utils.exceptions import BandNotFoundError, \
     DataExtractionError, ResamplingFailedError, ReprojectionError
 from agrisatpy.utils.reprojection import reproject_raster_dataset
-import uuid
+
 
 class BandOperator:
     """
