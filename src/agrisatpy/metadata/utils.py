@@ -34,10 +34,14 @@ def _check_linux_cifs(
     response = subprocess.getoutput(exe)
     lines = response.split('\n')
     for line in lines:
-        if line.find(str(ip).strip()) >= 0:
+        if str(ip) in line:
             # data is on mounted share -> get local file system mapping
-            local_path = response[response.find(str(ip).strip()):].split()[1]
-            return Path(local_path)
+            local_path = line.split(' ')[1]
+            # check if current user has access to read local path, otherwise keep
+            # searching (might happen if another user manually mounts the NAS)
+            if os.access(local_path, os.R_OK):
+                res = Path(local_path)
+                break
 
     return res
 
