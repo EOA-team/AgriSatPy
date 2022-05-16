@@ -23,6 +23,7 @@ import zarr
 
 from collections.abc import MutableMapping
 from copy import deepcopy
+from matplotlib.axes import Axes
 from matplotlib.pyplot import Figure
 from pathlib import Path
 from rasterio import band
@@ -593,6 +594,7 @@ class RasterCollection(MutableMapping):
     def plot_multiple_bands(
             self,
             band_selection: Optional[List[str]] = None,
+            ax: Optional[Axes] = None,
             **kwargs
         ):
         """
@@ -605,6 +607,8 @@ class RasterCollection(MutableMapping):
         :param band_selection:
             optional list of bands to plot. If not provided takes the
             first three bands (or less) to plot
+        :param ax:
+            optional `matplotlib.axes` object to plot onto
         :returns:
             `~matplotlib.pyplot.Figure` with band plotted as map in
             8bit color depth
@@ -669,14 +673,19 @@ class RasterCollection(MutableMapping):
         # get quantiles to improve plot visibility
         vmin = np.nanquantile(stack, 0.1)
         vmax = np.nanquantile(stack, 0.9)
-        fig = plt.figure(**kwargs)
-        ax = fig.add_subplot(111)
-        ax.imshow(
-            stack,
-            vmin=vmin,
-            vmax=vmax,
-            extent=[xmin, xmax, ymin, ymax]
-        )
+
+        # get new axis and figure or figure from existing axis
+        if ax is None:
+            fig = plt.figure(**kwargs)
+            ax = fig.add_subplot(111)
+            ax.imshow(
+                stack,
+                vmin=vmin,
+                vmax=vmax,
+                extent=[xmin, xmax, ymin, ymax]
+            )
+        else:
+            fig = ax.get_figure()
         # set axis labels
         epsg = self[band_selection[0]].geo_info.epsg
         if self[band_selection[0]].crs.is_geographic:
