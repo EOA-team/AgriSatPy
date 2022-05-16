@@ -678,14 +678,14 @@ class RasterCollection(MutableMapping):
         if ax is None:
             fig = plt.figure(**kwargs)
             ax = fig.add_subplot(111)
-            ax.imshow(
-                stack,
-                vmin=vmin,
-                vmax=vmax,
-                extent=[xmin, xmax, ymin, ymax]
-            )
         else:
             fig = ax.get_figure()
+        ax.imshow(
+            stack,
+            vmin=vmin,
+            vmax=vmax,
+            extent=[xmin, xmax, ymin, ymax]
+        )
         # set axis labels
         epsg = self[band_selection[0]].geo_info.epsg
         if self[band_selection[0]].crs.is_geographic:
