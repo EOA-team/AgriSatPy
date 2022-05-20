@@ -899,8 +899,8 @@ class Band(object):
         # calculate number of columns from bounding box of all features
         # always round to the next bigger integer value to make sure no
         # value gets lost
-        rows = int(np.ceil(abs((maxy - miny) / geo_info.pixres_y)))
-        cols = int(np.ceil(abs((maxx - minx) / geo_info.pixres_x)))
+        rows = int(np.ceil(abs((maxy - miny) / abs(geo_info.pixres_y)))) + 1
+        cols = int(np.ceil(abs((maxx - minx) / geo_info.pixres_x))) + 1
         snap_shape = (rows, cols)
 
         # update and create new GeoInfo instance

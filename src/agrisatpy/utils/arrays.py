@@ -100,7 +100,9 @@ def _fill_array(
     ) -> np.ndarray:
     """
     `numba` accelerated back-end for fast rasterization of POINT
-    vector features (`GeoDataFrame` attribute column to 2d-array)
+    vector features (`GeoDataFrame` attribute column to 2d-array).
+
+    This method used `NEAREST_NEIGHBOR` to fill in pixel values!
 
     :param img_arr:
         target 2d array to populate with values from `vals`
@@ -122,12 +124,14 @@ def _fill_array(
     _img_arr = img_arr.copy()
     nvals = vals.shape[0]
     for idx in prange(nvals):
-        x_index = np.where(x_indices == x_coords[idx])[0][0]
+        # search for closest array index corresponding to the pixel
+        # and assign the value to the raster cell
         try:
-            y_index = np.where(y_indices == y_coords[idx])[0][0]
-        except Exception as e:
-            print(e)
-        _img_arr[y_index, x_index] = vals[idx]
+            x_index = np.argmin(abs(x_indices - x_coords[idx]))
+            y_index = np.argmin(abs(y_indices - y_coords[idx]))
+            _img_arr[y_index, x_index] = vals[idx]
+        except IndexError:
+            continue
     return _img_arr
 
 def array_from_points(
@@ -136,7 +140,8 @@ def array_from_points(
         pixres_x: Union[int,float],
         pixres_y: Union[int, float],
         nodata_dst: Optional[Union[int,float]] = 0,
-        dtype_src: Optional[str] = 'float32'
+        dtype_src: Optional[str] = 'float32',
+        area_or_point: Optional[str] = 'Area'
     ) -> np.array:
     """
     Converts a `GeoDataFrame` with POINT features into a 2-d `np.ndarray`
@@ -174,11 +179,13 @@ def array_from_points(
     lrx = bounds[2]
     lry = bounds[1]
     # calculate max rows along x and y axis
-    max_x_coord = int((lrx - ulx) / pixres_x) + 1
-    max_y_coord = int((uly - lry) / pixres_y) + 1
+    # rows = int(np.ceil(abs((maxy - miny) / geo_info.pixres_y)))
+    # cols = int(np.ceil(abs((maxx - minx) / geo_info.pixres_x)))
+    max_x_coord = int(np.ceil(abs((lrx - ulx) / pixres_x))) + 1
+    max_y_coord = int(np.ceil(abs((uly - lry) / pixres_y))) + 1
     # create index lists for coordinates
     x_indices = np.arange(ulx, lrx+pixres_x, step=pixres_x)
-    y_indices = np.arange(uly, lry-pixres_y, step=-pixres_y)
+    y_indices = np.arange(uly, lry-pixres_y, step=pixres_y)
     
     # un-flatten the DataFrame along the selected columns (e.g. loop over columns)
     img_arr = np.ones(shape=(max_y_coord, max_x_coord), dtype=dtype_src) * nodata_dst
