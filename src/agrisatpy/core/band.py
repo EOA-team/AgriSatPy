@@ -903,6 +903,13 @@ class Band(object):
         cols = int(np.ceil(abs((maxx - minx) / geo_info.pixres_x))) + 1
         snap_shape = (rows, cols)
 
+        # check pixel data model
+        area_or_point = kwargs.get('area_or_point', 'Area')
+
+        if area_or_point == 'Point':
+            minx = minx - 0.5 * geo_info.pixres_x
+            maxy = maxy - 0.5 * geo_info.pixres_y
+
         # update and create new GeoInfo instance
         geo_info = GeoInfo(
             epsg=in_gdf.crs.to_epsg(),
@@ -915,7 +922,6 @@ class Band(object):
         # rasterize the vector features. Point features work in another way than Polygons
         if (in_gdf.geom_type.unique() == ['Point']).all():
             try:
-                area_or_point = kwargs.get('area_or_point', 'Area')
                 rasterized = array_from_points(
                     gdf=in_gdf,
                     band_name_src=band_name_src,
@@ -923,7 +929,6 @@ class Band(object):
                     pixres_y=geo_info.pixres_y,
                     nodata_dst=nodata_dst,
                     dtype_src=dtype_src,
-                    area_or_point=area_or_point
                 )
             except Exception as e:
                 raise Exception(

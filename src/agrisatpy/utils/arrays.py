@@ -140,12 +140,14 @@ def array_from_points(
         pixres_x: Union[int,float],
         pixres_y: Union[int, float],
         nodata_dst: Optional[Union[int,float]] = 0,
-        dtype_src: Optional[str] = 'float32',
-        area_or_point: Optional[str] = 'Area'
+        dtype_src: Optional[str] = 'float32'
     ) -> np.array:
     """
     Converts a `GeoDataFrame` with POINT features into a 2-d `np.ndarray`
     using the full spatial extent of the input features
+
+    NOTE:
+        Currently, only nearest neighbor interpolation is supported
 
     :param gdf:
         `GeoDataFrame` with POINT features to convert to raster
@@ -161,10 +163,6 @@ def array_from_points(
         no data values to assign to empty cells. Zero by default.
     :param dtype_src:
         data type of the resulting raster array. Per default "float32" is used.
-    :param area_or_point:
-        spatial pixel data model. If `Area` (default) assumes that pixel coordinates
-        relate to the upper left corner of the pixel. If `Point` assumes that the
-        coordinates refer to the center of the pixel.
     :returns:
         2-d `numpy.ndarray` with rasterized POINT features
     """
@@ -177,18 +175,12 @@ def array_from_points(
 
     bounds = gdf.total_bounds
     # get upper left X/Y coordinates
-    offset_x, offset_y = 0, 0
-    if area_or_point == 'Point':
-        offset_x = -0.5 * pixres_x
-        offset_y = 0.5 * pixres_y
-    ulx = bounds[0] + offset_x
-    uly = bounds[-1] + offset_y
+    ulx = bounds[0]
+    uly = bounds[-1]
     # get lower right X/Y coordinates to span the img matrix
-    lrx = bounds[2] + offset_x
-    lry = bounds[1] + offset_y
+    lrx = bounds[2]
+    lry = bounds[1]
     # calculate max rows along x and y axis
-    # rows = int(np.ceil(abs((maxy - miny) / geo_info.pixres_y)))
-    # cols = int(np.ceil(abs((maxx - minx) / geo_info.pixres_x)))
     max_x_coord = int(np.ceil(abs((lrx - ulx) / pixres_x))) + 1
     max_y_coord = int(np.ceil(abs((uly - lry) / pixres_y))) + 1
     # create index lists for coordinates
