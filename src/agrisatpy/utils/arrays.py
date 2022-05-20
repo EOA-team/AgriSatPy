@@ -161,6 +161,10 @@ def array_from_points(
         no data values to assign to empty cells. Zero by default.
     :param dtype_src:
         data type of the resulting raster array. Per default "float32" is used.
+    :param area_or_point:
+        spatial pixel data model. If `Area` (default) assumes that pixel coordinates
+        relate to the upper left corner of the pixel. If `Point` assumes that the
+        coordinates refer to the center of the pixel.
     :returns:
         2-d `numpy.ndarray` with rasterized POINT features
     """
@@ -173,11 +177,15 @@ def array_from_points(
 
     bounds = gdf.total_bounds
     # get upper left X/Y coordinates
-    ulx = bounds[0]
-    uly = bounds[-1]
+    offset_x, offset_y = 0, 0
+    if area_or_point == 'Point':
+        offset_x = -0.5 * pixres_x
+        offset_y = 0.5 * pixres_y
+    ulx = bounds[0] + offset_x
+    uly = bounds[-1] + offset_y
     # get lower right X/Y coordinates to span the img matrix
-    lrx = bounds[2]
-    lry = bounds[1]
+    lrx = bounds[2] + offset_x
+    lry = bounds[1] + offset_y
     # calculate max rows along x and y axis
     # rows = int(np.ceil(abs((maxy - miny) / geo_info.pixres_y)))
     # cols = int(np.ceil(abs((maxx - minx) / geo_info.pixres_x)))
