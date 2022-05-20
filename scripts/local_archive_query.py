@@ -16,11 +16,11 @@ from agrisatpy.operational.cli import cli_s2_scene_selection
 from agrisatpy.utils.constants import ProcessingLevels
 
 # user inputs
-tile = 'T32TMT'
+tile = 'T32TLT'
 processing_level = ProcessingLevels.L2A
 out_dir = Path('/mnt/ides/Lukas/03_Debug')
-date_start = '2020-01-01'
-date_end = '2020-08-31'
+date_start = '2021-10-01'
+date_end = '2022-05-18'
 cc_threshold = 80.
 
 # date range
