@@ -1,18 +1,18 @@
 version: "3.9"
 
 services:
-  db:
+  metadb:
     image: "postgres:13.4"
     env_file:
       - .env
     container_name: agrisatpy_metadb
     build:
       context: ../
-      dockerfile: docker-services/Dockerfiles/metadb-setup.dockerfile
+      dockerfile: docker-services/Dockerfile
     volumes:
       - agrisatpy-metadb:/var/lib/postgresql/data
     ports:
-      - ${POSTGRES_PORT}:5432
+      - ${POSTGRES_PORT}:5433
 
 volumes:
   agrisatpy-metadb:
