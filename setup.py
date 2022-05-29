@@ -48,6 +48,7 @@ setuptools.setup(
                       'requests',
                       'xarray',
                       'rtree',
-                      'zarr'
+                      'zarr',
+                      'numba'
                       ]
 )

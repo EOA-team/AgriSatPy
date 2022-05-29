@@ -18,3 +18,4 @@ requests
 xarray
 rtree
 zarr
+numba
