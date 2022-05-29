@@ -20,6 +20,9 @@ RUN pip install rasterio==1.3a3
 RUN pip install dist/*
 RUN rm -rf dist/
 
+# run AgriSatPy test modules
+RUN pytest --log-file=${WORKDIR}/pytest.log
+
 # create Database tables if they do not exist yet
 # COPY . .
 # RUN python3 ${WORKDIR}/scripts/setup_db.py
