@@ -45,7 +45,7 @@ class Settings(BaseSettings):
 
     # metadata base connection details
     DB_USER: str = 'postgres'
-    DB_PW: str = '12345'
+    DB_PW: str = 'P@ssW0rd!'
     DB_HOST: str = 'localhost'
     DB_PORT: str = '5432'
     DB_NAME: str = 'metadata_db'
@@ -91,7 +91,7 @@ class Settings(BaseSettings):
 
     # env files are encoded utf-8, only
     class Config:
-        env_file = '.env'
+        env_file = '../../../docker-services/.env'
         env_file_encoding = 'utf-8'
         arbitrary_types_allowed = True
 
