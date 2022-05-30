@@ -17,6 +17,8 @@ from os.path import join
 from pathlib import Path
 from pydantic import BaseSettings
 
+from .stac_providers import STAC_Providers
+
 
 class Settings(BaseSettings):
     """
@@ -52,6 +54,14 @@ class Settings(BaseSettings):
 
     DEFAULT_SCHEMA: str = 'cs_sat_s1'
     ECHO_DB: bool = False
+
+    # STAC configuration
+    USE_STAC: bool = True
+    MAX_ITEMS: int = 500
+    LIMIT_ITEMS: int = 5
+
+    # change the value of this variable to use a different STAC service provider
+    STAC_BACKEND = STAC_Providers.AWS
     
     # define logger
     CURRENT_TIME: str = datetime.now().strftime('%Y%m%d-%H%M%S')
