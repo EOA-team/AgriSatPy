@@ -58,7 +58,7 @@ def find_raw_data_by_bbox(
     :param processing_level:
         Sentinel-2 processing level
     :param bounding_box_wkt:
-        bounding box either as extented well-known text in geographic coordinates
+        bounding box either as extended well-known text in geographic coordinates
         or as shapely ``Polygon`` in geographic coordinates (WGS84)
     :param cloud_cover_threshold:
         optional cloud cover threshold to filter datasets by scene cloud coverage.
@@ -87,7 +87,6 @@ def find_raw_data_by_bbox(
         S2_Raw_Metadata.cloudy_pixel_percentage,
         S2_Raw_Metadata.sensing_orbit_number,
         S2_Raw_Metadata.sensing_time,
-        S2_Raw_Metadata.cloudy_pixel_percentage,
         S2_Raw_Metadata.epsg
     ).filter(
          ST_Intersects(S2_Raw_Metadata.geom, ST_GeomFromText(bounding_box))
