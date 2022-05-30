@@ -41,4 +41,5 @@ class ReprojectionError(Exception):
 class DataExtractionError(Exception):
     pass
 
-
+class STACError(Exception):
+    pass
