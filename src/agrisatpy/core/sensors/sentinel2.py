@@ -21,6 +21,7 @@ from pathlib import Path
 from rasterio.mask import raster_geometry_mask
 from shapely.geometry import box
 from typing import (
+    Dict,
     Optional,
     List,
     Tuple,
@@ -52,7 +53,9 @@ from agrisatpy.utils.sentinel2 import (
 )
 from copy import deepcopy
 from agrisatpy.core.utils.geometry import convert_3D_2D
+from agrisatpy.config import get_settings
 
+Settings = get_settings()
 
 class Sentinel2(RasterCollection):
     """
@@ -108,16 +111,22 @@ class Sentinel2(RasterCollection):
 
     @staticmethod
     def _get_band_files(
-            in_dir: Path,
+            in_dir: Union[Path,Dict[str,str]],
             band_selection: List[str],
             read_scl: bool
         ) -> pd.DataFrame:
         """
-        Returns the file-paths to the selected Sentinel-2 bands in a .SAFE archive
-        folder and checks the processing level of the data (L1C or L2A).
+        Returns the paths to the single Sentinel-2 bands.
+
+        There are two options:
+
+        * Returns the file-paths to the selected Sentinel-2 bands in a .SAFE archive
+          folder and checks the processing level of the data (L1C or L2A).
+        * Returns the links to the assets from a STAC query
 
         :param in_dir:
-            Sentinel-2 .SAFE archive folder from which to read data
+            Sentinel-2 .SAFE archive folder from which to read data or dictionary
+            with assets from a STAC query
         :param band_selection:
             selection of spectral Sentinel-2 bands to read
         :param read_scl:
@@ -126,8 +135,13 @@ class Sentinel2(RasterCollection):
         :returns:
             ``DataFrame`` with paths to the jp2 files with the spectral band data
         """
-        # check processing level
-        processing_level = get_S2_processing_level(dot_safe_name=in_dir)
+        # check processing level (use B01 for STAC)
+        if Settings.USE_STAC:
+            processing_level = get_S2_processing_level(
+                dot_safe_name=in_dir['B01']['href']
+            )
+        else:
+            processing_level = get_S2_processing_level(dot_safe_name=in_dir)
 
         # define also a local flag of the processing level so this method also works
         # when called from a classmethod
@@ -213,16 +227,20 @@ class Sentinel2(RasterCollection):
     @classmethod
     def from_safe(
             cls,
-            in_dir: Path,
+            in_dir: Union[Path,Dict[str,str]],
             band_selection: Optional[List[str]] = None,
             read_scl: Optional[bool] = True,
             apply_scaling: Optional[bool] = True,
             **kwargs
         ):
         """
-        Loads Sentinel-2 data from a .SAFE archive which is ESA's
-        standard format for distributing Sentinel-2 data (L1C and L2A
-        processing levels).
+        Loads Sentinel-2 data into a `RasterCollection`.
+        
+        There are two options:
+        
+        * Read data from a .SAFE archive which is ESA's standard format for
+          distributing Sentinel-2 data (L1C and L2A processing levels).
+        * Read data from a Asset-List returned from a STAC query
 
         NOTE:
             If a spatial subset is read (`vector_features` in kwargs) the

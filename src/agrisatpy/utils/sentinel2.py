@@ -39,9 +39,9 @@ def get_S2_processing_level(
     if isinstance(dot_safe_name, Path):
         dot_safe_name = dot_safe_name.name
 
-    if dot_safe_name.find('MSIL1C') >= 0:
+    if dot_safe_name.find('MSIL1C') >= 0 or dot_safe_name.find('l1c') >= 0:
         return ProcessingLevels.L1C
-    elif dot_safe_name.find('MSIL2A') >= 0:
+    elif dot_safe_name.find('MSIL2A') >= 0 or dot_safe_name.find('l2a') >= 0:
         return ProcessingLevels.L2A
     else:
         raise ValueError(
@@ -220,17 +220,21 @@ def get_S2_bandfiles_with_res(
         band_name, band_res = item
         # save returned values to dict
         band_props = {}
-        # search expression for the file depends on the processing level
-        if is_l2a:
-            search_expr = f'GRANULE/*/IMG_DATA/R{int(band_res)}m/*_{band_name.upper()}_{int(band_res)}m.jp2'
+        if Settings.USE_STAC:
+            # extract URL from asset
+            band_fpath = in_dir[band_name]['href']
         else:
-            search_expr = f'GRANULE/*/IMG_DATA/T*_{band_name.upper()}.jp2'
-        try:
-            band_fpath = next(in_dir.glob(search_expr))
-        except Exception as e:
-            raise BandNotFoundError(
-                f'Could not determine file-path of {band_name} from {in_dir.name}: {e}'
-            )
+            # search expression for the file depends on the processing level
+            if is_l2a:
+                search_expr = f'GRANULE/*/IMG_DATA/R{int(band_res)}m/*_{band_name.upper()}_{int(band_res)}m.jp2'
+            else:
+                search_expr = f'GRANULE/*/IMG_DATA/T*_{band_name.upper()}.jp2'
+            try:
+                band_fpath = next(in_dir.glob(search_expr))
+            except Exception as e:
+                raise BandNotFoundError(
+                    f'Could not determine file-path of {band_name} from {in_dir.name}: {e}'
+                )
         band_props['band_name'] = band_name
         band_props['band_path'] = band_fpath
         band_props['band_resolution'] = band_res

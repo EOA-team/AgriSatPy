@@ -10,12 +10,11 @@ import uuid
 
 from datetime import date
 from pathlib import Path
-from shapely.geometry import box, Point
+from shapely.geometry import box
 from sqlalchemy.exc import DatabaseError
 from typing import Any, Dict, List, Optional, Union
 
 from agrisatpy.config import get_settings
-from agrisatpy.core.band import GeoInfo
 from agrisatpy.core.sensors import Sentinel2
 from agrisatpy.metadata.sentinel2.database.querying import find_raw_data_by_bbox
 from agrisatpy.operational.mapping.mapper import Mapper, Feature
@@ -23,10 +22,11 @@ from agrisatpy.operational.mapping.merging import merge_datasets
 from agrisatpy.operational.resampling.utils import identify_split_scenes
 from agrisatpy.utils.constants.sentinel2 import ProcessingLevels
 from agrisatpy.utils.exceptions import InputError, BlackFillOnlyError,\
-    DataNotFoundError, ReprojectionError
+    DataNotFoundError, STACError
 from agrisatpy.metadata.sentinel2.utils import identify_updated_scenes
 from agrisatpy.metadata.utils import reconstruct_path
 from agrisatpy.core.scene import SceneProperties
+from agrisatpy.metadata.stac.client import sentinel2
 
 settings = get_settings()
 logger = settings.logger
@@ -169,16 +169,29 @@ class Sentinel2Mapper(Mapper):
             bbox = box(*feature.geometry_wgs84.bounds)
 
             # use the resulting bbox to query the bounding box
-            try:
-                scenes_df = find_raw_data_by_bbox(
-                    date_start=self.date_start,
-                    date_end=self.date_end,
-                    processing_level=self.processing_level,
-                    bounding_box=bbox,
-                    cloud_cover_threshold=self.cloud_cover_threshold
-                )
-            except Exception as e:
-                raise DatabaseError(f'Querying metadata DB failed: {e}')
+            # there a two options: use STAC or the PostgreSQL DB
+            if settings.USE_STAC:
+                try:
+                    scenes_df = sentinel2(
+                        date_start=self.date_start,
+                        date_end=self.date_end,
+                        processing_level=self.processing_level,
+                        bounding_box=bbox,
+                        cloud_cover_threshold=self.cloud_cover_threshold
+                    )
+                except Exception as e:
+                    raise STACError(f'Querying STAC catalog failed: {e}')
+            else:
+                try:
+                    scenes_df = find_raw_data_by_bbox(
+                        date_start=self.date_start,
+                        date_end=self.date_end,
+                        processing_level=self.processing_level,
+                        bounding_box=bbox,
+                        cloud_cover_threshold=self.cloud_cover_threshold
+                    )
+                except Exception as e:
+                    raise DatabaseError(f'Querying metadata DB failed: {e}')
 
             # filter by tile if required
             tile_ids = self.mapper_configs.tile_selection
@@ -281,10 +294,13 @@ class Sentinel2Mapper(Mapper):
         # first data set
         if feature_gdf['geometry'].iloc[0].type == 'Point':
             for _, candidate_scene in scenes_date.iterrows():
-
+                if settings.USE_STAC:
+                    in_dir = candidate_scene['assets']
+                else:
+                    in_dir = candidate_scene['real_path']
                 feature_gdf = Sentinel2.read_pixels_from_safe(
                     point_features=feature_gdf,
-                    in_dir=candidate_scene.real_path,
+                    in_dir=in_dir,
                     band_selection=self.mapper_configs.band_names
                 )
                 # a empty data frame indicates black-fill
@@ -309,8 +325,12 @@ class Sentinel2Mapper(Mapper):
             )
             # only one scene left -> read the scene and return
             if updated_scenes.shape[0] == 1:
+                if settings.USE_STAC:
+                    in_dir = updated_scenes['assets'].iloc[0]
+                else:
+                    in_dir = updated_scenes['real_path'].iloc[0]
                 res = Sentinel2.from_safe(
-                    in_dir=updated_scenes.real_path.iloc[0],
+                    in_dir=in_dir,
                     band_selection=self.mapper_configs.band_names,
                     **kwargs
                 )
@@ -324,8 +344,12 @@ class Sentinel2Mapper(Mapper):
             tmp_fnames = []
             scene_props = []
             for _, candidate_scene in scenes_date.iterrows():
+                if settings.USE_STAC:
+                    in_dir = candidate_scene['assets']
+                else:
+                    in_dir = candidate_scene['real_path']
                 s2_scene = Sentinel2.from_safe(
-                    in_dir=candidate_scene.real_path,
+                    in_dir=in_dir,
                     band_selection=self.mapper_configs.band_names,
                     **kwargs
                 )
@@ -426,15 +450,16 @@ class Sentinel2Mapper(Mapper):
             abs((scenes_df.sensing_date - sensing_date)) == min_delta
         ].copy()
 
-        # map the dataset path(s)
-        try:
-            scenes_date['real_path'] = scenes_date.apply(
-                lambda x: reconstruct_path(record=x), axis=1
-            )
-        except Exception as e:
-            raise DataNotFoundError(
-                f'Cannot find the scenes on the file system: {e}'
-            )
+        # map the dataset path(s) when working locally (no STAC)
+        if not settings.USE_STAC:
+            try:
+                scenes_date['real_path'] = scenes_date.apply(
+                    lambda x: reconstruct_path(record=x), axis=1
+                )
+            except Exception as e:
+                raise DataNotFoundError(
+                    f'Cannot find the scenes on the file system: {e}'
+                )
         # get properties and geometry of the current feature from the collection
         feature_dict = self.get_feature(feature_id)
         feature_gdf = gpd.GeoDataFrame.from_features(feature_dict)
@@ -454,11 +479,16 @@ class Sentinel2Mapper(Mapper):
             )
             return res
         else:
+            # determine scene path (local environment) or URLs (STAC)
+            if settings.USE_STAC:
+                in_dir = scenes_date['assets'].iloc[0]
+            else:
+                in_dir = scenes_date['real_path'].iloc[0]
             # if there is only one scene all we have to do is to read
             # read pixels in case the feature's dtype is point
             if feature_dict['features'][0]['geometry']['type'] == 'Point':
                 res = Sentinel2.read_pixels_from_safe(
-                    in_dir=scenes_date['real_path'].iloc[0],
+                    in_dir=in_dir,
                     band_selection=self.mapper_configs.band_names,
                     **kwargs
                 )
@@ -469,7 +499,7 @@ class Sentinel2Mapper(Mapper):
             else:
                 try:
                     res = Sentinel2.from_safe(
-                        in_dir=scenes_date['real_path'].iloc[0],
+                        in_dir=in_dir,
                         band_selection=self.mapper_configs.band_names,
                         **kwargs
                     )
