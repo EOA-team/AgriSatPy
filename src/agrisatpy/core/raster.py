@@ -25,6 +25,7 @@ from collections.abc import MutableMapping
 from copy import deepcopy
 from matplotlib.axes import Axes
 from matplotlib.pyplot import Figure
+from numbers import Number
 from pathlib import Path
 from rasterio import band
 from rasterio.drivers import driver_from_extension
@@ -36,9 +37,98 @@ from typing import Optional
 from typing import Union
 
 from agrisatpy.core.band import Band
+from agrisatpy.core.operators import Operator
 from agrisatpy.core.scene import SceneProperties
 from agrisatpy.core.spectral_indices import SpectralIndices
 from agrisatpy.utils.decorators import check_band_names
+
+class RasterOperator(Operator):
+    """
+    Band operator supporting basic algebraic operations on
+    `RasterCollection` objects
+    """
+
+    @classmethod
+    def calc(
+            cls,
+            a,
+            other: Union[Band, Number,np.ndarray],
+            operator: str,
+            inplace: Optional[bool] = False,
+            band_selection: Optional[List[str]] = None
+        ) -> Union[None,np.ndarray]:
+        """
+        executes a custom algebraic operator on `RasterCollection` objects
+
+        :param a:
+            `RasterCollection` object with values (non-empty)
+        :param other:
+            `Band` object, scalar,  or 3-dimensional `numpy.array` to use on the 
+            right-hand side of the operator. If a `numpy.array` is passed the array
+            must have either shape `(1,nrows,ncols)` or `(nband,nrows,ncols)`
+            where `nrows` is the number of rows in `a`, ncols the number of columns
+            in `a` and `nbands` the number of bands in a or the selection thereof.
+            The latter method does *not* work if the bands in `a` selected differ
+            in their shape.
+        :param operator:
+            symbolic representation of the operator (e.g., '+'
+            for addition)
+        :param inplace:
+            returns a new `RasterCollection` object if False (default) otherwise
+            overwrites the current `RasterCollection` data in `a`
+        :param band_selection:
+            optional selection of bands in `a` to which apply the operation
+        :returns:
+            `numpy.ndarray` if inplace is False, None instead
+        """
+        cls.check_operator(operator=operator)
+        # if `other` is a Band object get its values
+        if isinstance(other, Band):
+            _other = other.copy()
+            _other = _other.values()
+        # check if `other` matches the shape 
+        if isinstance(other, np.ndarray) or isinstance(other, np.ma.MaskedArray):
+            # check if passed array is 2-d
+            if len(other.shape) == 2:
+                if other.shape != a.get_values(band_selection).shape[1::]:
+                    raise ValueError(
+                        f'Passed array has wrong number of rows and columns. ' \
+                        + f'Expected {a.values.shape[1::]} - Got {other.shape}'
+                    )
+            # or 3-d
+            elif len(other.shape) == 3:
+                if other.shape != a.get_values(band_selection):
+                    raise ValueError(
+                        f'Passed array has wrong dimensions. Expected {a.values.shape}' \
+                        + f' - Got {other.shape}'
+                    )
+            # other dimensions are not allowed
+            else:
+                raise ValueError(
+                    'Passed array must 2 or 3-dimensional. '\
+                    f'Got {len(other.shape)} dimensions instead'
+                )
+            _other = other.copy()
+        elif isinstance(other, RasterCollection):
+            _other = other.copy()
+            _other = other.get_values(band_selection=band_selection)
+            # other_is_raster = True
+        # perform the operation
+        try:
+            expr = f'a.get_values(band_selection) {operator} other'
+            res = eval(expr)
+        except Exception as e:
+            raise cls.BandMathError(f'Could not execute {expr}: {e}')
+        # return result or overwrite band data
+        if inplace:
+            if band_selection is None:
+                band_selection = a.band_names()
+            for idx, band_name in enumerate(band_selection):
+                object.__setattr__(self.collection[band_name], 'values', res[idx,:,:])
+        else:
+            # TODO: return a new RasterCollection instance
+            # TODO: think about multiple slices
+            raise NotImplementedError()
 
 
 class RasterCollection(MutableMapping):
@@ -75,35 +165,53 @@ class RasterCollection(MutableMapping):
             **kwargs
         ):
         """
-        Initializes a new `RasterCollection` with 0 or 1 band
+        Initializes a new `RasterCollection` with 0 up to n bands
 
-        Examples:
+        Example:
         --------
-        >>> from agrisatpy.core.raster import RasterDataHandler
-        >>> from agrisatpy.core.band import Band
-        >>> from agrisatpy.core.band import GeoInfo
 
-        Empty `RasterDataHandler`:
-        >>> handler = RasterDataHandler()
-        >>> handler.empty
+        .. code-block:: python
 
-        New Handler from `numpy.ndarray` (default Band constructor)
-        Define GeoInfo and Array first and use them to initialize a new Handler
-        instance:
-        >>> epsg = 32633
-        >>> ulx, uly = 300000, 5100000
-        >>> pixres_x, pixres_y = 10, -10
-        >>> geo_info = GeoInfo(epsg=epsg,ulx=ulx,uly=uly,pixres_x=pixres_x,pixres_y=pixres_y)
-        >>> band_name = 'random'
-        >>> color_name = 'blue'
-        >>> values = np.random.random(size=(100,120))
-        >>> handler = RasterDataHandler(
-        >>>         band_constructor=Band,
-        >>>         band_name=band_name,
-        >>>         values=values,
-        >>>         color_name=color_name,
-        >>>         geo_info=geo_info
-        >>> )
+        from agrisatpy.core.raster import RasterCollection
+        from agrisatpy.core.band import Band
+        from agrisatpy.core.band import GeoInfo
+
+        # Empty `RasterCollection`:
+        handler = RasterCollection()
+        handler.empty  # returns True
+
+        # New collection from `numpy.ndarray`
+        # Define GeoInfo and Array first and use them to initialize a new RasterCollection
+        # instance:
+
+        # provide EPSG code
+        epsg = 32633
+        # provide upper left (ul) x and y coordinate (in units of the coordinate system
+        # given by the EPSG code defined above)
+        ulx, uly = 300000, 5100000
+        # provide pixel size (spatial resolution). Note that resolution in y direction is
+        # negative because we start at the upper left corner
+        pixres_x, pixres_y = 10, -10
+
+        # get a new GeoInfo object
+        geo_info = GeoInfo(epsg=epsg,ulx=ulx,uly=uly,pixres_x=pixres_x,pixres_y=pixres_y)
+
+        # define a band name for the band data to add
+        band_name = 'random'
+        # optionally, you can also asign a `band_alias` (e.g., color name)
+        band_alias = 'blue'
+
+        # let's define some random numbers in a 2-d array
+        values = np.random.random(size=(100,120))
+
+        # get the RasterCollection object
+        raster = RasterDataHandler(
+                 band_constructor=Band,
+                 band_name=band_name,
+                 values=values,
+                 band_alias=band_alias,
+                 geo_info=geo_info
+        )
 
         :param band_constructor:
             optional callable returning an `~agrisatpy.core.Band`
@@ -165,6 +273,36 @@ class RasterCollection(MutableMapping):
     
     def __len__(self) -> int:
         return len(self.collection)
+
+    def __add__(self, other):
+        return RasterOperator.calc(a=self, other=other, operator='+')
+
+    def __sub__(self, other):
+        return RasterOperator.calc(a=self, other=other, operator='-')
+
+    def __pow__(self, other):
+        return RasterOperator.calc(a=self, other=other, operator='**')
+
+    def __le__(self, other):
+        return RasterOperator.calc(a=self, other=other, operator='<=')
+
+    def __ge__(self, other):
+        return RasterOperator.calc(a=self, other=other, operator='>=')
+
+    def __truediv__(self, other):
+        return RasterOperator.calc(a=self, other=other, operator='/')
+
+    def __mul__(self, other):
+        return RasterOperator.calc(a=self, other=other, operator='*')
+
+    def __eq__(self, other):
+        return RasterOperator.calc(a=self, other=other, operator='==')
+
+    def __gt__(self, other):
+        return RasterOperator.calc(a=self, other=other, operator='>')
+
+    def __lt__(self, other):
+        return RasterOperator.calc(a=self, other=other, operator='<')
 
     @property
     def band_names(self) -> List[str]:
