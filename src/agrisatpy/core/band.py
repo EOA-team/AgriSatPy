@@ -45,25 +45,23 @@ from typing import Optional
 from typing import Tuple
 from typing import Union
 
+from agrisatpy.core.operators import Operator
 from agrisatpy.core.utils.geometry import check_geometry_types
 from agrisatpy.core.utils.geometry import convert_3D_2D
 from agrisatpy.core.utils.raster import get_raster_attributes
-from agrisatpy.utils.reprojection import check_aoi_geoms
-from agrisatpy.utils.arrays import count_valid, upsample_array, array_from_points
+from agrisatpy.utils.arrays import count_valid, upsample_array, \
+    array_from_points
 from agrisatpy.utils.exceptions import BandNotFoundError, \
     DataExtractionError, ResamplingFailedError, ReprojectionError
-from agrisatpy.utils.reprojection import reproject_raster_dataset
+from agrisatpy.utils.reprojection import reproject_raster_dataset, \
+    check_aoi_geoms
 
 
-class BandOperator:
+class BandOperator(Operator):
     """
-    Band operator supporting basic algebraic operations and Band objects
+    Band operator supporting basic algebraic operations on `Band` objects
     """
-    operators: List[str] = ['+', '-', '*', '/', '**', '<', '>', '==', '<=', '>=']
 
-    class BandMathError(Exception):
-        pass
-    
     @classmethod
     def calc(
             cls,
@@ -77,9 +75,9 @@ class BandOperator:
         executes a custom algebraic operator on Band objects
 
         :param a:
-            `Band` object with values
+            `Band` object with values (non-empty)
         :param other:
-            scalar or two-dimemsional `numpy.array` to use on the right-hand
+            scalar, `Band` or two-dimemsional `numpy.array` to use on the right-hand
             side of the operator. If a `numpy.array` is passed the array must
             have the same x and y dimensions as the current `Band` data.
         :param operator:
@@ -95,8 +93,7 @@ class BandOperator:
         """
         other_copy = None
         other_is_band = False
-        if operator not in cls.operators:
-            raise ValueError(f'Unknown operator "{operator}"')
+        cls.check_operator(operator=operator)
         if isinstance(other, np.ndarray) or isinstance(other, np.ma.MaskedArray):
             if other.shape != a.values.shape:
                 raise ValueError(
@@ -309,45 +306,59 @@ class Band(object):
     :attrib band_name:
         the band name identifies the raster band (e.g., 'B1'). It can be
         any character string
-    :attrib color_name:
-        if the raster band comes from an imaging sensor, the color name
-        identifies the band in a color space (e.g., 'blue'). The color name
-        can be seen as an alias to the actual `band_name`
+    :attrib values:
+        the actual raster data as ``numpy.ndarray``, ``numpy.ma.MaskedArray`` or
+        ``zarr``. The type depends on how the constructor is called.
+    :attrib geo_info:
+        `GeoInfo` object defining the spatial reference system, upper left
+        corner and pixel size (spatial resolution)
+    :attrib band_alias:
+        optional band alias to use in addition to `band_name`. Both, `band_name`
+        and `band_alias` are interchangeable.
     :attrib wavelength_info:
         optional wavelength info about the band to allow for localizing the
         band data in the spectral domain (mostly required for data from optical
         imaging sensors).
-    :attrib nrows:
-        number of rows of the raster band (extent in y dimension)
-    :attrib ncols:
-        number of columns of the raster band (extent in x dimension)
-    :attrib epsg:
-        EPSG code of the spatial reference system the raster data is projected
-        to.
-    :attrib bounds:
-        spatial boundaries of the raster band (i.e., its footprint). The boundary
-        is a rectangle of the size of the raster band and defines its location on
-        Earth. The spatial reference system is defined by the `epsg` code.
-    :attrib ulx:
-        upper left x coordinate of the raster band in the spatial reference system
-        defined by the EPSG code. We assume ``GDAL`` defaults, therefore the coordinate
-        should refer to the upper left *pixel* corner.
-    :attrib uly:
-        upper left y coordinate of the raster band in the spatial reference system
-        defined by the EPSG code. We assume ``GDAL`` defaults, therefore the coordinate
-        should refer to the upper left *pixel* corner.
     :attrib scale:
         scale (aka gain) parameter of the raster data.
     :attrib offset:
         offset parameter of the raster data.
-    :attrib values:
-        the actual raster data as ``numpy.ndarray``, ``numpy.ma.MaskedArray`` or
-        ``zarr``. The type depends on how the constructor is called.
+    :attrib unit:
+        optional (SI) physical unit of the band data (e.g., 'meters' for
+        elevation data)
+    :attrib nodata:
+        numeric value indicating no-data. If not provided the nodata value
+        is set to ``numpy.nan`` for floating point data, 0 and -999 for
+        unsigned and signed integer data, respectively.
+    :attrib is_tiled:
+        boolean flag indicating if the raster data is sub-divided into
+        tiles. False (zero) by default.
     :attrib area_or_point:
         Following ``GDAL`` standards, might be either `Area` (GDAL default) or
         `Point`. When `Area` pixel coordinates refer to the upper left corner of the
         pixel, whereas `Point` indicates that pixel coordinates are from the center
         of the pixel.
+    :attrib alias:
+        True if the band has a `band_alias`
+    :attrib bounds:
+        image bounds in cartographic projection
+    :attrib coordinates:
+        image coordinates in x and y direction
+    :attrib crs:
+        coordinate reference system as EPSG code
+    :attrib has_alias:
+        True if the band has a `band_alias`
+    :attrib is_zarr:
+        True if the band data is stored as `zarr`
+    :attrib is_ndarray:
+        True if the band data is stored as `numpy.ndarray`
+    :attrib is_masked_array:
+        True if the band data is stored as `numpy.ma.core.maskedArray`
+    :attrib meta:
+        `rasterio` compatible representation of essential image metadata
+    :attrib transform:
+        `Affine` transform representation of the image geo-localisation
+    
     """
 
     def __init__(
