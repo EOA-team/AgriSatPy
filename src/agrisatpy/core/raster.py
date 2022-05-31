@@ -10,6 +10,52 @@ grid cell sizes) and spatial extents.
 
 Besides that, ``RasterCollection`` is a super class from which sensor-specific classes for reading
 (satellite) raster image data inherit.
+
+Example:
+--------
+
+.. code-block:: python
+
+from agrisatpy.core.raster import RasterCollection
+from agrisatpy.core.band import Band
+from agrisatpy.core.band import GeoInfo
+
+# Empty `RasterCollection`:
+handler = RasterCollection()
+handler.empty  # returns True
+
+# New collection from `numpy.ndarray`
+# Define GeoInfo and Array first and use them to initialize a new RasterCollection
+# instance:
+
+# provide EPSG code
+epsg = 32633
+# provide upper left (ul) x and y coordinate (in units of the coordinate system
+# given by the EPSG code defined above)
+ulx, uly = 300000, 5100000
+# provide pixel size (spatial resolution). Note that resolution in y direction is
+# negative because we start at the upper left corner
+pixres_x, pixres_y = 10, -10
+
+# get a new GeoInfo object
+geo_info = GeoInfo(epsg=epsg,ulx=ulx,uly=uly,pixres_x=pixres_x,pixres_y=pixres_y)
+
+# define a band name for the band data to add
+band_name = 'random'
+# optionally, you can also asign a `band_alias` (e.g., color name)
+band_alias = 'blue'
+
+# let's define some random numbers in a 2-d array
+values = np.random.random(size=(100,120))
+
+# get the RasterCollection object
+raster = RasterDataHandler(
+         band_constructor=Band,
+         band_name=band_name,
+         values=values,
+         band_alias=band_alias,
+         geo_info=geo_info
+)
 '''
 
 import geopandas as gpd
@@ -166,52 +212,6 @@ class RasterCollection(MutableMapping):
         ):
         """
         Initializes a new `RasterCollection` with 0 up to n bands
-
-        Example:
-        --------
-
-        .. code-block:: python
-
-        from agrisatpy.core.raster import RasterCollection
-        from agrisatpy.core.band import Band
-        from agrisatpy.core.band import GeoInfo
-
-        # Empty `RasterCollection`:
-        handler = RasterCollection()
-        handler.empty  # returns True
-
-        # New collection from `numpy.ndarray`
-        # Define GeoInfo and Array first and use them to initialize a new RasterCollection
-        # instance:
-
-        # provide EPSG code
-        epsg = 32633
-        # provide upper left (ul) x and y coordinate (in units of the coordinate system
-        # given by the EPSG code defined above)
-        ulx, uly = 300000, 5100000
-        # provide pixel size (spatial resolution). Note that resolution in y direction is
-        # negative because we start at the upper left corner
-        pixres_x, pixres_y = 10, -10
-
-        # get a new GeoInfo object
-        geo_info = GeoInfo(epsg=epsg,ulx=ulx,uly=uly,pixres_x=pixres_x,pixres_y=pixres_y)
-
-        # define a band name for the band data to add
-        band_name = 'random'
-        # optionally, you can also asign a `band_alias` (e.g., color name)
-        band_alias = 'blue'
-
-        # let's define some random numbers in a 2-d array
-        values = np.random.random(size=(100,120))
-
-        # get the RasterCollection object
-        raster = RasterDataHandler(
-                 band_constructor=Band,
-                 band_name=band_name,
-                 values=values,
-                 band_alias=band_alias,
-                 geo_info=geo_info
-        )
 
         :param band_constructor:
             optional callable returning an `~agrisatpy.core.Band`
