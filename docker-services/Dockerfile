@@ -2,30 +2,25 @@
 FROM ubuntu:latest
 RUN apt-get -y update
 RUN apt-get -y install git
-RUN apt-get -y install virtualenv
 RUN apt -y install python3-pip
+RUN apt-get install 'ffmpeg'\
+    'libsm6'\ 
+    'libxext6'  -y
 
 # define working directory
 WORKDIR /metadb-setup
 
 # install AgriSatPy
-# Step 1: create a virtual environment
-RUN virtualenv ${WORKDIR}/GeoPython
-RUN bash -c 'source ${WORKDIR}/GeoPython/bin/activate'
-# Step 2: COPY source code
+# Step 1: COPY source code
 COPY . .
-# Step 3: run setup.py and install packages
+# Step 2: run setup.py and install packages including Jupyter Lab
 RUN python3 setup.py bdist_wheel
-RUN pip install rasterio==1.3a3
-RUN pip install dist/*
+RUN pip3 install rasterio==1.3a3
+RUN pip3 install jupyterlab
+RUN pip3 install dist/*
 RUN rm -rf dist/
 
-# run AgriSatPy test modules
-RUN pytest --log-file=${WORKDIR}/pytest.log
+# start the jupyter server
+EXPOSE 8888
+ENTRYPOINT ["jupyter", "lab","--ip=0.0.0.0","--allow-root"]
 
-# create Database tables if they do not exist yet
-# COPY . .
-# RUN python3 ${WORKDIR}/scripts/setup_db.py
-
-# give access to bash
-CMD ["bash"]
