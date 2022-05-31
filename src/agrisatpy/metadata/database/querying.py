@@ -1,5 +1,5 @@
 '''
-Functions to query remote sensing plaform independent metadata from the metadata DB.
+Functions to query remote sensing platform independent metadata from the metadata DB.
 '''
 
 import geopandas as gpd
