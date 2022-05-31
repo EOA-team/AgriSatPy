@@ -185,7 +185,7 @@ def array_from_points(
     max_y_coord = int(np.ceil(abs((uly - lry) / pixres_y))) + 1
     # create index lists for coordinates
     x_indices = np.arange(ulx, lrx+pixres_x, step=pixres_x)
-    y_indices = np.arange(uly, lry-pixres_y, step=pixres_y)
+    y_indices = np.arange(uly, lry+pixres_y, step=pixres_y)
     
     # un-flatten the DataFrame along the selected columns (e.g. loop over columns)
     img_arr = np.ones(shape=(max_y_coord, max_x_coord), dtype=dtype_src) * nodata_dst
