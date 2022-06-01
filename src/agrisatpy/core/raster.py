@@ -1207,6 +1207,7 @@ class RasterCollection(MutableMapping):
                     **kwargs
                 )
             else:
+                # TODO: there seems to be a bug here
                 band = self.get_band(band_name)
                 collection.add_band(
                     band_constructor=band.scale_data,
