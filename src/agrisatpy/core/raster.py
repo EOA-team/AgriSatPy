@@ -1210,7 +1210,7 @@ class RasterCollection(MutableMapping):
                 band = self.get_band(band_name)
                 collection.add_band(
                     band_constructor=band.scale_data,
-                    inplace=True  # within the band instance `inplace` must be True,
+                    inplace=True,  # within the band instance `inplace` must be True,
                     **kwargs
                 )
         return collection
