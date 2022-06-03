@@ -1,3 +1,11 @@
+Release v1.4
+------------
+- support of STAC catalogs for Sentinel-2 on AWS and Microsoft Planetary Computer
+- dockerization of the sample notebooks to allow for easy demonstration of the package
+- bugfixes in the rasterization procedure
+- band math functionality added for the Band class
+- minor fixes in the plotting module
+
 Release v1.3
 ------------
 - major improvements and advances in the data model. From now on the base unit in the data model is the Band. A band holds

@@ -892,6 +892,7 @@ class Band(object):
         )
 
         # infer shape and affine of the resulting raster grid if not provided
+        increment = 0
         if snap_bounds is None:
             if set(in_gdf.geometry.type.unique()).issubset({'Polygon', 'MultiPolygon'}):
                 minx = in_gdf.geometry.bounds.minx.min()
@@ -904,14 +905,15 @@ class Band(object):
                 miny = in_gdf.geometry.y.min()
                 maxy = in_gdf.geometry.y.max()
             snap_bounds = box(minx, miny, maxx, maxy)
+            increment = 1
         else:
             minx, miny, maxx, maxy = snap_bounds.exterior.bounds
 
         # calculate number of columns from bounding box of all features
         # always round to the next bigger integer value to make sure no
         # value gets lost
-        rows = int(np.ceil(abs((maxy - miny) / abs(geo_info.pixres_y)))) + 1
-        cols = int(np.ceil(abs((maxx - minx) / geo_info.pixres_x))) + 1
+        rows = int(np.ceil(abs((maxy - miny) / abs(geo_info.pixres_y)))) + increment
+        cols = int(np.ceil(abs((maxx - minx) / geo_info.pixres_x))) + increment
         snap_shape = (rows, cols)
 
         # check pixel data model
